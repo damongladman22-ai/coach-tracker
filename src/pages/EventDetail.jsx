@@ -336,6 +336,12 @@ export default function EventDetail({ session }) {
                   <p className="text-gray-500">{eventTeam.club_teams.gender}</p>
                 </div>
                 <div className="flex space-x-2">
+                  <Link
+                    to={`/admin/events/${eventId}/matrix/${eventTeam.id}`}
+                    className="bg-purple-100 text-purple-700 px-3 py-1 rounded text-sm hover:bg-purple-200"
+                  >
+                    Attendance Matrix
+                  </Link>
                   <button
                     onClick={() => exportToCSV(eventTeam)}
                     disabled={exporting === eventTeam.id}
