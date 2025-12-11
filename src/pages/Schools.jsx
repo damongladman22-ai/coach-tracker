@@ -16,10 +16,12 @@ export default function Schools({ session }) {
   }, [])
 
   const fetchSchools = async () => {
+    // Fetch all schools (default limit is 1000, we have 1400+)
     const { data, error } = await supabase
       .from('schools')
       .select('*')
       .order('school')
+      .range(0, 1999)
     
     if (!error) setSchools(data || [])
     setLoading(false)

@@ -37,10 +37,12 @@ export default function ImportCoaches({ session }) {
   // Load schools on mount
   useEffect(() => {
     async function loadSchools() {
+      // Fetch all schools (default limit is 1000, we have 1400+)
       const { data, error } = await supabase
         .from('schools')
         .select('id, school, city, state, division')
-        .order('school');
+        .order('school')
+        .range(0, 1999);
       
       if (!error && data) {
         setSchools(data);
@@ -254,15 +256,31 @@ export default function ImportCoaches({ session }) {
 
   // Manually select school for a row
   const setManualSchool = (index, schoolId) => {
-    const school = schoolId ? schools.find(s => s.id === parseInt(schoolId)) : null;
-    setPreview(prev => prev.map((row, i) => 
-      i === index ? { 
-        ...row, 
-        matchedSchool: school || null, 
-        confidence: school ? 'manual' : 'none',
-        include: school ? true : false 
-      } : row
-    ));
+    if (!schoolId) {
+      setPreview(prev => prev.map((row, i) => 
+        i === index ? { 
+          ...row, 
+          matchedSchool: null, 
+          confidence: 'none',
+          include: false 
+        } : row
+      ));
+      return;
+    }
+    
+    // Find school - compare as strings to avoid type issues
+    const school = schools.find(s => String(s.id) === String(schoolId));
+    
+    if (school) {
+      setPreview(prev => prev.map((row, i) => 
+        i === index ? { 
+          ...row, 
+          matchedSchool: school, 
+          confidence: 'manual',
+          include: true 
+        } : row
+      ));
+    }
   };
 
   // Perform import
@@ -536,12 +554,12 @@ export default function ImportCoaches({ session }) {
                           className={`text-sm border rounded px-2 py-1 max-w-xs ${
                             row.matchedSchool ? 'border-green-300' : 'border-red-300'
                           }`}
-                          value={row.matchedSchool?.id || ''}
+                          value={row.matchedSchool ? String(row.matchedSchool.id) : ''}
                           onChange={e => setManualSchool(idx, e.target.value)}
                         >
                           <option value="">Select school...</option>
                           {schools.map(s => (
-                            <option key={s.id} value={s.id}>{s.school}</option>
+                            <option key={s.id} value={String(s.id)}>{s.school}</option>
                           ))}
                         </select>
                       </td>

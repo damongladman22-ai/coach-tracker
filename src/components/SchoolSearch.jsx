@@ -23,10 +23,12 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
   useEffect(() => {
     async function loadSchools() {
       try {
+        // Fetch all schools (default limit is 1000, we have 1400+)
         const { data, error } = await supabase
           .from('schools')
           .select('id, school, city, state, division, conference')
-          .order('school');
+          .order('school')
+          .range(0, 1999);
 
         if (error) throw error;
         setSchools(data || []);
