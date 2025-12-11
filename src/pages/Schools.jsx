@@ -21,7 +21,7 @@ export default function Schools({ session }) {
       .from('schools')
       .select('*')
       .order('school')
-      .range(0, 1999)
+      .limit(2000)
     
     if (!error) setSchools(data || [])
     setLoading(false)

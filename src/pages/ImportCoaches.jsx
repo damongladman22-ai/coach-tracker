@@ -42,10 +42,11 @@ export default function ImportCoaches({ session }) {
         .from('schools')
         .select('id, school, city, state, division')
         .order('school')
-        .range(0, 1999);
+        .limit(2000);
       
       if (!error && data) {
         setSchools(data);
+        console.log('Loaded schools:', data.length);
       }
       setSchoolsLoading(false);
     }

@@ -28,10 +28,11 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
           .from('schools')
           .select('id, school, city, state, division, conference')
           .order('school')
-          .range(0, 1999);
+          .limit(2000);
 
         if (error) throw error;
         setSchools(data || []);
+        console.log('SchoolSearch loaded schools:', data?.length);
       } catch (err) {
         console.error('Error loading schools:', err);
       } finally {
