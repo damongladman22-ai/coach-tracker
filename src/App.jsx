@@ -11,6 +11,7 @@ import EventDetail from './pages/EventDetail'
 import Schools from './pages/Schools'
 import ImportCoaches from './pages/ImportCoaches'
 import AttendanceMatrix from './pages/AttendanceMatrix'
+import DedupCoaches from './pages/DedupCoaches'
 
 // Parent Pages
 import TeamGames from './pages/TeamGames'
@@ -52,6 +53,7 @@ function App() {
         <Route path="/admin/schools" element={session ? <Schools session={session} /> : <AdminLogin />} />
         <Route path="/admin/import" element={session ? <ImportCoaches session={session} /> : <AdminLogin />} />
         <Route path="/admin/events/:eventId/matrix/:eventTeamId" element={session ? <AttendanceMatrix session={session} /> : <AdminLogin />} />
+        <Route path="/admin/dedup" element={session ? <DedupCoaches session={session} /> : <AdminLogin />} />
         
         {/* Parent Routes (no auth required) */}
         <Route path="/e/:eventSlug/:teamSlug" element={<TeamGames />} />

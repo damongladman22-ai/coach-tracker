@@ -37,6 +37,14 @@ export default function AdminDashboard({ session }) {
           <h2 className="text-xl font-semibold text-gray-800 mb-2">Import Coaches</h2>
           <p className="text-gray-600">Bulk import coaches from Excel or CSV</p>
         </Link>
+
+        <Link
+          to="/admin/dedup"
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-dashed border-gray-300"
+        >
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">Dedup Coaches</h2>
+          <p className="text-gray-600">Find and merge duplicate coaches</p>
+        </Link>
       </div>
     </AdminLayout>
   )
