@@ -209,7 +209,7 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
 
       {/* Results list (inline, not dropdown) */}
       {debouncedQuery.trim() && (
-        <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm max-h-72 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="mt-1 border border-gray-200 rounded-lg overflow-hidden">
           {filteredSchools.length === 0 ? (
             <div className="p-4 text-gray-500 text-center">
               No schools found for "{debouncedQuery}"

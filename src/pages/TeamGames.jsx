@@ -503,7 +503,7 @@ function AddCoachModal({ game, onClose, onAdd, existingCoachIds = [] }) {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-4 overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
           {/* School search */}
-          <div className="mb-4">
+          <div className={selectedSchool ? 'mb-4' : ''}>
             <label className="block text-sm font-medium text-gray-700 mb-2">
               1. Search for a college
             </label>
