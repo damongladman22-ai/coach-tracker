@@ -245,12 +245,17 @@ export default function TeamGames() {
       <header className="bg-white border-b sticky top-0 z-40">
         <div className="px-4 py-4 flex justify-between items-start">
           <div>
+            {/* Breadcrumb navigation */}
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
+              <Link to="/home" className="hover:text-blue-600">Home</Link>
+              <span>›</span>
+              <Link to={`/e/${eventSlug}`} className="hover:text-blue-600">
+                {eventTeam?.events?.event_name}
+              </Link>
+            </div>
             <h1 className="text-xl font-bold text-gray-900">
               {eventTeam?.club_teams?.team_name}
             </h1>
-            <p className="text-gray-600">
-              {eventTeam?.events?.event_name}
-            </p>
           </div>
           <Link
             to={`/e/${eventSlug}/${teamSlug}/summary`}

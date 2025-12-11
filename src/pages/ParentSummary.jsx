@@ -295,18 +295,23 @@ export default function ParentSummary() {
       {/* Header */}
       <div className="bg-white shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <Link 
-            to={`/e/${eventSlug}/${teamSlug}`}
-            className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-block"
-          >
-            ← Back to Live Tracker
-          </Link>
+          {/* Breadcrumb navigation */}
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <Link to="/home" className="hover:text-blue-600">Home</Link>
+            <span>›</span>
+            <Link to={`/e/${eventSlug}`} className="hover:text-blue-600">
+              {eventTeam?.events?.event_name}
+            </Link>
+            <span>›</span>
+            <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-blue-600">
+              {eventTeam?.club_teams?.team_name}
+            </Link>
+            <span>›</span>
+            <span className="text-gray-700">Summary</span>
+          </div>
           <h1 className="text-2xl font-bold text-gray-900">
-            {eventTeam?.club_teams?.team_name}
+            {eventTeam?.club_teams?.team_name} - Summary
           </h1>
-          <p className="text-gray-600">
-            {eventTeam?.events?.event_name}
-          </p>
           {eventTeam?.events?.start_date && (
             <p className="text-sm text-gray-500">
               {formatDate(eventTeam.events.start_date)}

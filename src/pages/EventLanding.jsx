@@ -178,12 +178,12 @@ export default function EventLanding() {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <Link 
-            to="/home"
-            className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-block"
-          >
-            ← All Events
-          </Link>
+          {/* Breadcrumb navigation */}
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <Link to="/home" className="hover:text-blue-600">Home</Link>
+            <span>›</span>
+            <span className="text-gray-700">{event?.event_name}</span>
+          </div>
           <div className="flex items-center gap-3">
             <h1 className="text-2xl font-bold text-gray-900">{event?.event_name}</h1>
             {active && (

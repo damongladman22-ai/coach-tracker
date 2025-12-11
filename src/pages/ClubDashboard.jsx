@@ -156,7 +156,9 @@ export default function ClubDashboard() {
       {/* Header */}
       <header className="bg-white shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <h1 className="text-2xl font-bold text-gray-900">College Coach Tracker</h1>
+          <Link to="/home" className="hover:opacity-80">
+            <h1 className="text-2xl font-bold text-gray-900">College Coach Tracker</h1>
+          </Link>
           <p className="text-gray-600 mt-1">Track college coach attendance at events</p>
         </div>
       </header>

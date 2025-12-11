@@ -194,12 +194,14 @@ export default function GameAttendance() {
     <div className="min-h-screen bg-gray-100">
       {/* Header */}
       <header className="bg-blue-600 text-white p-4">
-        <Link 
-          to={`/e/${eventSlug}/${teamSlug}`}
-          className="text-blue-100 text-sm mb-2 inline-block"
-        >
-          ← Back to Games
-        </Link>
+        {/* Breadcrumb navigation */}
+        <div className="flex items-center gap-2 text-sm text-blue-200 mb-2">
+          <Link to="/home" className="hover:text-white">Home</Link>
+          <span>›</span>
+          <Link to={`/e/${eventSlug}`} className="hover:text-white">Event</Link>
+          <span>›</span>
+          <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-white">Team</Link>
+        </div>
         <h1 className="text-xl font-bold">
           {game && `${formatDate(game.game_date)} vs ${game.opponent}`}
         </h1>
