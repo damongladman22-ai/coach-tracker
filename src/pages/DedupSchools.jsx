@@ -11,10 +11,20 @@ export default function DedupSchools({ session }) {
   const [filter, setFilter] = useState('all') // 'all', 'exact', 'fuzzy'
   const [selectedPair, setSelectedPair] = useState(null)
   const [coachCounts, setCoachCounts] = useState({})
+  const [dismissedPairs, setDismissedPairs] = useState(() => {
+    // Load dismissed pairs from localStorage on init
+    const saved = localStorage.getItem('dismissedSchoolPairs')
+    return saved ? JSON.parse(saved) : []
+  })
 
   useEffect(() => {
     fetchData()
   }, [])
+
+  // Save dismissed pairs to localStorage whenever they change
+  useEffect(() => {
+    localStorage.setItem('dismissedSchoolPairs', JSON.stringify(dismissedPairs))
+  }, [dismissedPairs])
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
@@ -24,29 +34,62 @@ export default function DedupSchools({ session }) {
   const fetchData = async () => {
     setLoading(true)
     try {
-      // Fetch all schools
-      const { data: schoolsData, error } = await supabase
-        .from('schools')
-        .select('*')
-        .order('school')
+      // Fetch ALL schools using pagination
+      let allSchools = []
+      let page = 0
+      const pageSize = 1000
+      let hasMore = true
 
-      if (error) throw error
+      while (hasMore) {
+        const { data: schoolsData, error } = await supabase
+          .from('schools')
+          .select('*')
+          .order('school')
+          .range(page * pageSize, (page + 1) * pageSize - 1)
 
-      setSchools(schoolsData || [])
+        if (error) throw error
 
-      // Get coach counts for each school
-      const { data: coachesData } = await supabase
-        .from('coaches')
-        .select('school_id')
+        if (schoolsData && schoolsData.length > 0) {
+          allSchools = [...allSchools, ...schoolsData]
+          hasMore = schoolsData.length === pageSize
+          page++
+        } else {
+          hasMore = false
+        }
+      }
+
+      setSchools(allSchools)
+
+      // Get coach counts for each school (also paginate)
+      let allCoaches = []
+      page = 0
+      hasMore = true
+
+      while (hasMore) {
+        const { data: coachesData, error } = await supabase
+          .from('coaches')
+          .select('school_id')
+          .range(page * pageSize, (page + 1) * pageSize - 1)
+
+        if (error) throw error
+
+        if (coachesData && coachesData.length > 0) {
+          allCoaches = [...allCoaches, ...coachesData]
+          hasMore = coachesData.length === pageSize
+          page++
+        } else {
+          hasMore = false
+        }
+      }
 
       const counts = {}
-      ;(coachesData || []).forEach(record => {
+      allCoaches.forEach(record => {
         counts[record.school_id] = (counts[record.school_id] || 0) + 1
       })
       setCoachCounts(counts)
 
       // Find potential duplicates
-      findDuplicates(schoolsData || [])
+      findDuplicates(allSchools)
     } catch (err) {
       console.error('Error fetching data:', err)
       showToast('Error loading schools', 'error')
@@ -67,6 +110,9 @@ export default function DedupSchools({ session }) {
         const pairKey = [a.id, b.id].sort().join('-')
         if (checked.has(pairKey)) continue
         checked.add(pairKey)
+
+        // Skip if this pair was permanently dismissed
+        if (dismissedPairs.includes(pairKey)) continue
 
         const matchType = getMatchType(a, b)
         if (matchType) {
@@ -273,10 +319,22 @@ export default function DedupSchools({ session }) {
   }
 
   const dismissPair = (school1Id, school2Id) => {
+    const pairKey = [school1Id, school2Id].sort().join('-')
+    // Add to persistent dismissed list
+    setDismissedPairs(prev => [...prev, pairKey])
+    // Remove from current duplicates list
     setDuplicates(prev => prev.filter(d => 
       !(d.school1.id === school1Id && d.school2.id === school2Id) &&
       !(d.school1.id === school2Id && d.school2.id === school1Id)
     ))
+    showToast('Pair permanently ignored', 'success')
+  }
+
+  const clearDismissed = () => {
+    setDismissedPairs([])
+    localStorage.removeItem('dismissedSchoolPairs')
+    showToast('Cleared all ignored pairs - refreshing...', 'success')
+    setTimeout(() => fetchData(), 500)
   }
 
   const filteredDuplicates = duplicates.filter(d => {
@@ -309,7 +367,7 @@ export default function DedupSchools({ session }) {
       {/* Stats */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">Duplicate Analysis</h2>
-        <div className="grid grid-cols-3 gap-4 text-center">
+        <div className="grid grid-cols-4 gap-4 text-center">
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="text-3xl font-bold text-gray-800">{schools.length}</div>
             <div className="text-sm text-gray-500">Total Schools</div>
@@ -322,7 +380,21 @@ export default function DedupSchools({ session }) {
             <div className="text-3xl font-bold text-yellow-600">{fuzzyCount}</div>
             <div className="text-sm text-gray-500">Possible Duplicates</div>
           </div>
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="text-3xl font-bold text-gray-500">{dismissedPairs.length}</div>
+            <div className="text-sm text-gray-500">Ignored Pairs</div>
+          </div>
         </div>
+        {dismissedPairs.length > 0 && (
+          <div className="mt-4 text-center">
+            <button
+              onClick={clearDismissed}
+              className="text-sm text-blue-600 hover:text-blue-800 underline"
+            >
+              Clear all ignored pairs and re-check
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Filters */}
@@ -485,7 +557,8 @@ export default function DedupSchools({ session }) {
           <li><strong>Exact duplicates</strong> = same school name (after normalization)</li>
           <li><strong>Possible duplicates</strong> = similar names, abbreviations (St. vs Saint, etc.)</li>
           <li>When you merge, <strong>all coaches</strong> from the deleted school move to the kept school</li>
-          <li>Click ✕ to dismiss pairs that aren't actually duplicates</li>
+          <li>Click ✕ to <strong>permanently ignore</strong> pairs that aren't duplicates (won't show again)</li>
+          <li>Use "Clear all ignored pairs" to review previously ignored pairs again</li>
         </ul>
       </div>
     </AdminLayout>
