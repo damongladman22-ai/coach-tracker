@@ -253,22 +253,22 @@ export default function GameAttendance() {
       {/* Add Modal */}
       {showAddModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
-          <div className="bg-white w-full max-w-lg rounded-t-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-white w-full max-w-lg rounded-t-2xl h-[85vh] flex flex-col">
             {/* Modal Header */}
-            <div className="p-4 border-b flex justify-between items-center">
+            <div className="p-4 border-b flex justify-between items-center shrink-0">
               <h2 className="text-lg font-semibold">
                 {selectedSchool ? selectedSchool.school : 'Search for College'}
               </h2>
               <button 
                 onClick={closeModal}
-                className="text-gray-500 text-2xl"
+                className="text-gray-500 text-2xl p-2"
               >
                 ×
               </button>
             </div>
 
             {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4 overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
               {!selectedSchool ? (
                 /* School Search */
                 <>
@@ -279,20 +279,20 @@ export default function GameAttendance() {
                       setSearchTerm(e.target.value)
                       searchSchools(e.target.value)
                     }}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg mb-4"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg mb-4 sticky top-0 bg-white"
                     placeholder="Type college name..."
                     autoFocus
                   />
                   
                   {schools.length > 0 && (
-                    <div className="space-y-2">
+                    <div className="space-y-2 pb-4">
                       {schools.map((school) => (
                         <button
                           key={school.id}
                           onClick={() => selectSchool(school)}
-                          className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100"
+                          className="w-full text-left p-4 bg-gray-50 rounded-lg hover:bg-gray-100 active:bg-gray-200"
                         >
-                          <div className="font-medium">{school.school}</div>
+                          <div className="font-medium text-base">{school.school}</div>
                           <div className="text-sm text-gray-500">
                             {school.city}, {school.state} • {school.division}
                           </div>
@@ -317,7 +317,7 @@ export default function GameAttendance() {
                       setCoaches([])
                       setSelectedCoaches([])
                     }}
-                    className="text-blue-600 mb-4"
+                    className="text-blue-600 mb-4 py-2"
                   >
                     ← Choose different school
                   </button>
@@ -327,22 +327,22 @@ export default function GameAttendance() {
                   </p>
 
                   {coaches.length > 0 ? (
-                    <div className="space-y-2 mb-4">
+                    <div className="space-y-2 mb-4 pb-2">
                       {coaches.map((coach) => (
                         <button
                           key={coach.id}
                           onClick={() => toggleCoach(coach.id)}
-                          className={`w-full text-left p-3 rounded-lg border-2 ${
+                          className={`w-full text-left p-4 rounded-lg border-2 ${
                             selectedCoaches.includes(coach.id)
                               ? 'border-green-500 bg-green-50'
                               : 'border-gray-200 bg-white'
                           }`}
                         >
-                          <span className="font-medium">
+                          <span className="font-medium text-base">
                             {coach.first_name} {coach.last_name}
                           </span>
                           {selectedCoaches.includes(coach.id) && (
-                            <span className="float-right text-green-600">✓</span>
+                            <span className="float-right text-green-600 text-xl">✓</span>
                           )}
                         </button>
                       ))}
@@ -360,20 +360,20 @@ export default function GameAttendance() {
                           type="text"
                           value={newCoach.first_name}
                           onChange={(e) => setNewCoach({ ...newCoach, first_name: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          className="w-full px-3 py-3 border border-gray-300 rounded-lg text-base"
                           placeholder="First name"
                         />
                         <input
                           type="text"
                           value={newCoach.last_name}
                           onChange={(e) => setNewCoach({ ...newCoach, last_name: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                          className="w-full px-3 py-3 border border-gray-300 rounded-lg text-base"
                           placeholder="Last name"
                         />
                         <div className="flex space-x-2">
                           <button
                             onClick={addNewCoach}
-                            className="flex-1 bg-blue-600 text-white py-2 rounded-lg"
+                            className="flex-1 bg-blue-600 text-white py-3 rounded-lg text-base"
                           >
                             Add Coach
                           </button>
@@ -382,7 +382,7 @@ export default function GameAttendance() {
                               setShowAddCoachForm(false)
                               setNewCoach({ first_name: '', last_name: '' })
                             }}
-                            className="flex-1 bg-gray-200 text-gray-700 py-2 rounded-lg"
+                            className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-lg text-base"
                           >
                             Cancel
                           </button>
@@ -392,7 +392,7 @@ export default function GameAttendance() {
                   ) : (
                     <button
                       onClick={() => setShowAddCoachForm(true)}
-                      className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 mb-4"
+                      className="w-full py-4 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 mb-4 text-base"
                     >
                       + Add Coach Not Listed
                     </button>
@@ -403,7 +403,7 @@ export default function GameAttendance() {
 
             {/* Modal Footer */}
             {selectedSchool && selectedCoaches.length > 0 && (
-              <div className="p-4 border-t">
+              <div className="p-4 border-t shrink-0">
                 <button
                   onClick={saveAttendance}
                   disabled={saving}
