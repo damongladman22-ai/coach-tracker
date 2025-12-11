@@ -252,15 +252,15 @@ export default function ImportCoaches({ session }) {
     ));
   };
 
-  // Manually select school for unmatched row
+  // Manually select school for a row
   const setManualSchool = (index, schoolId) => {
-    const school = schools.find(s => s.id === parseInt(schoolId));
+    const school = schoolId ? schools.find(s => s.id === parseInt(schoolId)) : null;
     setPreview(prev => prev.map((row, i) => 
       i === index ? { 
         ...row, 
-        matchedSchool: school, 
-        confidence: 'manual',
-        include: true 
+        matchedSchool: school || null, 
+        confidence: school ? 'manual' : 'none',
+        include: school ? true : false 
       } : row
     ));
   };
@@ -532,20 +532,18 @@ export default function ImportCoaches({ session }) {
                         {row.originalSchool}
                       </td>
                       <td className="px-3 py-2 text-sm">
-                        {row.matchedSchool ? (
-                          <span className="text-green-700">{row.matchedSchool.school}</span>
-                        ) : (
-                          <select
-                            className="text-sm border rounded px-2 py-1"
-                            onChange={e => setManualSchool(idx, e.target.value)}
-                            defaultValue=""
-                          >
-                            <option value="">Select school...</option>
-                            {schools.map(s => (
-                              <option key={s.id} value={s.id}>{s.school}</option>
-                            ))}
-                          </select>
-                        )}
+                        <select
+                          className={`text-sm border rounded px-2 py-1 max-w-xs ${
+                            row.matchedSchool ? 'border-green-300' : 'border-red-300'
+                          }`}
+                          value={row.matchedSchool?.id || ''}
+                          onChange={e => setManualSchool(idx, e.target.value)}
+                        >
+                          <option value="">Select school...</option>
+                          {schools.map(s => (
+                            <option key={s.id} value={s.id}>{s.school}</option>
+                          ))}
+                        </select>
                       </td>
                       <td className="px-3 py-2">
                         <span className={`text-xs px-2 py-1 rounded-full ${
