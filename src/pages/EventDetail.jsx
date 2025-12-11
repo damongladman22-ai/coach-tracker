@@ -12,6 +12,7 @@ export default function EventDetail({ session }) {
   const [loading, setLoading] = useState(true)
   const [selectedTeam, setSelectedTeam] = useState('')
   const [showGameForm, setShowGameForm] = useState(null)
+  const [editingGame, setEditingGame] = useState(null)
   const [gameFormData, setGameFormData] = useState({ game_date: '', opponent: '' })
 
   useEffect(() => {
@@ -112,6 +113,29 @@ export default function EventDetail({ session }) {
       setGameFormData({ game_date: '', opponent: '' })
       fetchData()
     }
+  }
+
+  const updateGame = async () => {
+    const { error } = await supabase
+      .from('games')
+      .update({ 
+        game_date: gameFormData.game_date,
+        opponent: gameFormData.opponent
+      })
+      .eq('id', editingGame.id)
+    
+    if (!error) {
+      setEditingGame(null)
+      setShowGameForm(null)
+      setGameFormData({ game_date: '', opponent: '' })
+      fetchData()
+    }
+  }
+
+  const handleEditGame = (game, eventTeamId) => {
+    setEditingGame(game)
+    setGameFormData({ game_date: game.game_date, opponent: game.opponent })
+    setShowGameForm(eventTeamId)
   }
 
   const deleteGame = async (gameId) => {
@@ -237,7 +261,11 @@ export default function EventDetail({ session }) {
                 <div className="flex justify-between items-center mb-3">
                   <h4 className="font-medium">Games</h4>
                   <button
-                    onClick={() => setShowGameForm(eventTeam.id)}
+                    onClick={() => {
+                      setEditingGame(null)
+                      setGameFormData({ game_date: '', opponent: '' })
+                      setShowGameForm(eventTeam.id)
+                    }}
                     className="text-blue-600 hover:text-blue-800 text-sm"
                   >
                     + Add Game
@@ -246,6 +274,7 @@ export default function EventDetail({ session }) {
 
                 {showGameForm === eventTeam.id && (
                   <div className="bg-gray-50 rounded p-4 mb-4">
+                    <h4 className="font-medium mb-3">{editingGame ? 'Edit Game' : 'Add Game'}</h4>
                     <div className="grid grid-cols-2 gap-4 mb-3">
                       <div>
                         <label className="block text-sm text-gray-600 mb-1">Date</label>
@@ -269,14 +298,15 @@ export default function EventDetail({ session }) {
                     </div>
                     <div className="flex space-x-2">
                       <button
-                        onClick={() => addGame(eventTeam.id)}
+                        onClick={() => editingGame ? updateGame() : addGame(eventTeam.id)}
                         className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
                       >
-                        Add Game
+                        {editingGame ? 'Update Game' : 'Add Game'}
                       </button>
                       <button
                         onClick={() => {
                           setShowGameForm(null)
+                          setEditingGame(null)
                           setGameFormData({ game_date: '', opponent: '' })
                         }}
                         className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-300"
@@ -295,12 +325,20 @@ export default function EventDetail({ session }) {
                           <span className="font-medium">{formatDate(game.game_date)}</span>
                           <span className="text-gray-600"> vs {game.opponent}</span>
                         </span>
-                        <button
-                          onClick={() => deleteGame(game.id)}
-                          className="text-red-600 hover:text-red-800 text-sm"
-                        >
-                          Delete
-                        </button>
+                        <div className="space-x-2">
+                          <button
+                            onClick={() => handleEditGame(game, eventTeam.id)}
+                            className="text-blue-600 hover:text-blue-800 text-sm"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => deleteGame(game.id)}
+                            className="text-red-600 hover:text-red-800 text-sm"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
