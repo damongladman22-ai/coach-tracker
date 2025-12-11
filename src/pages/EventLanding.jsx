@@ -179,7 +179,7 @@ export default function EventLanding() {
       <header className="bg-white shadow-sm">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <Link 
-            to="/"
+            to="/home"
             className="text-blue-600 hover:text-blue-800 text-sm mb-2 inline-block"
           >
             ← All Events

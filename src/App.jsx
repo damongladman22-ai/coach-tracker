@@ -61,6 +61,7 @@ function App() {
         <Route path="/admin/dedup-schools" element={session ? <DedupSchools session={session} /> : <AdminLogin />} />
         
         {/* Parent Routes (no auth required) */}
+        <Route path="/home" element={<ClubDashboard />} />
         <Route path="/e/:eventSlug/:teamSlug" element={<TeamGames />} />
         <Route path="/e/:eventSlug/:teamSlug/game/:gameId" element={<GameAttendance />} />
         <Route path="/e/:eventSlug/:teamSlug/summary" element={<ParentSummary />} />
