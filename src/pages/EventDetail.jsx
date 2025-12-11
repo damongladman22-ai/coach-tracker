@@ -15,6 +15,7 @@ export default function EventDetail({ session }) {
   const [editingGame, setEditingGame] = useState(null)
   const [gameFormData, setGameFormData] = useState({ game_date: '', opponent: '' })
   const [exporting, setExporting] = useState(null)
+  const [copiedLink, setCopiedLink] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -162,12 +163,14 @@ export default function EventDetail({ session }) {
 
   const copyLink = (eventTeam) => {
     navigator.clipboard.writeText(getShareableLink(eventTeam))
-    alert('Link copied to clipboard!')
+    setCopiedLink(`tracker-${eventTeam.id}`)
+    setTimeout(() => setCopiedLink(null), 2000)
   }
 
   const copySummaryLink = (eventTeam) => {
     navigator.clipboard.writeText(getSummaryLink(eventTeam))
-    alert('Summary link copied to clipboard!')
+    setCopiedLink(`summary-${eventTeam.id}`)
+    setTimeout(() => setCopiedLink(null), 2000)
   }
 
   const formatDate = (dateStr) => {
@@ -361,15 +364,23 @@ export default function EventDetail({ session }) {
                   </button>
                   <button
                     onClick={() => copyLink(eventTeam)}
-                    className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm hover:bg-green-200"
+                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                      copiedLink === `tracker-${eventTeam.id}`
+                        ? 'bg-green-500 text-white'
+                        : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'
+                    }`}
                   >
-                    Copy Parent Link
+                    {copiedLink === `tracker-${eventTeam.id}` ? '✓ Copied!' : 'Copy Tracker Link'}
                   </button>
                   <button
                     onClick={() => copySummaryLink(eventTeam)}
-                    className="bg-teal-100 text-teal-700 px-3 py-1 rounded text-sm hover:bg-teal-200"
+                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                      copiedLink === `summary-${eventTeam.id}`
+                        ? 'bg-green-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                   >
-                    Copy Summary Link
+                    {copiedLink === `summary-${eventTeam.id}` ? '✓ Copied!' : 'Copy Summary Link'}
                   </button>
                   <button
                     onClick={() => removeTeamFromEvent(eventTeam.id)}
@@ -383,12 +394,12 @@ export default function EventDetail({ session }) {
               {/* Shareable Links */}
               <div className="bg-gray-50 rounded p-3 mb-4 space-y-2">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Parent Link (Live Tracker):</p>
-                  <code className="text-sm text-blue-600 break-all">{getShareableLink(eventTeam)}</code>
+                  <p className="text-xs text-gray-500 mb-1">Tracker Link (for team group chat):</p>
+                  <code className="text-sm text-cyan-600 break-all">{getShareableLink(eventTeam)}</code>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Summary Link (Read-Only):</p>
-                  <code className="text-sm text-teal-600 break-all">{getSummaryLink(eventTeam)}</code>
+                  <p className="text-xs text-gray-500 mb-1">Summary Link (read-only view):</p>
+                  <code className="text-sm text-gray-600 break-all">{getSummaryLink(eventTeam)}</code>
                 </div>
               </div>
 

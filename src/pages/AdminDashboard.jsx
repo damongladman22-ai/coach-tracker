@@ -1,22 +1,74 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 
 export default function AdminDashboard({ session }) {
+  const [copied, setCopied] = useState(false)
+
+  const getClubLink = () => {
+    return `${window.location.origin}/home`
+  }
+
+  const copyClubLink = () => {
+    navigator.clipboard.writeText(getClubLink())
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   return (
     <AdminLayout session={session} title="Dashboard">
-      {/* View Public Site Link */}
-      <div className="mb-6">
-        <Link
-          to="/home"
-          className="inline-flex items-center gap-2 text-blue-600 hover:text-blue-800"
-        >
-          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-          </svg>
-          View Public Site (what parents see)
-        </Link>
+      {/* Share with Parents Section */}
+      <div className="bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg shadow-lg p-6 mb-6 text-white">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold mb-1">Share with Parents</h2>
+            <p className="text-blue-100 text-sm">
+              Send this link to your club — parents can find their team and track coach attendance
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <code className="bg-white/20 px-3 py-2 rounded text-sm font-mono hidden sm:block">
+              {getClubLink()}
+            </code>
+            <button
+              onClick={copyClubLink}
+              className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
+                copied 
+                  ? 'bg-green-500 text-white' 
+                  : 'bg-white text-blue-600 hover:bg-blue-50'
+              }`}
+            >
+              {copied ? (
+                <>
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Copied!
+                </>
+              ) : (
+                <>
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                  Copy Club Link
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+        <div className="mt-3 pt-3 border-t border-white/20">
+          <Link
+            to="/home"
+            className="text-sm text-blue-100 hover:text-white inline-flex items-center gap-1"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+            Preview what parents see →
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
