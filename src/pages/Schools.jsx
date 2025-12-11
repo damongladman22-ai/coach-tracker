@@ -64,7 +64,7 @@ export default function Schools({ session }) {
   const [search, setSearch] = useState('')
   const [expandedSchool, setExpandedSchool] = useState(null)
   const [showCoachForm, setShowCoachForm] = useState(null)
-  const [coachFormData, setCoachFormData] = useState({ first_name: '', last_name: '' })
+  const [coachFormData, setCoachFormData] = useState({ first_name: '', last_name: '', email: '', phone: '', title: '' })
   
   // Add School state
   const [showAddSchool, setShowAddSchool] = useState(false)
@@ -242,12 +242,15 @@ export default function Schools({ session }) {
       .insert([{ 
         school_id: schoolId,
         first_name: coachFormData.first_name,
-        last_name: coachFormData.last_name
+        last_name: coachFormData.last_name,
+        email: coachFormData.email || null,
+        phone: coachFormData.phone || null,
+        title: coachFormData.title || null
       }])
     
     if (!error) {
       setShowCoachForm(null)
-      setCoachFormData({ first_name: '', last_name: '' })
+      setCoachFormData({ first_name: '', last_name: '', email: '', phone: '', title: '' })
       // Refresh coaches for this school
       const { data } = await supabase
         .from('coaches')
@@ -596,6 +599,32 @@ export default function Schools({ session }) {
                           onClick={(e) => e.stopPropagation()}
                         />
                       </div>
+                      <div className="grid grid-cols-3 gap-2 mb-2">
+                        <input
+                          type="text"
+                          value={coachFormData.title}
+                          onChange={(e) => setCoachFormData({ ...coachFormData, title: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded text-sm"
+                          placeholder="Title (e.g., Head Coach)"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <input
+                          type="email"
+                          value={coachFormData.email}
+                          onChange={(e) => setCoachFormData({ ...coachFormData, email: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded text-sm"
+                          placeholder="Email"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <input
+                          type="tel"
+                          value={coachFormData.phone}
+                          onChange={(e) => setCoachFormData({ ...coachFormData, phone: e.target.value })}
+                          className="px-3 py-2 border border-gray-300 rounded text-sm"
+                          placeholder="Phone"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
                       <div className="flex space-x-2">
                         <button
                           onClick={(e) => {
@@ -610,7 +639,7 @@ export default function Schools({ session }) {
                           onClick={(e) => {
                             e.stopPropagation()
                             setShowCoachForm(null)
-                            setCoachFormData({ first_name: '', last_name: '' })
+                            setCoachFormData({ first_name: '', last_name: '', email: '', phone: '', title: '' })
                           }}
                           className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm"
                         >
@@ -621,12 +650,37 @@ export default function Schools({ session }) {
                   )}
 
                   {coaches[school.id]?.length > 0 ? (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       {coaches[school.id].map((coach) => (
-                        <div key={coach.id} className="flex justify-between items-center py-1">
-                          <span className="text-sm">
-                            {coach.first_name} {coach.last_name}
-                          </span>
+                        <div key={coach.id} className="flex justify-between items-start py-2 border-b border-gray-100 last:border-0">
+                          <div>
+                            <div className="text-sm font-medium">
+                              {coach.first_name} {coach.last_name}
+                              {coach.title && (
+                                <span className="text-gray-500 font-normal ml-1">({coach.title})</span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 flex flex-wrap gap-2 mt-0.5">
+                              {coach.email && (
+                                <a 
+                                  href={`mailto:${coach.email}`} 
+                                  className="text-blue-600 hover:text-blue-800"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {coach.email}
+                                </a>
+                              )}
+                              {coach.phone && (
+                                <a 
+                                  href={`tel:${coach.phone}`} 
+                                  className="text-gray-600 hover:text-gray-800"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {coach.phone}
+                                </a>
+                              )}
+                            </div>
+                          </div>
                           <button
                             onClick={(e) => {
                               e.stopPropagation()

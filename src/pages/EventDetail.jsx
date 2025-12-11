@@ -230,8 +230,14 @@ export default function EventDetail({ session }) {
             division: school.division || '',
             conference: school.conference || '',
             state: school.state || '',
+            emails: new Set(),
             games: {}
           }
+        }
+
+        // Add coach email if present
+        if (coach.email) {
+          schoolData[school.id].emails.add(coach.email)
         }
 
         const gameId = record.game_id
@@ -243,7 +249,7 @@ export default function EventDetail({ session }) {
 
       // Create CSV header
       const gameHeaders = teamGames.map(g => `${formatDateShort(g.game_date)} vs ${g.opponent}`)
-      const headers = ['College', 'Division', 'Conference', 'State', ...gameHeaders]
+      const headers = ['College', 'Division', 'Conference', 'State', 'Email(s)', ...gameHeaders]
 
       // Create CSV rows
       const rows = Object.values(schoolData)
@@ -253,7 +259,8 @@ export default function EventDetail({ session }) {
             `"${data.school}"`,
             `"${data.division}"`,
             `"${data.conference}"`,
-            `"${data.state}"`
+            `"${data.state}"`,
+            `"${[...data.emails].join('; ')}"`
           ]
           teamGames.forEach(game => {
             const coaches = data.games[game.id] || []

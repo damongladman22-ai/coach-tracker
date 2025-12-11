@@ -1,0 +1,720 @@
+import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import OPLogo from '../components/OPLogo';
+
+// US States for filter dropdown
+const US_STATES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
+  'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
+  'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+  'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 'New Hampshire',
+  'New Jersey', 'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
+  'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina', 'South Dakota',
+  'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia', 'Washington', 'West Virginia',
+  'Wisconsin', 'Wyoming', 'District of Columbia'
+];
+
+const DIVISIONS = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'Junior College'];
+
+export default function CoachDirectory() {
+  const [coaches, setCoaches] = useState([]);
+  const [schools, setSchools] = useState([]);
+  const [conferences, setConferences] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  // Search/Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [stateFilter, setStateFilter] = useState('');
+  const [divisionFilter, setDivisionFilter] = useState('');
+  const [conferenceFilter, setConferenceFilter] = useState('');
+  const [showOnlyWithEmail, setShowOnlyWithEmail] = useState(false);
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 50;
+
+  // Edit/Add Coach state
+  const [editingCoach, setEditingCoach] = useState(null);
+  const [showAddCoach, setShowAddCoach] = useState(null); // schoolId when adding
+  const [coachForm, setCoachForm] = useState({
+    first_name: '',
+    last_name: '',
+    title: '',
+    email: '',
+    phone: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  // Load all data on mount
+  useEffect(() => {
+    async function loadData() {
+      setLoading(true);
+      
+      try {
+        // Fetch all coaches with school info
+        let allCoaches = [];
+        let from = 0;
+        const batchSize = 1000;
+        
+        while (true) {
+          const { data, error } = await supabase
+            .from('coaches')
+            .select(`
+              id, first_name, last_name, email, phone, title,
+              schools (id, school, city, state, division, conference)
+            `)
+            .order('last_name')
+            .range(from, from + batchSize - 1);
+          
+          if (error) {
+            console.error('Error fetching coaches:', error);
+            break;
+          }
+          
+          if (!data || data.length === 0) break;
+          allCoaches = [...allCoaches, ...data];
+          
+          if (data.length < batchSize) break;
+          from += batchSize;
+        }
+        
+        setCoaches(allCoaches);
+        
+        // Fetch all schools for reference
+        let allSchools = [];
+        from = 0;
+        
+        while (true) {
+          const { data, error } = await supabase
+            .from('schools')
+            .select('id, school, city, state, division, conference')
+            .order('school')
+            .range(from, from + batchSize - 1);
+          
+          if (error) break;
+          if (!data || data.length === 0) break;
+          allSchools = [...allSchools, ...data];
+          if (data.length < batchSize) break;
+          from += batchSize;
+        }
+        
+        setSchools(allSchools);
+        
+        // Extract unique conferences
+        const uniqueConferences = [...new Set(allSchools.map(s => s.conference).filter(Boolean))].sort();
+        setConferences(uniqueConferences);
+        
+      } catch (err) {
+        console.error('Error loading data:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    loadData();
+  }, []);
+
+  // Filter coaches based on search and filters
+  const filteredCoaches = useMemo(() => {
+    return coaches.filter(coach => {
+      const school = coach.schools;
+      if (!school) return false;
+      
+      // Search query (coach name or school name)
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const coachName = `${coach.first_name} ${coach.last_name}`.toLowerCase();
+        const schoolName = school.school.toLowerCase();
+        
+        if (!coachName.includes(query) && !schoolName.includes(query)) {
+          return false;
+        }
+      }
+      
+      // State filter
+      if (stateFilter && school.state !== stateFilter) {
+        return false;
+      }
+      
+      // Division filter
+      if (divisionFilter && school.division !== divisionFilter) {
+        return false;
+      }
+      
+      // Conference filter
+      if (conferenceFilter && school.conference !== conferenceFilter) {
+        return false;
+      }
+      
+      // Email filter
+      if (showOnlyWithEmail && !coach.email) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail]);
+
+  // Group by school for display
+  const groupedBySchool = useMemo(() => {
+    const grouped = {};
+    
+    filteredCoaches.forEach(coach => {
+      const schoolId = coach.schools?.id;
+      if (!schoolId) return;
+      
+      if (!grouped[schoolId]) {
+        grouped[schoolId] = {
+          school: coach.schools,
+          coaches: []
+        };
+      }
+      grouped[schoolId].coaches.push(coach);
+    });
+    
+    // Sort schools alphabetically
+    return Object.values(grouped).sort((a, b) => 
+      a.school.school.localeCompare(b.school.school)
+    );
+  }, [filteredCoaches]);
+
+  // Paginated results
+  const paginatedSchools = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return groupedBySchool.slice(start, start + pageSize);
+  }, [groupedBySchool, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(groupedBySchool.length / pageSize);
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail]);
+
+  // Stats
+  const stats = useMemo(() => ({
+    totalCoaches: filteredCoaches.length,
+    totalSchools: groupedBySchool.length,
+    withEmail: filteredCoaches.filter(c => c.email).length
+  }), [filteredCoaches, groupedBySchool]);
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setStateFilter('');
+    setDivisionFilter('');
+    setConferenceFilter('');
+    setShowOnlyWithEmail(false);
+  };
+
+  // Open edit modal for a coach
+  const openEditCoach = (coach) => {
+    setEditingCoach(coach);
+    setCoachForm({
+      first_name: coach.first_name || '',
+      last_name: coach.last_name || '',
+      title: coach.title || '',
+      email: coach.email || '',
+      phone: coach.phone || ''
+    });
+  };
+
+  // Open add coach modal for a school
+  const openAddCoach = (schoolId) => {
+    setShowAddCoach(schoolId);
+    setCoachForm({
+      first_name: '',
+      last_name: '',
+      title: '',
+      email: '',
+      phone: ''
+    });
+  };
+
+  // Close modals
+  const closeModal = () => {
+    setEditingCoach(null);
+    setShowAddCoach(null);
+    setCoachForm({
+      first_name: '',
+      last_name: '',
+      title: '',
+      email: '',
+      phone: ''
+    });
+  };
+
+  // Save coach (edit or add)
+  const saveCoach = async () => {
+    // Validation
+    if (!coachForm.first_name.trim() || !coachForm.last_name.trim()) {
+      setToast({ show: true, message: 'First and last name are required', type: 'error' });
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      if (editingCoach) {
+        // Update existing coach
+        const { error } = await supabase
+          .from('coaches')
+          .update({
+            first_name: coachForm.first_name.trim(),
+            last_name: coachForm.last_name.trim(),
+            title: coachForm.title.trim() || null,
+            email: coachForm.email.trim() || null,
+            phone: coachForm.phone.trim() || null
+          })
+          .eq('id', editingCoach.id);
+
+        if (error) throw error;
+
+        // Update local state
+        setCoaches(prev => prev.map(c => 
+          c.id === editingCoach.id 
+            ? { 
+                ...c, 
+                first_name: coachForm.first_name.trim(),
+                last_name: coachForm.last_name.trim(),
+                title: coachForm.title.trim() || null,
+                email: coachForm.email.trim() || null,
+                phone: coachForm.phone.trim() || null
+              }
+            : c
+        ));
+
+        setToast({ show: true, message: 'Coach updated!', type: 'success' });
+      } else if (showAddCoach) {
+        // Add new coach
+        const { data, error } = await supabase
+          .from('coaches')
+          .insert({
+            school_id: showAddCoach,
+            first_name: coachForm.first_name.trim(),
+            last_name: coachForm.last_name.trim(),
+            title: coachForm.title.trim() || null,
+            email: coachForm.email.trim() || null,
+            phone: coachForm.phone.trim() || null
+          })
+          .select('*, schools(*)')
+          .single();
+
+        if (error) throw error;
+
+        // Add to local state
+        setCoaches(prev => [...prev, data]);
+
+        setToast({ show: true, message: 'Coach added!', type: 'success' });
+      }
+
+      closeModal();
+    } catch (err) {
+      console.error('Error saving coach:', err);
+      setToast({ show: true, message: 'Error saving: ' + err.message, type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Auto-hide toast
+  useEffect(() => {
+    if (toast.show) {
+      const timer = setTimeout(() => {
+        setToast(t => ({ ...t, show: false }));
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast.show]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header */}
+        <header className="bg-[#0a1628] text-white">
+          <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+            <Link to="/home" className="flex items-center gap-3">
+              <OPLogo className="h-10 w-10" />
+              <span className="text-xl font-bold">Coach Directory</span>
+            </Link>
+          </div>
+          <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
+        </header>
+        
+        <div className="flex justify-center py-20">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="bg-[#0a1628] text-white">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <Link to="/home" className="flex items-center gap-3">
+            <OPLogo className="h-10 w-10" />
+            <span className="text-xl font-bold">Coach Directory</span>
+          </Link>
+          <nav className="flex items-center gap-4">
+            <Link to="/home" className="text-sm text-gray-300 hover:text-white">
+              Events
+            </Link>
+          </nav>
+        </div>
+        <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
+      </header>
+
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Search and Filters */}
+        <div className="bg-white rounded-lg shadow p-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            {/* Search */}
+            <div className="lg:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Search
+              </label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Coach name or school..."
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            
+            {/* State Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                State
+              </label>
+              <select
+                value={stateFilter}
+                onChange={e => setStateFilter(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All States</option>
+                {US_STATES.map(state => (
+                  <option key={state} value={state}>{state}</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Division Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Division
+              </label>
+              <select
+                value={divisionFilter}
+                onChange={e => setDivisionFilter(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Divisions</option>
+                {DIVISIONS.map(div => (
+                  <option key={div} value={div}>{div}</option>
+                ))}
+              </select>
+            </div>
+            
+            {/* Conference Filter */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Conference
+              </label>
+              <select
+                value={conferenceFilter}
+                onChange={e => setConferenceFilter(e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">All Conferences</option>
+                {conferences.map(conf => (
+                  <option key={conf} value={conf}>{conf}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          
+          {/* Filter options row */}
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showOnlyWithEmail}
+                onChange={e => setShowOnlyWithEmail(e.target.checked)}
+                className="rounded text-blue-600"
+              />
+              <span className="text-sm text-gray-600">Only show coaches with email</span>
+            </label>
+            
+            {(searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail) && (
+              <button
+                onClick={clearFilters}
+                className="text-sm text-blue-600 hover:text-blue-800"
+              >
+                Clear all filters
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Stats Bar */}
+        <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">
+          <span>{stats.totalSchools} schools</span>
+          <span>•</span>
+          <span>{stats.totalCoaches} coaches</span>
+          <span>•</span>
+          <span>{stats.withEmail} with email</span>
+        </div>
+
+        {/* Results */}
+        {paginatedSchools.length === 0 ? (
+          <div className="bg-white rounded-lg shadow p-8 text-center text-gray-500">
+            {coaches.length === 0 ? (
+              <>
+                <p className="text-lg mb-2">No coaches in database yet</p>
+                <p className="text-sm">Coaches will appear here once they're added to the system.</p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg mb-2">No coaches match your filters</p>
+                <button
+                  onClick={clearFilters}
+                  className="text-blue-600 hover:text-blue-800"
+                >
+                  Clear filters
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {paginatedSchools.map(({ school, coaches: schoolCoaches }) => (
+              <div key={school.id} className="bg-white rounded-lg shadow overflow-hidden">
+                {/* School Header */}
+                <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-white flex justify-between items-start">
+                  <div>
+                    <h3 className="font-semibold text-lg">{school.school}</h3>
+                    <p className="text-blue-100 text-sm">
+                      {school.city}, {school.state} • {school.division} • {school.conference}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => openAddCoach(school.id)}
+                    className="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg flex items-center gap-1"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Add Coach
+                  </button>
+                </div>
+                
+                {/* Coaches List */}
+                <div className="divide-y divide-gray-100">
+                  {schoolCoaches.map(coach => (
+                    <div key={coach.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                      <div className="flex-grow">
+                        <span className="font-medium">
+                          {coach.first_name} {coach.last_name}
+                        </span>
+                        {coach.title && (
+                          <span className="text-gray-500 text-sm ml-2">
+                            ({coach.title})
+                          </span>
+                        )}
+                      </div>
+                      
+                      <div className="flex flex-wrap items-center gap-3 text-sm">
+                        {coach.email && (
+                          <a
+                            href={`mailto:${coach.email}`}
+                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            <span className="hidden sm:inline">{coach.email}</span>
+                            <span className="sm:hidden">Email</span>
+                          </a>
+                        )}
+                        {coach.phone && (
+                          <a
+                            href={`tel:${coach.phone}`}
+                            className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-800"
+                          >
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                            </svg>
+                            <span className="hidden sm:inline">{coach.phone}</span>
+                            <span className="sm:hidden">Call</span>
+                          </a>
+                        )}
+                        {!coach.email && !coach.phone && (
+                          <span className="text-gray-400 text-sm">No contact info</span>
+                        )}
+                        <button
+                          onClick={() => openEditCoach(coach)}
+                          className="inline-flex items-center gap-1 text-gray-400 hover:text-blue-600 ml-2"
+                          title="Update contact info"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                          </svg>
+                          <span className="text-xs">Edit</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-6 flex justify-center items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-3 py-2 bg-white border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Previous
+            </button>
+            
+            <span className="px-4 py-2 text-sm text-gray-600">
+              Page {currentPage} of {totalPages}
+            </span>
+            
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-3 py-2 bg-white border rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+            >
+              Next
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Edit/Add Coach Modal */}
+      {(editingCoach || showAddCoach) && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b">
+              <h2 className="text-lg font-semibold">
+                {editingCoach ? 'Update Coach Info' : 'Add New Coach'}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {editingCoach 
+                  ? editingCoach.schools?.school
+                  : schools.find(s => s.id === showAddCoach)?.school
+                }
+              </p>
+            </div>
+            
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    First Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={coachForm.first_name}
+                    onChange={e => setCoachForm({ ...coachForm, first_name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="John"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={coachForm.last_name}
+                    onChange={e => setCoachForm({ ...coachForm, last_name: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Smith"
+                  />
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Title
+                </label>
+                <input
+                  type="text"
+                  value={coachForm.title}
+                  onChange={e => setCoachForm({ ...coachForm, title: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Head Coach, Assistant Coach, etc."
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Email
+                </label>
+                <input
+                  type="email"
+                  value={coachForm.email}
+                  onChange={e => setCoachForm({ ...coachForm, email: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="coach@university.edu"
+                />
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone
+                </label>
+                <input
+                  type="tel"
+                  value={coachForm.phone}
+                  onChange={e => setCoachForm({ ...coachForm, phone: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Help build our coach directory! Add or update contact info to help families connect with coaches.
+              </p>
+            </div>
+            
+            <div className="p-4 border-t flex gap-3">
+              <button
+                onClick={closeModal}
+                className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveCoach}
+                disabled={saving}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400"
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification */}
+      {toast.show && (
+        <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 ${
+          toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-green-600 text-white'
+        }`}>
+          {toast.message}
+        </div>
+      )}
+    </div>
+  );
+}

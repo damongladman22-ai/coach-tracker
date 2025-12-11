@@ -213,8 +213,15 @@ export default function ParentSummary() {
             division: school.division || '',
             conference: school.conference || '',
             state: school.state || '',
+            // Collect unique emails from coaches at this school
+            emails: new Set(),
             games: {}
           };
+        }
+
+        // Add coach email if present
+        if (coach.email) {
+          schoolData[school.id].emails.add(coach.email);
         }
 
         const gameId = record.game_id;
@@ -224,8 +231,8 @@ export default function ParentSummary() {
         schoolData[school.id].games[gameId].push(`${coach.first_name} ${coach.last_name}`);
       });
 
-      // Create CSV header
-      const headers = ['College', 'Division', 'Conference', 'State', 
+      // Create CSV header - now includes Email column
+      const headers = ['College', 'Division', 'Conference', 'State', 'Email(s)',
         ...games.map(g => `${formatDateShort(g.game_date)} vs ${g.opponent}`)
       ];
 
@@ -237,7 +244,8 @@ export default function ParentSummary() {
             `"${data.school}"`,
             `"${data.division}"`,
             `"${data.conference}"`,
-            `"${data.state}"`
+            `"${data.state}"`,
+            `"${[...data.emails].join('; ')}"`
           ];
           games.forEach(game => {
             const coaches = data.games[game.id] || [];
@@ -432,8 +440,24 @@ export default function ParentSummary() {
                             <div className="text-xs text-gray-500 mb-1">
                               {school.division} • {school.conference || 'Independent'} • {school.state}
                             </div>
-                            <div className="text-sm text-gray-700">
-                              {coaches.map(c => `${c.first_name} ${c.last_name}`).join(', ')}
+                            <div className="text-sm space-y-0.5">
+                              {coaches.map(c => (
+                                <div key={c.id} className="flex flex-wrap items-center gap-x-2">
+                                  <span className="text-gray-700">
+                                    {c.first_name} {c.last_name}
+                                    {c.title && <span className="text-gray-400 text-xs ml-1">({c.title})</span>}
+                                  </span>
+                                  {c.email && (
+                                    <a
+                                      href={`mailto:${c.email}`}
+                                      className="text-blue-600 hover:text-blue-800 text-xs"
+                                      onClick={e => e.stopPropagation()}
+                                    >
+                                      {c.email}
+                                    </a>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           </div>
                         ))}
@@ -469,9 +493,23 @@ export default function ParentSummary() {
                             <span className="text-gray-500">
                               {formatDateShort(game.game_date)} vs {game.opponent}:
                             </span>
-                            <span className="text-gray-900 ml-1">
-                              {coaches.map(c => `${c.first_name} ${c.last_name}`).join(', ')}
-                            </span>
+                            <div className="text-gray-900 mt-0.5">
+                              {coaches.map((c, i) => (
+                                <span key={c.id}>
+                                  {i > 0 && ', '}
+                                  <span>{c.first_name} {c.last_name}</span>
+                                  {c.email && (
+                                    <a
+                                      href={`mailto:${c.email}`}
+                                      className="text-blue-600 hover:text-blue-800 text-xs ml-1"
+                                      onClick={e => e.stopPropagation()}
+                                    >
+                                      ({c.email})
+                                    </a>
+                                  )}
+                                </span>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       );

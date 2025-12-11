@@ -29,6 +29,11 @@ export default function ImportCoaches({ session }) {
   const [fullNameColumn, setFullNameColumn] = useState('');
   const [useFullName, setUseFullName] = useState(false);
   
+  // New contact info columns
+  const [emailColumn, setEmailColumn] = useState('');
+  const [phoneColumn, setPhoneColumn] = useState('');
+  const [titleColumn, setTitleColumn] = useState('');
+  
   // Preview state
   const [preview, setPreview] = useState(null);
   const [importing, setImporting] = useState(false);
@@ -181,6 +186,24 @@ export default function ImportCoaches({ session }) {
       if (lastIdx >= 0) setLastNameColumn(headers[lastIdx]);
       if (fullIdx >= 0) setFullNameColumn(headers[fullIdx]);
       
+      // Email column
+      const emailIdx = lowerHeaders.findIndex(h => 
+        h.includes('email') || h.includes('e-mail')
+      );
+      if (emailIdx >= 0) setEmailColumn(headers[emailIdx]);
+      
+      // Phone column
+      const phoneIdx = lowerHeaders.findIndex(h => 
+        h.includes('phone') || h.includes('tel') || h.includes('mobile')
+      );
+      if (phoneIdx >= 0) setPhoneColumn(headers[phoneIdx]);
+      
+      // Title column
+      const titleIdx = lowerHeaders.findIndex(h => 
+        h.includes('title') || h.includes('position') || h.includes('role')
+      );
+      if (titleIdx >= 0) setTitleColumn(headers[titleIdx]);
+      
       // Decide which name mode to use
       if (firstIdx >= 0 && lastIdx >= 0) {
         setUseFullName(false);
@@ -244,6 +267,11 @@ export default function ImportCoaches({ session }) {
       
       if (!firstName && !lastName) continue;
       
+      // Get optional contact info
+      const email = emailColumn ? String(row[colIndex(emailColumn)] || '').trim() : '';
+      const phone = phoneColumn ? String(row[colIndex(phoneColumn)] || '').trim() : '';
+      const title = titleColumn ? String(row[colIndex(titleColumn)] || '').trim() : '';
+      
       // Skip duplicates in file
       const key = `${schoolName}|${firstName}|${lastName}`.toLowerCase();
       if (seenCoaches.has(key)) continue;
@@ -255,6 +283,9 @@ export default function ImportCoaches({ session }) {
         originalSchool: schoolName,
         firstName: String(firstName).trim(),
         lastName: String(lastName).trim(),
+        email,
+        phone,
+        title,
         matchedSchool: match?.school || null,
         confidence: match?.confidence || 'none',
         include: match !== null
@@ -348,7 +379,10 @@ export default function ImportCoaches({ session }) {
         .insert(newCoaches.map(row => ({
           first_name: row.firstName,
           last_name: row.lastName,
-          school_id: row.matchedSchool.id
+          school_id: row.matchedSchool.id,
+          email: row.email || null,
+          phone: row.phone || null,
+          title: row.title || null
         })))
         .select();
       
@@ -503,6 +537,58 @@ export default function ImportCoaches({ session }) {
               </div>
             )}
 
+            {/* Optional Contact Info Columns */}
+            <div className="border-t pt-4 mt-4">
+              <p className="text-sm text-gray-600 mb-3">Optional: Map contact information columns</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email Column
+                  </label>
+                  <select
+                    value={emailColumn}
+                    onChange={e => setEmailColumn(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">None</option>
+                    {columns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Column
+                  </label>
+                  <select
+                    value={phoneColumn}
+                    onChange={e => setPhoneColumn(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">None</option>
+                    {columns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Title Column
+                  </label>
+                  <select
+                    value={titleColumn}
+                    onChange={e => setTitleColumn(e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">None</option>
+                    {columns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <button
               onClick={handleGeneratePreview}
               className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -544,6 +630,8 @@ export default function ImportCoaches({ session }) {
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Include</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Coach Name</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Title</th>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Email</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Original School</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Matched To</th>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Confidence</th>
@@ -562,6 +650,14 @@ export default function ImportCoaches({ session }) {
                       </td>
                       <td className="px-3 py-2 text-sm">
                         {row.firstName} {row.lastName}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-600">
+                        {row.title || '-'}
+                      </td>
+                      <td className="px-3 py-2 text-sm text-gray-600">
+                        {row.email ? (
+                          <span className="text-blue-600">{row.email}</span>
+                        ) : '-'}
                       </td>
                       <td className="px-3 py-2 text-sm text-gray-600">
                         {row.originalSchool}
