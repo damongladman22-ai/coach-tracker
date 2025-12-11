@@ -9,6 +9,7 @@ import ClubTeams from './pages/ClubTeams'
 import Events from './pages/Events'
 import EventDetail from './pages/EventDetail'
 import Schools from './pages/Schools'
+import ImportCoaches from './pages/ImportCoaches'
 
 // Parent Pages
 import TeamGames from './pages/TeamGames'
@@ -48,6 +49,7 @@ function App() {
         <Route path="/admin/events" element={session ? <Events session={session} /> : <AdminLogin />} />
         <Route path="/admin/events/:eventId" element={session ? <EventDetail session={session} /> : <AdminLogin />} />
         <Route path="/admin/schools" element={session ? <Schools session={session} /> : <AdminLogin />} />
+        <Route path="/admin/import" element={session ? <ImportCoaches session={session} /> : <AdminLogin />} />
         
         {/* Parent Routes (no auth required) */}
         <Route path="/e/:eventSlug/:teamSlug" element={<TeamGames />} />
