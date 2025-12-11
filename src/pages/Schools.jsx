@@ -10,6 +10,18 @@ export default function Schools({ session }) {
   const [expandedSchool, setExpandedSchool] = useState(null)
   const [showCoachForm, setShowCoachForm] = useState(null)
   const [coachFormData, setCoachFormData] = useState({ first_name: '', last_name: '' })
+  
+  // Add School state
+  const [showAddSchool, setShowAddSchool] = useState(false)
+  const [schoolFormData, setSchoolFormData] = useState({
+    school: '',
+    city: '',
+    state: '',
+    type: 'Public',
+    conference: '',
+    division: 'NCAA D1'
+  })
+  const [addingSchool, setAddingSchool] = useState(false)
 
   useEffect(() => {
     fetchSchools()
@@ -23,7 +35,10 @@ export default function Schools({ session }) {
       .order('school')
       .limit(2000)
     
-    if (!error) setSchools(data || [])
+    if (!error) {
+      setSchools(data || [])
+      console.log('Loaded schools:', data?.length)
+    }
     setLoading(false)
   }
 
@@ -46,6 +61,37 @@ export default function Schools({ session }) {
       setExpandedSchool(schoolId)
       fetchCoaches(schoolId)
     }
+  }
+
+  const addSchool = async () => {
+    if (!schoolFormData.school.trim()) {
+      alert('School name is required')
+      return
+    }
+    
+    setAddingSchool(true)
+    const { data, error } = await supabase
+      .from('schools')
+      .insert([schoolFormData])
+      .select()
+      .single()
+    
+    if (error) {
+      alert('Error adding school: ' + error.message)
+    } else {
+      // Add to local state
+      setSchools(prev => [...prev, data].sort((a, b) => a.school.localeCompare(b.school)))
+      setShowAddSchool(false)
+      setSchoolFormData({
+        school: '',
+        city: '',
+        state: '',
+        type: 'Public',
+        conference: '',
+        division: 'NCAA D1'
+      })
+    }
+    setAddingSchool(false)
   }
 
   const addCoach = async (schoolId) => {
@@ -95,29 +141,145 @@ export default function Schools({ session }) {
     school.conference?.toLowerCase().includes(search.toLowerCase())
   )
 
+  // Show more results when searching (up to 200)
+  const displayLimit = search.trim() ? 200 : 100
+  const displayedSchools = filteredSchools.slice(0, displayLimit)
+
   return (
     <AdminLayout session={session} title="Schools & Coaches">
-      {/* Search */}
-      <div className="mb-6">
+      {/* Search and Add School */}
+      <div className="mb-6 flex flex-col md:flex-row gap-4">
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full md:w-96 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Search schools by name, state, or conference..."
         />
+        <button
+          onClick={() => setShowAddSchool(true)}
+          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          + Add School
+        </button>
       </div>
+
+      {/* Add School Modal */}
+      {showAddSchool && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-4">Add New School</h2>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">School Name *</label>
+                <input
+                  type="text"
+                  value={schoolFormData.school}
+                  onChange={(e) => setSchoolFormData({ ...schoolFormData, school: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="e.g., University of Missouri"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={schoolFormData.city}
+                    onChange={(e) => setSchoolFormData({ ...schoolFormData, city: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="e.g., Columbia"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                  <input
+                    type="text"
+                    value={schoolFormData.state}
+                    onChange={(e) => setSchoolFormData({ ...schoolFormData, state: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="e.g., Missouri"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <select
+                    value={schoolFormData.type}
+                    onChange={(e) => setSchoolFormData({ ...schoolFormData, type: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="Public">Public</option>
+                    <option value="Private">Private</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+                  <select
+                    value={schoolFormData.division}
+                    onChange={(e) => setSchoolFormData({ ...schoolFormData, division: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="NCAA D1">NCAA D1</option>
+                    <option value="NCAA D2">NCAA D2</option>
+                    <option value="NCAA D3">NCAA D3</option>
+                    <option value="NAIA">NAIA</option>
+                    <option value="JC">Junior College</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Conference</label>
+                <input
+                  type="text"
+                  value={schoolFormData.conference}
+                  onChange={(e) => setSchoolFormData({ ...schoolFormData, conference: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="e.g., SEC"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowAddSchool(false)}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={addSchool}
+                disabled={addingSchool}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400"
+              >
+                {addingSchool ? 'Adding...' : 'Add School'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="mb-4 text-sm text-gray-600">
-        Showing {filteredSchools.length} of {schools.length} schools
+        {search.trim() 
+          ? `Found ${filteredSchools.length} schools matching "${search}"`
+          : `${schools.length} schools in database`
+        }
+        {filteredSchools.length > displayLimit && (
+          <span className="text-orange-600"> (showing first {displayLimit})</span>
+        )}
       </div>
 
       {loading ? (
         <div className="text-center py-8">Loading...</div>
       ) : (
         <div className="space-y-2">
-          {filteredSchools.slice(0, 100).map((school) => (
+          {displayedSchools.map((school) => (
             <div key={school.id} className="bg-white rounded-lg shadow-md overflow-hidden">
               <div 
                 className="p-4 cursor-pointer hover:bg-gray-50 flex justify-between items-center"
@@ -220,9 +382,21 @@ export default function Schools({ session }) {
             </div>
           ))}
 
-          {filteredSchools.length > 100 && (
+          {filteredSchools.length > displayLimit && (
             <div className="text-center py-4 text-gray-500">
-              Showing first 100 results. Refine your search to see more.
+              Showing first {displayLimit} results. Refine your search to see more.
+            </div>
+          )}
+
+          {filteredSchools.length === 0 && search.trim() && (
+            <div className="text-center py-8 text-gray-500">
+              No schools found matching "{search}".
+              <button
+                onClick={() => setShowAddSchool(true)}
+                className="block mx-auto mt-2 text-blue-600 hover:text-blue-700"
+              >
+                + Add this school
+              </button>
             </div>
           )}
         </div>
