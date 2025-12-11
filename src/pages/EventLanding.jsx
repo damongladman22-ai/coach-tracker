@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { PageLoader, ErrorMessage } from '../components/LoadingStates';
+import OPLogo from '../components/OPLogo';
 
 /**
  * Public Event Landing Page
@@ -176,24 +177,30 @@ export default function EventLanding() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-6">
+      <header className="op-header shadow-lg">
+        <div className="op-gradient-border"></div>
+        <div className="max-w-4xl mx-auto px-4 py-4">
+          {/* Top row with logo */}
+          <Link to="/home" className="flex items-center gap-3 hover:opacity-90 transition-opacity mb-3">
+            <OPLogo className="h-10 w-auto" />
+            <span className="text-lg font-bold text-white">Coach Tracker</span>
+          </Link>
           {/* Breadcrumb navigation */}
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-            <Link to="/home" className="hover:text-blue-600">Home</Link>
+          <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+            <Link to="/home" className="hover:text-cyan-300 transition-colors">Home</Link>
             <span>›</span>
-            <span className="text-gray-700">{event?.event_name}</span>
+            <span className="text-gray-200">{event?.event_name}</span>
           </div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-gray-900">{event?.event_name}</h1>
+            <h1 className="text-2xl font-bold text-white">{event?.event_name}</h1>
             {active && (
-              <span className="bg-green-100 text-green-700 text-sm font-medium px-2.5 py-0.5 rounded flex items-center gap-1">
-                <span className="bg-green-500 h-2 w-2 rounded-full animate-pulse"></span>
+              <span className="bg-green-500/20 text-green-300 text-sm font-medium px-2.5 py-0.5 rounded flex items-center gap-1 border border-green-500/30">
+                <span className="bg-green-400 h-2 w-2 rounded-full animate-pulse"></span>
                 LIVE
               </span>
             )}
           </div>
-          <p className="text-gray-600 mt-1">
+          <p className="text-cyan-300 mt-1">
             {formatDateRange(event?.start_date, event?.end_date)}
           </p>
         </div>
@@ -208,12 +215,12 @@ export default function EventLanding() {
               <div className="text-3xl font-bold text-gray-800">{eventTeams.length}</div>
               <div className="text-sm text-gray-500">Teams</div>
             </div>
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-blue-600">{totalStats.games}</div>
+            <div className="bg-cyan-50 rounded-lg p-4">
+              <div className="text-3xl font-bold text-cyan-600">{totalStats.games}</div>
               <div className="text-sm text-gray-500">Games</div>
             </div>
-            <div className="bg-green-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-green-600">{totalStats.schools}</div>
+            <div className="bg-blue-50 rounded-lg p-4">
+              <div className="text-3xl font-bold text-blue-600">{totalStats.schools}</div>
               <div className="text-sm text-gray-500">Schools</div>
             </div>
             <div className="bg-purple-50 rounded-lg p-4">

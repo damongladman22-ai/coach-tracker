@@ -6,6 +6,7 @@ import {
   ErrorMessage,
   Toast
 } from '../components/LoadingStates';
+import OPLogo from '../components/OPLogo';
 
 /**
  * Parent Summary Page - Read-only view of event attendance
@@ -293,27 +294,31 @@ export default function ParentSummary() {
   return (
     <div className="min-h-screen bg-gray-50 pb-8">
       {/* Header */}
-      <div className="bg-white shadow-sm">
+      <div className="op-header shadow-lg">
+        <div className="op-gradient-border"></div>
         <div className="max-w-4xl mx-auto px-4 py-4">
           {/* Breadcrumb navigation */}
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-            <Link to="/home" className="hover:text-blue-600">Home</Link>
+          <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+            <Link to="/home" className="flex items-center gap-1.5 hover:text-cyan-300 transition-colors">
+              <OPLogo className="h-5 w-auto" />
+              <span>Home</span>
+            </Link>
             <span>›</span>
-            <Link to={`/e/${eventSlug}`} className="hover:text-blue-600">
+            <Link to={`/e/${eventSlug}`} className="hover:text-cyan-300 transition-colors">
               {eventTeam?.events?.event_name}
             </Link>
             <span>›</span>
-            <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-blue-600">
+            <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-cyan-300 transition-colors">
               {eventTeam?.club_teams?.team_name}
             </Link>
             <span>›</span>
-            <span className="text-gray-700">Summary</span>
+            <span className="text-gray-200">Summary</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-white">
             {eventTeam?.club_teams?.team_name} - Summary
           </h1>
           {eventTeam?.events?.start_date && (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-cyan-300">
               {formatDate(eventTeam.events.start_date)}
               {eventTeam.events.end_date && eventTeam.events.end_date !== eventTeam.events.start_date && 
                 ` - ${formatDate(eventTeam.events.end_date)}`}
@@ -327,12 +332,12 @@ export default function ParentSummary() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Attendance Summary</h2>
           <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-blue-600">{games.length}</div>
+            <div className="bg-cyan-50 rounded-lg p-4">
+              <div className="text-3xl font-bold text-cyan-600">{games.length}</div>
               <div className="text-sm text-gray-600">Games</div>
             </div>
-            <div className="bg-green-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-green-600">{uniqueSchools}</div>
+            <div className="bg-blue-50 rounded-lg p-4">
+              <div className="text-3xl font-bold text-blue-600">{uniqueSchools}</div>
               <div className="text-sm text-gray-600">Schools</div>
             </div>
             <div className="bg-purple-50 rounded-lg p-4">
@@ -349,7 +354,7 @@ export default function ParentSummary() {
               onClick={() => setViewMode('games')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 viewMode === 'games'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -359,7 +364,7 @@ export default function ParentSummary() {
               onClick={() => setViewMode('colleges')}
               className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                 viewMode === 'colleges'
-                  ? 'bg-blue-600 text-white'
+                  ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
                   : 'text-gray-600 hover:bg-gray-100'
               }`}
             >

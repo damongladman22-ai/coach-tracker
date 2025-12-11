@@ -1,5 +1,41 @@
 @import "tailwindcss";
 
+:root {
+  /* OP Soccer Brand Colors */
+  --op-navy: #0a0a1a;
+  --op-navy-light: #1a1a2e;
+  --op-navy-medium: #16213e;
+  --op-teal: #0891b2;
+  --op-cyan: #06b6d4;
+  --op-blue: #2563eb;
+  --op-gradient-start: #2563eb;
+  --op-gradient-end: #06b6d4;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+}
+
+/* OP Soccer Header Gradient Border */
+.op-gradient-border {
+  background: linear-gradient(90deg, var(--op-gradient-start), var(--op-gradient-end));
+  height: 3px;
+}
+
+/* OP Soccer Dark Header */
+.op-header {
+  background: linear-gradient(180deg, var(--op-navy) 0%, var(--op-navy-light) 100%);
+}
+
+/* OP Soccer Button Gradient */
+.op-button {
+  background: linear-gradient(135deg, var(--op-blue) 0%, var(--op-teal) 100%);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.op-button:hover {
+  background: linear-gradient(135deg, var(--op-gradient-start) 0%, var(--op-cyan) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
 }

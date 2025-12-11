@@ -13,6 +13,7 @@ import {
   ConnectionStatus,
   CardSkeleton 
 } from '../components/LoadingStates';
+import OPLogo from '../components/OPLogo';
 
 /**
  * Mobile-Optimized Parent Team Page
@@ -242,24 +243,28 @@ export default function TeamGames() {
       <ConnectionStatus lastUpdate={lastUpdate} />
 
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-40">
-        <div className="px-4 py-4 flex justify-between items-start">
+      <header className="op-header border-b border-gray-700 sticky top-0 z-40">
+        <div className="op-gradient-border"></div>
+        <div className="px-4 py-3 flex justify-between items-start">
           <div>
             {/* Breadcrumb navigation */}
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-              <Link to="/home" className="hover:text-blue-600">Home</Link>
+            <div className="flex items-center gap-2 text-sm text-gray-400 mb-1">
+              <Link to="/home" className="flex items-center gap-1.5 hover:text-cyan-300 transition-colors">
+                <OPLogo className="h-5 w-auto" />
+                <span>Home</span>
+              </Link>
               <span>›</span>
-              <Link to={`/e/${eventSlug}`} className="hover:text-blue-600">
+              <Link to={`/e/${eventSlug}`} className="hover:text-cyan-300 transition-colors">
                 {eventTeam?.events?.event_name}
               </Link>
             </div>
-            <h1 className="text-xl font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-white">
               {eventTeam?.club_teams?.team_name}
             </h1>
           </div>
           <Link
             to={`/e/${eventSlug}/${teamSlug}/summary`}
-            className="bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-200 flex items-center gap-1"
+            className="bg-gray-700 text-gray-200 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-600 flex items-center gap-1 transition-colors"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -274,8 +279,8 @@ export default function TeamGames() {
             onClick={() => setViewMode('games')}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
               viewMode === 'games'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700'
+                ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
             By Game
@@ -284,8 +289,8 @@ export default function TeamGames() {
             onClick={() => setViewMode('colleges')}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
               viewMode === 'colleges'
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-100 text-gray-700'
+                ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
             }`}
           >
             By College

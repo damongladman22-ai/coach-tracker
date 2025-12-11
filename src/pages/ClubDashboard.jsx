@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { PageLoader, ErrorMessage } from '../components/LoadingStates';
+import OPLogo from '../components/OPLogo';
 
 /**
  * Public Club Dashboard - Landing page for parents
@@ -154,12 +155,16 @@ export default function ClubDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="bg-white shadow-sm">
+      <header className="op-header shadow-lg">
+        <div className="op-gradient-border"></div>
         <div className="max-w-4xl mx-auto px-4 py-6">
-          <Link to="/home" className="hover:opacity-80">
-            <h1 className="text-2xl font-bold text-gray-900">College Coach Tracker</h1>
+          <Link to="/home" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+            <OPLogo className="h-12 w-auto" />
+            <div>
+              <h1 className="text-2xl font-bold text-white">College Coach Tracker</h1>
+              <p className="text-cyan-300 text-sm">Track college coach attendance at events</p>
+            </div>
           </Link>
-          <p className="text-gray-600 mt-1">Track college coach attendance at events</p>
         </div>
       </header>
 
@@ -314,13 +319,13 @@ function EventCard({ event, teams, formatDateRange, isActive = false, isPast = f
                   <div className="flex gap-2">
                     <Link
                       to={`/e/${event.slug}/${et.slug}`}
-                      className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded text-sm font-medium hover:bg-blue-200"
+                      className="op-button px-3 py-1.5 rounded text-sm font-medium"
                     >
                       Live Tracker
                     </Link>
                     <Link
                       to={`/e/${event.slug}/${et.slug}/summary`}
-                      className="bg-green-100 text-green-700 px-3 py-1.5 rounded text-sm font-medium hover:bg-green-200"
+                      className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-200"
                     >
                       Summary
                     </Link>
