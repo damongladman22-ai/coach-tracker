@@ -37,17 +37,33 @@ export default function ImportCoaches({ session }) {
   // Load schools on mount
   useEffect(() => {
     async function loadSchools() {
-      // Fetch all schools (default limit is 1000, we have 1400+)
-      const { data, error } = await supabase
-        .from('schools')
-        .select('id, school, city, state, division')
-        .order('school')
-        .limit(2000);
+      // Fetch all schools in batches (Supabase default max is 1000)
+      let allSchools = [];
+      let from = 0;
+      const batchSize = 1000;
       
-      if (!error && data) {
-        setSchools(data);
-        console.log('Loaded schools:', data.length);
+      while (true) {
+        const { data, error } = await supabase
+          .from('schools')
+          .select('id, school, city, state, division')
+          .order('school')
+          .range(from, from + batchSize - 1);
+        
+        if (error) {
+          console.error('Error fetching schools:', error);
+          break;
+        }
+        
+        if (!data || data.length === 0) break;
+        
+        allSchools = [...allSchools, ...data];
+        
+        if (data.length < batchSize) break; // Last batch
+        from += batchSize;
       }
+      
+      setSchools(allSchools);
+      console.log('Loaded schools:', allSchools.length);
       setSchoolsLoading(false);
     }
     loadSchools();

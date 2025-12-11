@@ -23,16 +23,29 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
   useEffect(() => {
     async function loadSchools() {
       try {
-        // Fetch all schools (default limit is 1000, we have 1400+)
-        const { data, error } = await supabase
-          .from('schools')
-          .select('id, school, city, state, division, conference')
-          .order('school')
-          .limit(2000);
-
-        if (error) throw error;
-        setSchools(data || []);
-        console.log('SchoolSearch loaded schools:', data?.length);
+        // Fetch all schools in batches (Supabase default max is 1000)
+        let allSchools = [];
+        let from = 0;
+        const batchSize = 1000;
+        
+        while (true) {
+          const { data, error } = await supabase
+            .from('schools')
+            .select('id, school, city, state, division, conference')
+            .order('school')
+            .range(from, from + batchSize - 1);
+          
+          if (error) throw error;
+          if (!data || data.length === 0) break;
+          
+          allSchools = [...allSchools, ...data];
+          
+          if (data.length < batchSize) break;
+          from += batchSize;
+        }
+        
+        setSchools(allSchools);
+        console.log('SchoolSearch loaded schools:', allSchools.length);
       } catch (err) {
         console.error('Error loading schools:', err);
       } finally {
