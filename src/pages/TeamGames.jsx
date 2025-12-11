@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRealtimeAttendance, useRealtimeCoaches } from '../hooks/useRealtimeAttendance';
 import { SchoolSearch } from '../components/SchoolSearch';
@@ -243,13 +243,24 @@ export default function TeamGames() {
 
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-40">
-        <div className="px-4 py-4">
-          <h1 className="text-xl font-bold text-gray-900">
-            {eventTeam?.club_teams?.team_name}
-          </h1>
-          <p className="text-gray-600">
-            {eventTeam?.events?.event_name}
-          </p>
+        <div className="px-4 py-4 flex justify-between items-start">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">
+              {eventTeam?.club_teams?.team_name}
+            </h1>
+            <p className="text-gray-600">
+              {eventTeam?.events?.event_name}
+            </p>
+          </div>
+          <Link
+            to={`/e/${eventSlug}/${teamSlug}/summary`}
+            className="bg-green-100 text-green-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-green-200 flex items-center gap-1"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            Summary
+          </Link>
         </div>
 
         {/* View toggle */}

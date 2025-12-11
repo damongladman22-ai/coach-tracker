@@ -155,9 +155,19 @@ export default function EventDetail({ session }) {
     return `${baseUrl}/e/${event.slug}/${eventTeam.slug}`
   }
 
+  const getSummaryLink = (eventTeam) => {
+    const baseUrl = window.location.origin
+    return `${baseUrl}/e/${event.slug}/${eventTeam.slug}/summary`
+  }
+
   const copyLink = (eventTeam) => {
     navigator.clipboard.writeText(getShareableLink(eventTeam))
     alert('Link copied to clipboard!')
+  }
+
+  const copySummaryLink = (eventTeam) => {
+    navigator.clipboard.writeText(getSummaryLink(eventTeam))
+    alert('Summary link copied to clipboard!')
   }
 
   const formatDate = (dateStr) => {
@@ -356,6 +366,12 @@ export default function EventDetail({ session }) {
                     Copy Parent Link
                   </button>
                   <button
+                    onClick={() => copySummaryLink(eventTeam)}
+                    className="bg-teal-100 text-teal-700 px-3 py-1 rounded text-sm hover:bg-teal-200"
+                  >
+                    Copy Summary Link
+                  </button>
+                  <button
                     onClick={() => removeTeamFromEvent(eventTeam.id)}
                     className="text-red-600 hover:text-red-800 text-sm"
                   >
@@ -364,10 +380,16 @@ export default function EventDetail({ session }) {
                 </div>
               </div>
 
-              {/* Shareable Link */}
-              <div className="bg-gray-50 rounded p-3 mb-4">
-                <p className="text-xs text-gray-500 mb-1">Parent Link:</p>
-                <code className="text-sm text-blue-600 break-all">{getShareableLink(eventTeam)}</code>
+              {/* Shareable Links */}
+              <div className="bg-gray-50 rounded p-3 mb-4 space-y-2">
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Parent Link (Live Tracker):</p>
+                  <code className="text-sm text-blue-600 break-all">{getShareableLink(eventTeam)}</code>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500 mb-1">Summary Link (Read-Only):</p>
+                  <code className="text-sm text-teal-600 break-all">{getSummaryLink(eventTeam)}</code>
+                </div>
               </div>
 
               {/* Games */}

@@ -17,6 +17,7 @@ import DedupSchools from './pages/DedupSchools'
 // Parent Pages
 import TeamGames from './pages/TeamGames'
 import GameAttendance from './pages/GameAttendance'
+import ParentSummary from './pages/ParentSummary'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -60,6 +61,7 @@ function App() {
         {/* Parent Routes (no auth required) */}
         <Route path="/e/:eventSlug/:teamSlug" element={<TeamGames />} />
         <Route path="/e/:eventSlug/:teamSlug/game/:gameId" element={<GameAttendance />} />
+        <Route path="/e/:eventSlug/:teamSlug/summary" element={<ParentSummary />} />
         
         {/* Default redirect */}
         <Route path="/" element={session ? <AdminDashboard session={session} /> : <AdminLogin />} />
