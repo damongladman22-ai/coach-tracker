@@ -18,6 +18,8 @@ import DedupSchools from './pages/DedupSchools'
 import TeamGames from './pages/TeamGames'
 import GameAttendance from './pages/GameAttendance'
 import ParentSummary from './pages/ParentSummary'
+import ClubDashboard from './pages/ClubDashboard'
+import EventLanding from './pages/EventLanding'
 
 function App() {
   const [session, setSession] = useState(null)
@@ -62,9 +64,10 @@ function App() {
         <Route path="/e/:eventSlug/:teamSlug" element={<TeamGames />} />
         <Route path="/e/:eventSlug/:teamSlug/game/:gameId" element={<GameAttendance />} />
         <Route path="/e/:eventSlug/:teamSlug/summary" element={<ParentSummary />} />
+        <Route path="/e/:eventSlug" element={<EventLanding />} />
         
-        {/* Default redirect */}
-        <Route path="/" element={session ? <AdminDashboard session={session} /> : <AdminLogin />} />
+        {/* Default - Club Dashboard for public, Admin Dashboard if logged in */}
+        <Route path="/" element={session ? <AdminDashboard session={session} /> : <ClubDashboard />} />
       </Routes>
     </BrowserRouter>
   )
