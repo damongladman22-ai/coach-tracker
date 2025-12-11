@@ -14,6 +14,7 @@ export default function EventDetail({ session }) {
   const [showGameForm, setShowGameForm] = useState(null)
   const [editingGame, setEditingGame] = useState(null)
   const [gameFormData, setGameFormData] = useState({ game_date: '', opponent: '' })
+  const [exporting, setExporting] = useState(null)
 
   useEffect(() => {
     fetchData()
@@ -169,6 +170,106 @@ export default function EventDetail({ session }) {
     })
   }
 
+  const formatDateShort = (dateStr) => {
+    const [year, month, day] = dateStr.split('-')
+    const date = new Date(year, month - 1, day)
+    return date.toLocaleDateString('en-US', {
+      month: 'numeric',
+      day: 'numeric'
+    })
+  }
+
+  const exportToCSV = async (eventTeam) => {
+    setExporting(eventTeam.id)
+    
+    try {
+      // Get games for this team
+      const teamGames = games[eventTeam.id] || []
+      if (teamGames.length === 0) {
+        alert('No games to export')
+        setExporting(null)
+        return
+      }
+
+      // Fetch all attendance with coach and school details
+      const gameIds = teamGames.map(g => g.id)
+      const { data: attendanceData } = await supabase
+        .from('attendance')
+        .select('*, coaches(*, schools(*))')
+        .in('game_id', gameIds)
+
+      if (!attendanceData || attendanceData.length === 0) {
+        alert('No attendance data to export')
+        setExporting(null)
+        return
+      }
+
+      // Build pivot data: group by school, then by game
+      const schoolData = {}
+      attendanceData.forEach(record => {
+        const school = record.coaches?.schools
+        const coach = record.coaches
+        if (!school || !coach) return
+
+        if (!schoolData[school.id]) {
+          schoolData[school.id] = {
+            school: school.school,
+            division: school.division || '',
+            conference: school.conference || '',
+            state: school.state || '',
+            games: {}
+          }
+        }
+
+        const gameId = record.game_id
+        if (!schoolData[school.id].games[gameId]) {
+          schoolData[school.id].games[gameId] = []
+        }
+        schoolData[school.id].games[gameId].push(`${coach.first_name} ${coach.last_name}`)
+      })
+
+      // Create CSV header
+      const gameHeaders = teamGames.map(g => `${formatDateShort(g.game_date)} vs ${g.opponent}`)
+      const headers = ['College', 'Division', 'Conference', 'State', ...gameHeaders]
+
+      // Create CSV rows
+      const rows = Object.values(schoolData)
+        .sort((a, b) => a.school.localeCompare(b.school))
+        .map(data => {
+          const row = [
+            `"${data.school}"`,
+            `"${data.division}"`,
+            `"${data.conference}"`,
+            `"${data.state}"`
+          ]
+          teamGames.forEach(game => {
+            const coaches = data.games[game.id] || []
+            row.push(`"${coaches.join(', ')}"`)
+          })
+          return row.join(',')
+        })
+
+      // Combine into CSV content
+      const csvContent = [headers.map(h => `"${h}"`).join(','), ...rows].join('\n')
+
+      // Download file
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${event.event_name} - ${eventTeam.club_teams.team_name}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Export error:', err)
+      alert('Error exporting data')
+    }
+    
+    setExporting(null)
+  }
+
   const assignedTeamIds = eventTeams.map(et => et.club_team_id)
   const unassignedTeams = availableTeams.filter(t => !assignedTeamIds.includes(t.id))
 
@@ -235,6 +336,13 @@ export default function EventDetail({ session }) {
                   <p className="text-gray-500">{eventTeam.club_teams.gender}</p>
                 </div>
                 <div className="flex space-x-2">
+                  <button
+                    onClick={() => exportToCSV(eventTeam)}
+                    disabled={exporting === eventTeam.id}
+                    className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400"
+                  >
+                    {exporting === eventTeam.id ? 'Exporting...' : 'Export CSV'}
+                  </button>
                   <button
                     onClick={() => copyLink(eventTeam)}
                     className="bg-green-100 text-green-700 px-3 py-1 rounded text-sm hover:bg-green-200"
