@@ -137,6 +137,7 @@ export function EmptyState({
  */
 export function ConnectionStatus({ lastUpdate }) {
   const [secondsAgo, setSecondsAgo] = useState(0);
+  const [visible, setVisible] = useState(true);
 
   useEffect(() => {
     if (!lastUpdate) return;
@@ -151,17 +152,37 @@ export function ConnectionStatus({ lastUpdate }) {
     return () => clearInterval(interval);
   }, [lastUpdate]);
 
+  // Hide after 5 seconds if everything is working
+  useEffect(() => {
+    if (secondsAgo < 10) {
+      const timer = setTimeout(() => setVisible(false), 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setVisible(true);
+    }
+  }, [secondsAgo, lastUpdate]);
+
   if (!lastUpdate) return null;
 
   const isRecent = secondsAgo < 10;
 
+  // Only show if stale or recently updated (for first 5 seconds)
+  if (!visible && isRecent) return null;
+
   return (
-    <div className="fixed top-0 left-0 right-0 z-50">
-      <div className={`text-center text-xs py-1 ${isRecent ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+    <div className="fixed bottom-24 right-4 z-40">
+      <div className={`text-xs px-3 py-1.5 rounded-full shadow-md ${
+        isRecent 
+          ? 'bg-green-100 text-green-700 border border-green-200' 
+          : 'bg-yellow-100 text-yellow-700 border border-yellow-200'
+      }`}>
         {isRecent ? (
-          <span>✓ Auto-refreshing</span>
+          <span className="flex items-center gap-1">
+            <span className="h-1.5 w-1.5 bg-green-500 rounded-full animate-pulse"></span>
+            Live
+          </span>
         ) : (
-          <span>Last updated {secondsAgo}s ago</span>
+          <span>Updated {secondsAgo}s ago</span>
         )}
       </div>
     </div>
