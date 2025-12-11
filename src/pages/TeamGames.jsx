@@ -482,10 +482,10 @@ function AddCoachModal({ game, onClose, onAdd, existingCoachIds = [] }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
-      <div className="bg-white w-full max-w-lg max-h-[90vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-end justify-center">
+      <div className="bg-white w-full max-w-lg h-[90vh] rounded-t-2xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b flex justify-between items-center bg-gray-50">
+        <div className="p-4 border-b flex justify-between items-center bg-gray-50 shrink-0">
           <div>
             <h2 className="font-semibold text-lg">Add College Coaches</h2>
             <p className="text-sm text-gray-600">vs {game.opponent}</p>
@@ -501,7 +501,7 @@ function AddCoachModal({ game, onClose, onAdd, existingCoachIds = [] }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-4 overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
           {/* School search */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -586,7 +586,7 @@ function AddCoachModal({ game, onClose, onAdd, existingCoachIds = [] }) {
                   </button>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2 pb-4">
                   {availableCoaches.map(coach => {
                     const isSelected = selectedCoaches.some(c => c.id === coach.id);
                     return (
@@ -619,7 +619,7 @@ function AddCoachModal({ game, onClose, onAdd, existingCoachIds = [] }) {
         </div>
 
         {/* Footer with save button */}
-        <div className="p-4 border-t bg-gray-50">
+        <div className="p-4 border-t bg-gray-50 shrink-0">
           <LoadingButton
             onClick={handleSave}
             loading={saving}

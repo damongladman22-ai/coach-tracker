@@ -15,7 +15,6 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
   const [query, setQuery] = useState('');
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [showResults, setShowResults] = useState(false);
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const inputRef = useRef(null);
 
@@ -144,7 +143,6 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
   const handleSelect = (school) => {
     onSelect(school);
     setQuery('');
-    setShowResults(false);
   };
 
   // Clear selection
@@ -187,31 +185,31 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
   }
 
   return (
-    <div className="relative">
-      <input
-        ref={inputRef}
-        type="text"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setShowResults(true);
-        }}
-        onFocus={() => setShowResults(true)}
-        placeholder="Search for a college (e.g., Ohio State, OSU)"
-        className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        autoComplete="off"
-      />
-      
-      {/* Search icon */}
-      <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
+    <div>
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+          }}
+          placeholder="Search for a college (e.g., Ohio State, OSU)"
+          className="w-full px-4 py-3 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-10"
+          autoComplete="off"
+        />
+        
+        {/* Search icon */}
+        <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
       </div>
 
-      {/* Results dropdown */}
-      {showResults && debouncedQuery.trim() && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+      {/* Results list (inline, not dropdown) */}
+      {debouncedQuery.trim() && (
+        <div className="mt-2 bg-white border border-gray-200 rounded-lg shadow-sm max-h-72 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
           {filteredSchools.length === 0 ? (
             <div className="p-4 text-gray-500 text-center">
               No schools found for "{debouncedQuery}"
@@ -221,7 +219,7 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
               <button
                 key={school.id}
                 onClick={() => handleSelect(school)}
-                className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b last:border-b-0 focus:bg-gray-50 focus:outline-none"
+                className="w-full text-left px-4 py-4 hover:bg-gray-50 active:bg-gray-100 border-b last:border-b-0 focus:bg-gray-50 focus:outline-none"
               >
                 <div className="font-medium text-gray-900">{school.school}</div>
                 <div className="text-sm text-gray-500">
@@ -231,14 +229,6 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
             ))
           )}
         </div>
-      )}
-
-      {/* Click outside to close */}
-      {showResults && (
-        <div 
-          className="fixed inset-0 z-0" 
-          onClick={() => setShowResults(false)}
-        />
       )}
     </div>
   );
