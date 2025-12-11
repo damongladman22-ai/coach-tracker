@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRealtimeAttendance, useRealtimeCoaches } from '../hooks/useRealtimeAttendance';
@@ -44,6 +44,10 @@ export default function TeamGames() {
 
   // View toggle
   const [viewMode, setViewMode] = useState('games'); // 'games' or 'colleges'
+
+  // Game navigation refs
+  const gameRefs = useRef({});
+  const [currentGameIndex, setCurrentGameIndex] = useState(0);
 
   // Polling-based attendance hook (auto-refreshes every 5 seconds)
   const { 
@@ -199,6 +203,21 @@ export default function TeamGames() {
     }
   };
 
+  // Navigate to a specific game
+  const scrollToGame = (index) => {
+    if (index >= 0 && index < games.length) {
+      const gameId = games[index].id;
+      const element = gameRefs.current[gameId];
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        setCurrentGameIndex(index);
+      }
+    }
+  };
+
+  const goToPrevGame = () => scrollToGame(currentGameIndex - 1);
+  const goToNextGame = () => scrollToGame(currentGameIndex + 1);
+
   // Loading state
   if (pageLoading) {
     return <PageLoader message="Loading team schedule..." />;
@@ -268,16 +287,22 @@ export default function TeamGames() {
           />
         ) : viewMode === 'games' ? (
           /* Game-centric view */
-          <div className="space-y-4">
-            {games.map(game => {
+          <div className="space-y-4 pb-20">
+            {games.map((game, index) => {
               const schoolAttendance = getGameAttendanceBySchool(game.id);
               return (
-                <div key={game.id} className="bg-white rounded-lg border shadow-sm">
+                <div 
+                  key={game.id} 
+                  ref={el => gameRefs.current[game.id] = el}
+                  className="bg-white rounded-lg border shadow-sm scroll-mt-32"
+                >
                   {/* Game header */}
                   <div className="p-4 border-b">
                     <div className="flex justify-between items-start">
                       <div>
-                        <p className="text-sm text-gray-500">{formatDate(game.game_date)}</p>
+                        <p className="text-sm text-gray-500">
+                          <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)}
+                        </p>
                         <p className="font-semibold text-lg">vs {game.opponent}</p>
                       </div>
                       <button
@@ -373,6 +398,56 @@ export default function TeamGames() {
           </div>
         )}
       </main>
+
+      {/* Floating Game Navigation - only show in games view with multiple games */}
+      {viewMode === 'games' && games.length > 1 && !selectedGame && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-40 px-4 py-3">
+          <div className="flex items-center justify-between max-w-lg mx-auto">
+            <button
+              onClick={goToPrevGame}
+              disabled={currentGameIndex === 0}
+              className={`flex items-center gap-1 px-4 py-2 rounded-lg font-medium ${
+                currentGameIndex === 0
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-blue-600 active:bg-blue-50'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+              Prev
+            </button>
+            
+            <div className="flex items-center gap-2">
+              {games.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => scrollToGame(idx)}
+                  className={`w-2.5 h-2.5 rounded-full transition-colors ${
+                    idx === currentGameIndex ? 'bg-blue-600' : 'bg-gray-300'
+                  }`}
+                  aria-label={`Go to game ${idx + 1}`}
+                />
+              ))}
+            </div>
+            
+            <button
+              onClick={goToNextGame}
+              disabled={currentGameIndex === games.length - 1}
+              className={`flex items-center gap-1 px-4 py-2 rounded-lg font-medium ${
+                currentGameIndex === games.length - 1
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : 'text-blue-600 active:bg-blue-50'
+              }`}
+            >
+              Next
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Add Coach Modal */}
       {selectedGame && (
