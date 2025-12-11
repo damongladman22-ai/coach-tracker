@@ -2,6 +2,61 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 
+// US States list with full names
+const US_STATES = [
+  { code: 'AL', name: 'Alabama' },
+  { code: 'AK', name: 'Alaska' },
+  { code: 'AZ', name: 'Arizona' },
+  { code: 'AR', name: 'Arkansas' },
+  { code: 'CA', name: 'California' },
+  { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' },
+  { code: 'DE', name: 'Delaware' },
+  { code: 'DC', name: 'District of Columbia' },
+  { code: 'FL', name: 'Florida' },
+  { code: 'GA', name: 'Georgia' },
+  { code: 'HI', name: 'Hawaii' },
+  { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' },
+  { code: 'IN', name: 'Indiana' },
+  { code: 'IA', name: 'Iowa' },
+  { code: 'KS', name: 'Kansas' },
+  { code: 'KY', name: 'Kentucky' },
+  { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' },
+  { code: 'MD', name: 'Maryland' },
+  { code: 'MA', name: 'Massachusetts' },
+  { code: 'MI', name: 'Michigan' },
+  { code: 'MN', name: 'Minnesota' },
+  { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' },
+  { code: 'MT', name: 'Montana' },
+  { code: 'NE', name: 'Nebraska' },
+  { code: 'NV', name: 'Nevada' },
+  { code: 'NH', name: 'New Hampshire' },
+  { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' },
+  { code: 'NY', name: 'New York' },
+  { code: 'NC', name: 'North Carolina' },
+  { code: 'ND', name: 'North Dakota' },
+  { code: 'OH', name: 'Ohio' },
+  { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' },
+  { code: 'PA', name: 'Pennsylvania' },
+  { code: 'RI', name: 'Rhode Island' },
+  { code: 'SC', name: 'South Carolina' },
+  { code: 'SD', name: 'South Dakota' },
+  { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' },
+  { code: 'UT', name: 'Utah' },
+  { code: 'VT', name: 'Vermont' },
+  { code: 'VA', name: 'Virginia' },
+  { code: 'WA', name: 'Washington' },
+  { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' },
+  { code: 'WY', name: 'Wyoming' }
+]
+
 export default function Schools({ session }) {
   const [schools, setSchools] = useState([])
   const [coaches, setCoaches] = useState({})
@@ -22,6 +77,19 @@ export default function Schools({ session }) {
     division: 'NCAA D1'
   })
   const [addingSchool, setAddingSchool] = useState(false)
+  
+  // Edit School state
+  const [showEditSchool, setShowEditSchool] = useState(false)
+  const [editingSchool, setEditingSchool] = useState(null)
+  const [editSchoolFormData, setEditSchoolFormData] = useState({
+    school: '',
+    city: '',
+    state: '',
+    type: 'Public',
+    conference: '',
+    division: 'NCAA D1'
+  })
+  const [savingSchool, setSavingSchool] = useState(false)
 
   useEffect(() => {
     fetchSchools()
@@ -108,6 +176,64 @@ export default function Schools({ session }) {
       })
     }
     setAddingSchool(false)
+  }
+
+  const openEditSchool = (school, e) => {
+    e.stopPropagation()
+    setEditingSchool(school)
+    setEditSchoolFormData({
+      school: school.school || '',
+      city: school.city || '',
+      state: school.state || '',
+      type: school.type || 'Public',
+      conference: school.conference || '',
+      division: school.division || 'NCAA D1'
+    })
+    setShowEditSchool(true)
+  }
+
+  const saveEditSchool = async () => {
+    if (!editSchoolFormData.school.trim()) {
+      alert('School name is required')
+      return
+    }
+    
+    setSavingSchool(true)
+    const { data, error } = await supabase
+      .from('schools')
+      .update(editSchoolFormData)
+      .eq('id', editingSchool.id)
+      .select()
+      .single()
+    
+    if (error) {
+      alert('Error updating school: ' + error.message)
+    } else {
+      // Update local state
+      setSchools(prev => prev.map(s => s.id === editingSchool.id ? data : s).sort((a, b) => a.school.localeCompare(b.school)))
+      setShowEditSchool(false)
+      setEditingSchool(null)
+    }
+    setSavingSchool(false)
+  }
+
+  const deleteSchool = async (school, e) => {
+    e.stopPropagation()
+    if (!confirm(`Delete "${school.school}"? This will also delete all coaches associated with this school.`)) return
+    
+    const { error } = await supabase
+      .from('schools')
+      .delete()
+      .eq('id', school.id)
+    
+    if (error) {
+      alert('Error deleting school: ' + error.message)
+    } else {
+      setSchools(prev => prev.filter(s => s.id !== school.id))
+      if (expandedSchool === school.id) {
+        setExpandedSchool(null)
+      }
+    }
   }
 
   const addCoach = async (schoolId) => {
@@ -211,13 +337,16 @@ export default function Schools({ session }) {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                  <input
-                    type="text"
+                  <select
                     value={schoolFormData.state}
                     onChange={(e) => setSchoolFormData({ ...schoolFormData, state: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg"
-                    placeholder="e.g., Missouri"
-                  />
+                  >
+                    <option value="">Select State...</option>
+                    {US_STATES.map(state => (
+                      <option key={state.code} value={state.name}>{state.name}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               
@@ -280,6 +409,112 @@ export default function Schools({ session }) {
         </div>
       )}
 
+      {/* Edit School Modal */}
+      {showEditSchool && editingSchool && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+            <h2 className="text-lg font-semibold mb-4">Edit School</h2>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">School Name *</label>
+                <input
+                  type="text"
+                  value={editSchoolFormData.school}
+                  onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, school: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="e.g., University of Missouri"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={editSchoolFormData.city}
+                    onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, city: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                    placeholder="e.g., Columbia"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                  <select
+                    value={editSchoolFormData.state}
+                    onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, state: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="">Select State...</option>
+                    {US_STATES.map(state => (
+                      <option key={state.code} value={state.name}>{state.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
+                  <select
+                    value={editSchoolFormData.type}
+                    onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, type: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="Public">Public</option>
+                    <option value="Private">Private</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Division</label>
+                  <select
+                    value={editSchoolFormData.division}
+                    onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, division: e.target.value })}
+                    className="w-full px-3 py-2 border rounded-lg"
+                  >
+                    <option value="NCAA D1">NCAA D1</option>
+                    <option value="NCAA D2">NCAA D2</option>
+                    <option value="NCAA D3">NCAA D3</option>
+                    <option value="NAIA">NAIA</option>
+                    <option value="JC">Junior College</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Conference</label>
+                <input
+                  type="text"
+                  value={editSchoolFormData.conference}
+                  onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, conference: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="e.g., SEC"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setShowEditSchool(false)
+                  setEditingSchool(null)
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEditSchool}
+                disabled={savingSchool}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400"
+              >
+                {savingSchool ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div className="mb-4 text-sm text-gray-600">
         {search.trim() 
@@ -301,15 +536,29 @@ export default function Schools({ session }) {
                 className="p-4 cursor-pointer hover:bg-gray-50 flex justify-between items-center"
                 onClick={() => toggleSchool(school.id)}
               >
-                <div>
+                <div className="flex-1">
                   <h3 className="font-semibold text-gray-900">{school.school}</h3>
                   <p className="text-sm text-gray-600">
                     {school.city}, {school.state} • {school.division} • {school.conference}
                   </p>
                 </div>
-                <span className="text-gray-400">
-                  {expandedSchool === school.id ? '▼' : '▶'}
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => openEditSchool(school, e)}
+                    className="text-blue-600 hover:text-blue-800 text-sm px-2 py-1"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={(e) => deleteSchool(school, e)}
+                    className="text-red-600 hover:text-red-800 text-sm px-2 py-1"
+                  >
+                    Delete
+                  </button>
+                  <span className="text-gray-400 ml-2">
+                    {expandedSchool === school.id ? '▼' : '▶'}
+                  </span>
+                </div>
               </div>
 
               {expandedSchool === school.id && (
