@@ -1,15 +1,57 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import OPLogo from '../components/OPLogo'
 
 export default function AdminLogin() {
+  const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [isInviteFlow, setIsInviteFlow] = useState(false)
+  const [checkingSession, setCheckingSession] = useState(true)
 
-  const handleSubmit = async (e) => {
+  useEffect(() => {
+    // Check if this is an invite/recovery flow
+    const checkSession = async () => {
+      try {
+        // Get the hash params (Supabase puts tokens in the URL hash)
+        const hashParams = new URLSearchParams(window.location.hash.substring(1))
+        const accessToken = hashParams.get('access_token')
+        const type = hashParams.get('type')
+
+        if (accessToken && (type === 'invite' || type === 'recovery' || type === 'signup')) {
+          // Set the session from the URL tokens
+          const refreshToken = hashParams.get('refresh_token')
+          
+          const { data, error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken
+          })
+
+          if (error) {
+            console.error('Session error:', error)
+            setError('Invalid or expired invitation link. Please request a new invite.')
+          } else if (data.user) {
+            setEmail(data.user.email || '')
+            setIsInviteFlow(true)
+            // Clear the hash from URL
+            window.history.replaceState(null, '', window.location.pathname)
+          }
+        }
+      } catch (err) {
+        console.error('Error checking session:', err)
+      } finally {
+        setCheckingSession(false)
+      }
+    }
+
+    checkSession()
+  }, [])
+
+  const handleLogin = async (e) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
@@ -22,6 +64,44 @@ export default function AdminLogin() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSetPassword = async (e) => {
+    e.preventDefault()
+    setLoading(true)
+    setError(null)
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      setLoading(false)
+      return
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      setLoading(false)
+      return
+    }
+
+    try {
+      const { error } = await supabase.auth.updateUser({ password })
+      if (error) throw error
+      
+      // Password set successfully - they should now be logged in
+      navigate('/admin')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (checkingSession) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    )
   }
 
   return (
@@ -40,82 +120,165 @@ export default function AdminLogin() {
         <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
       </header>
 
-      {/* Login Form */}
+      {/* Form */}
       <div className="flex-1 flex items-center justify-center p-4">
         <div className="bg-white rounded-lg shadow-md p-8 w-full max-w-md">
-          <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">
-            Admin Login
-          </h1>
-          <p className="text-center text-gray-500 text-sm mb-6">
-            Sign in to manage events, teams, and coaches
-          </p>
-          
-          {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
-              {error}
-            </div>
-          )}
+          {isInviteFlow ? (
+            // Set Password Form (for invited users)
+            <>
+              <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">
+                Welcome to Coach Tracker!
+              </h1>
+              <p className="text-center text-gray-500 text-sm mb-6">
+                Set your password to complete your account setup
+              </p>
 
-          <form onSubmit={handleSubmit}>
-            <div className="mb-4">
-              <label className="block text-gray-700 text-sm font-medium mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-
-            <div className="mb-6">
-              <label className="block text-gray-700 text-sm font-medium mb-2">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="••••••••"
-                required
-                minLength={6}
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Signing in...
-                </span>
-              ) : (
-                'Sign In'
+              {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                  {error}
+                </div>
               )}
-            </button>
-          </form>
 
-          {/* Invite-only notice */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <div className="bg-gray-50 rounded-lg p-4 text-center">
-              <p className="text-sm text-gray-600">
-                <strong>Need admin access?</strong>
+              <form onSubmit={handleSetPassword}>
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    disabled
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-500"
+                  />
+                </div>
+
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Enter your password"
+                    required
+                    minLength={6}
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Confirm Password
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Confirm your password"
+                    required
+                    minLength={6}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Setting up account...
+                    </span>
+                  ) : (
+                    'Create Account'
+                  )}
+                </button>
+              </form>
+            </>
+          ) : (
+            // Regular Login Form
+            <>
+              <h1 className="text-2xl font-bold text-center mb-2 text-gray-800">
+                Admin Login
+              </h1>
+              <p className="text-center text-gray-500 text-sm mb-6">
+                Sign in to manage events, teams, and coaches
               </p>
-              <p className="text-xs text-gray-500 mt-1">
-                Admin accounts are by invitation only. Contact an existing administrator to request access.
-              </p>
-            </div>
-          </div>
+              
+              {error && (
+                <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg mb-4 text-sm">
+                  {error}
+                </div>
+              )}
+
+              <form onSubmit={handleLogin}>
+                <div className="mb-4">
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Email
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-gray-700 text-sm font-medium mb-2">
+                    Password
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="••••••••"
+                    required
+                    minLength={6}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 disabled:bg-blue-300 transition-colors"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Signing in...
+                    </span>
+                  ) : (
+                    'Sign In'
+                  )}
+                </button>
+              </form>
+
+              {/* Invite-only notice */}
+              <div className="mt-6 pt-6 border-t border-gray-200">
+                <div className="bg-gray-50 rounded-lg p-4 text-center">
+                  <p className="text-sm text-gray-600">
+                    <strong>Need admin access?</strong>
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Admin accounts are by invitation only. Contact an existing administrator to request access.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
