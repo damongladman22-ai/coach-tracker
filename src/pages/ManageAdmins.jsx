@@ -8,6 +8,8 @@ export default function ManageAdmins({ session }) {
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const [revoking, setRevoking] = useState(null)
+  const [editingName, setEditingName] = useState(null)
+  const [editNameValue, setEditNameValue] = useState('')
   const [toast, setToast] = useState(null)
   
   // Form state
@@ -144,7 +146,7 @@ export default function ManageAdmins({ session }) {
       return
     }
 
-    if (!confirm(`Revoke admin access for ${admin.email}? This will delete their account and they will no longer be able to log in.`)) return
+    if (!confirm(`Revoke admin access for ${admin.name || admin.email}? This will delete their account and they will no longer be able to log in.`)) return
 
     setRevoking(admin.id)
 
@@ -173,7 +175,7 @@ export default function ManageAdmins({ session }) {
         throw new Error(result.error || 'Failed to revoke access')
       }
 
-      showToast(`Access revoked for ${admin.email}`)
+      showToast(`Access revoked for ${admin.name || admin.email}`)
       fetchData()
     } catch (err) {
       console.error('Error revoking access:', err)
@@ -181,6 +183,56 @@ export default function ManageAdmins({ session }) {
     } finally {
       setRevoking(null)
     }
+  }
+
+  const startEditingName = (admin) => {
+    setEditingName(admin.id)
+    setEditNameValue(admin.name || '')
+  }
+
+  const saveAdminName = async (admin) => {
+    if (!editNameValue.trim()) {
+      showToast('Please enter a name', 'error')
+      return
+    }
+
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-admins`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession?.access_token}`
+          },
+          body: JSON.stringify({
+            userId: admin.id,
+            name: editNameValue.trim()
+          })
+        }
+      )
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update name')
+      }
+
+      showToast('Name updated')
+      setEditingName(null)
+      setEditNameValue('')
+      fetchData()
+    } catch (err) {
+      console.error('Error updating name:', err)
+      showToast(err.message || 'Error updating name', 'error')
+    }
+  }
+
+  const cancelEditingName = () => {
+    setEditingName(null)
+    setEditNameValue('')
   }
 
   const formatDate = (dateStr) => {
@@ -349,8 +401,8 @@ export default function ManageAdmins({ session }) {
           <table className="w-full">
             <thead className="bg-gray-50 text-left text-sm text-gray-600">
               <tr>
+                <th className="px-6 py-3 font-medium">Name</th>
                 <th className="px-6 py-3 font-medium">Email</th>
-                <th className="px-6 py-3 font-medium">Created</th>
                 <th className="px-6 py-3 font-medium">Last Sign In</th>
                 <th className="px-6 py-3 font-medium">Actions</th>
               </tr>
@@ -359,18 +411,58 @@ export default function ManageAdmins({ session }) {
               {admins.map((admin) => (
                 <tr key={admin.id} className="hover:bg-gray-50">
                   <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      {admin.email}
-                      {admin.id === session.user.id && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                          You
-                        </span>
-                      )}
-                    </div>
+                    {editingName === admin.id ? (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={editNameValue}
+                          onChange={(e) => setEditNameValue(e.target.value)}
+                          className="px-2 py-1 border rounded text-sm w-40"
+                          placeholder="Enter name"
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => saveAdminName(admin)}
+                          className="text-green-600 hover:text-green-800"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={cancelEditingName}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        {admin.name ? (
+                          <span>{admin.name}</span>
+                        ) : (
+                          <span className="text-gray-400 italic">No name set</span>
+                        )}
+                        <button
+                          onClick={() => startEditingName(admin)}
+                          className="text-gray-400 hover:text-blue-600"
+                          title="Edit name"
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                        </button>
+                        {admin.id === session.user.id && (
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                            You
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </td>
-                  <td className="px-6 py-4 text-gray-500 text-sm">
-                    {formatDate(admin.created_at)}
-                  </td>
+                  <td className="px-6 py-4 text-gray-600">{admin.email}</td>
                   <td className="px-6 py-4 text-gray-500 text-sm">
                     {formatDate(admin.last_sign_in_at)}
                   </td>
