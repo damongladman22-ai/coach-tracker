@@ -28,6 +28,18 @@ function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // Check for invite/auth tokens in URL hash SYNCHRONOUSLY
+  // This runs on every render, before we decide what to show
+  const getInviteTokensPresent = () => {
+    const hash = window.location.hash
+    if (!hash) return false
+    const hashParams = new URLSearchParams(hash.substring(1))
+    const type = hashParams.get('type')
+    return ['invite', 'signup', 'recovery', 'magiclink'].includes(type)
+  }
+  
+  const hasInviteTokens = getInviteTokensPresent()
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
@@ -49,11 +61,16 @@ function App() {
     )
   }
 
+  // Show AdminLogin if:
+  // 1. No session (normal case), OR
+  // 2. Invite tokens in URL (need to complete password setup)
+  const showAdminLogin = !session || hasInviteTokens
+
   return (
     <BrowserRouter>
       <Routes>
         {/* Admin Routes */}
-        <Route path="/admin" element={session ? <AdminDashboard session={session} /> : <AdminLogin />} />
+        <Route path="/admin" element={showAdminLogin ? <AdminLogin /> : <AdminDashboard session={session} />} />
         <Route path="/admin/teams" element={session ? <ClubTeams session={session} /> : <AdminLogin />} />
         <Route path="/admin/events" element={session ? <Events session={session} /> : <AdminLogin />} />
         <Route path="/admin/events/:eventId" element={session ? <EventDetail session={session} /> : <AdminLogin />} />

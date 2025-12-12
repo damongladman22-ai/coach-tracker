@@ -44,20 +44,14 @@ export default function AdminLogin() {
           if (sessionError) {
             console.error('Session error:', sessionError)
             setError('Invalid or expired invitation link. Please request a new invite.')
+            window.history.replaceState(null, '', window.location.pathname)
           } else if (data.user) {
-            // Check if user has completed setup (has password_set flag)
-            const hasCompletedSetup = data.user.user_metadata?.password_set === true
-            
-            if (!hasCompletedSetup) {
-              setEmail(data.user.email || '')
-              setInviteUser(data.user)
-              setIsInviteFlow(true)
-            }
-            // If they've already set password, let them through to dashboard
+            setEmail(data.user.email || '')
+            setInviteUser(data.user)
+            setIsInviteFlow(true)
+            // DO NOT clear hash here - keep it so App.jsx knows we're in invite flow
+            // Hash will be cleared after password is set successfully
           }
-          
-          // Clear the hash from URL
-          window.history.replaceState(null, '', window.location.pathname)
         }
       } catch (err) {
         console.error('Error checking session:', err)
@@ -117,8 +111,12 @@ export default function AdminLogin() {
           .eq('email', inviteUser.email.toLowerCase())
       }
       
+      // NOW clear the hash from URL (password is set, safe to proceed)
+      window.history.replaceState(null, '', window.location.pathname)
+      
       // Password set successfully - redirect to dashboard
-      navigate('/admin')
+      // Use window.location to force full page reload so App.jsx re-checks
+      window.location.href = '/admin'
     } catch (err) {
       setError(err.message)
     } finally {
