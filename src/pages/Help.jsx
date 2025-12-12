@@ -276,7 +276,7 @@ The export includes:
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Coach Tracker</h2>
           <p className="text-gray-600">
             This app helps track which college coaches attend your team's games at showcases and tournaments. 
-            Parents and players log sightings during games, and the data is compiled into exportable reports for recruiting follow-up.
+            Users log attendance during games, and the data is compiled into exportable reports for recruiting follow-up.
           </p>
         </div>
 
