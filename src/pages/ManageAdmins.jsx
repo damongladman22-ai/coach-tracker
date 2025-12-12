@@ -25,13 +25,16 @@ export default function ManageAdmins({ session }) {
 
   const fetchData = async () => {
     try {
+      // Get the current session token
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
       // Fetch actual auth users via Edge Function
       const usersResponse = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-admins`,
         {
           method: 'GET',
           headers: {
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            'Authorization': `Bearer ${currentSession?.access_token}`
           }
         }
       )
@@ -39,6 +42,8 @@ export default function ManageAdmins({ session }) {
       if (usersResponse.ok) {
         const { users } = await usersResponse.json()
         setAdmins(users || [])
+      } else {
+        console.error('Failed to fetch admins:', usersResponse.status)
       }
 
       // Fetch pending invites from allowed_admins
@@ -75,6 +80,9 @@ export default function ManageAdmins({ session }) {
     setSending(true)
 
     try {
+      // Get the current session token
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
       // Call the Edge Function
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-admin`,
@@ -82,7 +90,7 @@ export default function ManageAdmins({ session }) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            'Authorization': `Bearer ${currentSession?.access_token}`
           },
           body: JSON.stringify({
             name: name.trim(),
@@ -141,13 +149,16 @@ export default function ManageAdmins({ session }) {
     setRevoking(admin.id)
 
     try {
+      // Get the current session token
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
       const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-admins`,
         {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+            'Authorization': `Bearer ${currentSession?.access_token}`
           },
           body: JSON.stringify({
             userId: admin.id,
