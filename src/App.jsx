@@ -27,18 +27,20 @@ import Help from './pages/Help'
 function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
-
-  // Check for invite/auth tokens in URL hash SYNCHRONOUSLY
-  // This runs on every render, before we decide what to show
-  const getInviteTokensPresent = () => {
+  
+  // Check for invite tokens ONCE at initial load, before Supabase processes them
+  // Store in state so it persists even if hash gets cleared
+  const [isInviteFlow, setIsInviteFlow] = useState(() => {
     const hash = window.location.hash
     if (!hash) return false
     const hashParams = new URLSearchParams(hash.substring(1))
     const type = hashParams.get('type')
-    return ['invite', 'signup', 'recovery', 'magiclink'].includes(type)
-  }
-  
-  const hasInviteTokens = getInviteTokensPresent()
+    const hasTokens = ['invite', 'signup', 'recovery', 'magiclink'].includes(type)
+    if (hasTokens) {
+      console.log('Detected invite flow, type:', type)
+    }
+    return hasTokens
+  })
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -53,6 +55,11 @@ function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Called by AdminLogin when password setup is complete
+  const clearInviteFlow = () => {
+    setIsInviteFlow(false)
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -63,14 +70,18 @@ function App() {
 
   // Show AdminLogin if:
   // 1. No session (normal case), OR
-  // 2. Invite tokens in URL (need to complete password setup)
-  const showAdminLogin = !session || hasInviteTokens
+  // 2. In invite flow (need to complete password setup)
+  const showAdminLogin = !session || isInviteFlow
 
   return (
     <BrowserRouter>
       <Routes>
         {/* Admin Routes */}
-        <Route path="/admin" element={showAdminLogin ? <AdminLogin /> : <AdminDashboard session={session} />} />
+        <Route path="/admin" element={
+          showAdminLogin 
+            ? <AdminLogin onPasswordSet={clearInviteFlow} /> 
+            : <AdminDashboard session={session} />
+        } />
         <Route path="/admin/teams" element={session ? <ClubTeams session={session} /> : <AdminLogin />} />
         <Route path="/admin/events" element={session ? <Events session={session} /> : <AdminLogin />} />
         <Route path="/admin/events/:eventId" element={session ? <EventDetail session={session} /> : <AdminLogin />} />

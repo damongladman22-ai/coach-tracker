@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import OPLogo from '../components/OPLogo'
 
-export default function AdminLogin() {
+export default function AdminLogin({ onPasswordSet }) {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -24,6 +24,8 @@ export default function AdminLogin() {
         const errorCode = hashParams.get('error_code')
         const errorDesc = hashParams.get('error_description')
 
+        console.log('AdminLogin checking session:', { hasAccessToken: !!accessToken, type, errorCode })
+
         // Handle error in URL (expired link, etc.)
         if (errorCode) {
           setError(decodeURIComponent(errorDesc || 'Invalid or expired link'))
@@ -33,6 +35,7 @@ export default function AdminLogin() {
         }
 
         if (accessToken && (type === 'invite' || type === 'recovery' || type === 'signup' || type === 'magiclink')) {
+          console.log('Processing invite tokens...')
           // Set the session from the URL tokens
           const refreshToken = hashParams.get('refresh_token')
           
@@ -46,12 +49,15 @@ export default function AdminLogin() {
             setError('Invalid or expired invitation link. Please request a new invite.')
             window.history.replaceState(null, '', window.location.pathname)
           } else if (data.user) {
+            console.log('Session created for:', data.user.email)
             setEmail(data.user.email || '')
             setInviteUser(data.user)
             setIsInviteFlow(true)
             // DO NOT clear hash here - keep it so App.jsx knows we're in invite flow
             // Hash will be cleared after password is set successfully
           }
+        } else {
+          console.log('No invite tokens found, showing regular login')
         }
       } catch (err) {
         console.error('Error checking session:', err)
@@ -114,9 +120,13 @@ export default function AdminLogin() {
       // NOW clear the hash from URL (password is set, safe to proceed)
       window.history.replaceState(null, '', window.location.pathname)
       
+      // Tell App.jsx we're done with invite flow
+      if (onPasswordSet) {
+        onPasswordSet()
+      }
+      
       // Password set successfully - redirect to dashboard
-      // Use window.location to force full page reload so App.jsx re-checks
-      window.location.href = '/admin'
+      navigate('/admin')
     } catch (err) {
       setError(err.message)
     } finally {
