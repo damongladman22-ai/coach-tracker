@@ -21,12 +21,14 @@ export default function Help() {
     {
       id: 'p1',
       question: 'How do I log a coach who\'s watching our game?',
-      answer: `1. Open the tracker link shared by your team manager
-2. Tap on the game you're currently at
-3. Tap "Add Coaches"
-4. Search for the college (e.g., "Ohio State")
-5. Check the box next to each coach you see from that school
-6. Tap "Save" - done!
+      answer: `1. Go to the Club Dashboard (your saved link)
+2. Find your event and tap on it
+3. Tap on your team
+4. Tap on the game you're currently at
+5. Tap "Add Coaches"
+6. Search for the college (e.g., "Ohio State")
+7. Check the box next to each coach you see from that school
+8. Tap "Save" - done!
 
 Repeat for each college program you spot on the sideline.`
     },
@@ -317,8 +319,8 @@ The export includes:
           <div className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg shadow-md p-6 mb-6 text-white">
             <h3 className="text-lg font-bold mb-3">🚀 Quick Start for Parents/Players</h3>
             <ol className="space-y-2 text-blue-50">
-              <li><strong>1.</strong> Open the link your team manager shared</li>
-              <li><strong>2.</strong> Tap on your current game</li>
+              <li><strong>1.</strong> Go to the Club Dashboard and find your event</li>
+              <li><strong>2.</strong> Tap your team, then tap the current game</li>
               <li><strong>3.</strong> Tap "Add Coaches" and search for the college</li>
               <li><strong>4.</strong> Check the coaches you see and save</li>
               <li><strong>5.</strong> Repeat for each college on the sideline!</li>
