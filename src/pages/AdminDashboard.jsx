@@ -120,6 +120,25 @@ export default function AdminDashboard({ session }) {
           <p className="text-gray-600">Find and merge duplicate schools</p>
         </Link>
       </div>
+
+      {/* Settings Section */}
+      <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Settings</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <Link
+          to="/admin/admins"
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-gray-100 rounded-lg">
+              <svg className="h-6 w-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800">Manage Admins</h2>
+          </div>
+          <p className="text-gray-600">Invite new admins and manage access</p>
+        </Link>
+      </div>
     </AdminLayout>
   )
 }
