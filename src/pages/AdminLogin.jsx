@@ -12,34 +12,52 @@ export default function AdminLogin() {
   const [error, setError] = useState(null)
   const [isInviteFlow, setIsInviteFlow] = useState(false)
   const [checkingSession, setCheckingSession] = useState(true)
+  const [inviteUser, setInviteUser] = useState(null)
 
   useEffect(() => {
-    // Check if this is an invite/recovery flow
     const checkSession = async () => {
       try {
         // Get the hash params (Supabase puts tokens in the URL hash)
         const hashParams = new URLSearchParams(window.location.hash.substring(1))
         const accessToken = hashParams.get('access_token')
         const type = hashParams.get('type')
+        const errorCode = hashParams.get('error_code')
+        const errorDesc = hashParams.get('error_description')
 
-        if (accessToken && (type === 'invite' || type === 'recovery' || type === 'signup')) {
+        // Handle error in URL (expired link, etc.)
+        if (errorCode) {
+          setError(decodeURIComponent(errorDesc || 'Invalid or expired link'))
+          window.history.replaceState(null, '', window.location.pathname)
+          setCheckingSession(false)
+          return
+        }
+
+        if (accessToken && (type === 'invite' || type === 'recovery' || type === 'signup' || type === 'magiclink')) {
           // Set the session from the URL tokens
           const refreshToken = hashParams.get('refresh_token')
           
-          const { data, error } = await supabase.auth.setSession({
+          const { data, error: sessionError } = await supabase.auth.setSession({
             access_token: accessToken,
             refresh_token: refreshToken
           })
 
-          if (error) {
-            console.error('Session error:', error)
+          if (sessionError) {
+            console.error('Session error:', sessionError)
             setError('Invalid or expired invitation link. Please request a new invite.')
           } else if (data.user) {
-            setEmail(data.user.email || '')
-            setIsInviteFlow(true)
-            // Clear the hash from URL
-            window.history.replaceState(null, '', window.location.pathname)
+            // Check if user has completed setup (has password_set flag)
+            const hasCompletedSetup = data.user.user_metadata?.password_set === true
+            
+            if (!hasCompletedSetup) {
+              setEmail(data.user.email || '')
+              setInviteUser(data.user)
+              setIsInviteFlow(true)
+            }
+            // If they've already set password, let them through to dashboard
           }
+          
+          // Clear the hash from URL
+          window.history.replaceState(null, '', window.location.pathname)
         }
       } catch (err) {
         console.error('Error checking session:', err)
@@ -84,10 +102,22 @@ export default function AdminLogin() {
     }
 
     try {
-      const { error } = await supabase.auth.updateUser({ password })
-      if (error) throw error
+      // Update password and set flag
+      const { error: updateError } = await supabase.auth.updateUser({ 
+        password,
+        data: { password_set: true }
+      })
+      if (updateError) throw updateError
       
-      // Password set successfully - they should now be logged in
+      // Update allowed_admins to mark as registered
+      if (inviteUser?.email) {
+        await supabase
+          .from('allowed_admins')
+          .update({ registered_at: new Date().toISOString() })
+          .eq('email', inviteUser.email.toLowerCase())
+      }
+      
+      // Password set successfully - redirect to dashboard
       navigate('/admin')
     } catch (err) {
       setError(err.message)
