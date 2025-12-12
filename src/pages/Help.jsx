@@ -1,9 +1,13 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import OPLogo from '../components/OPLogo'
 
 export default function Help() {
-  const [activeTab, setActiveTab] = useState('parent')
+  const [searchParams] = useSearchParams()
+  const context = searchParams.get('context') || 'parent' // 'parent' or 'admin'
+  const isAdminContext = context === 'admin'
+  
+  const [activeTab, setActiveTab] = useState(context === 'admin' ? 'admin' : 'parent')
   const [expandedItems, setExpandedItems] = useState({})
 
   const toggleItem = (id) => {
@@ -40,7 +44,7 @@ Tip: Check the coach's lanyard or business card for their name and contact info.
     {
       id: 'p3',
       question: 'Can I edit or delete an entry?',
-      answer: `Yes! This is a collaborative tool - any parent can edit or delete entries.
+      answer: `Yes! This is a collaborative tool - any parent or player can edit or delete entries.
 
 To remove a coach from a game:
 1. Go to the game's attendance list
@@ -64,7 +68,7 @@ Toggle between them using the buttons at the top of the summary page.`
       id: 'p5',
       question: 'How do I find a coach\'s contact info?',
       answer: `Use the Coach Directory:
-1. Tap "Coach Directory" from the main menu
+1. Tap "Directory" from the main menu
 2. Search by school or coach name
 3. Filter by division, state, or conference
 4. Tap the email or phone to contact them directly
@@ -83,8 +87,8 @@ This is great for follow-up emails after the tournament.`
     },
     {
       id: 'p7',
-      question: 'Multiple parents are logging at the same time - is that okay?',
-      answer: `Absolutely! The app is designed for this. Multiple parents can add coaches simultaneously without conflicts.
+      question: 'Multiple people are logging at the same time - is that okay?',
+      answer: `Absolutely! The app is designed for this. Multiple parents and players can add coaches simultaneously without conflicts.
 
 The page refreshes every few seconds, so you'll see each other's entries appear automatically. No need to coordinate - just log what you see!`
     },
@@ -95,7 +99,7 @@ The page refreshes every few seconds, so you'll see each other's entries appear 
 • Look at their lanyard/credential - it usually has their name and school
 • College coaches often wear school-branded gear
 • Ask them! Most coaches are happy to hand out business cards
-• If unsure, add what you know and another parent can update it later`
+• If unsure, add what you know and someone else can update it later`
     }
   ]
 
@@ -122,12 +126,12 @@ The system will automatically generate shareable links for each team.`
     },
     {
       id: 'a3',
-      question: 'How do I share links with parents?',
+      question: 'How do I share links with parents/players?',
       answer: `There are two types of links:
 
-**Club-wide link** (/home): Share this in general club communications. Parents can find their team from here.
+**Club-wide link** (/home): Share this in general club communications. Parents/players can find their team from here.
 
-**Team-specific link**: Share this directly with team parents via text, WhatsApp, or TeamSnap. It goes straight to their team's tracker.
+**Team-specific link**: Share this directly with team families via text, WhatsApp, or TeamSnap. It goes straight to their team's tracker.
 
 Find both links on the Admin Dashboard and Event Detail pages. Tap "Copy" to copy to clipboard.`
     },
@@ -159,7 +163,7 @@ When you merge:
 • Contact info (email, phone, title) is automatically preserved from both records
 • The duplicate is deleted
 
-Use this after bulk imports or when parents add coaches on-the-fly.`
+Use this after bulk imports or when parents/players add coaches on-the-fly.`
     },
     {
       id: 'a6',
@@ -195,12 +199,12 @@ Access it from the Event Detail page via the "Attendance Matrix" button.`
       question: 'Where does the coach contact data come from?',
       answer: `Coach data comes from multiple sources:
 
-1. **Parents:** Add coaches on-the-fly during events
+1. **Parents/Players:** Add coaches on-the-fly during events
 2. **Coach Directory:** Anyone can add/update contact info
 3. **Bulk Import:** Upload purchased coach databases
 4. **Manual Entry:** Admins can add coaches in Schools & Coaches
 
-The Coach Directory is "crowd-sourced" - parents can contribute contact info they collect from business cards, making the database more complete over time.`
+The Coach Directory is "crowd-sourced" - parents/players can contribute contact info they collect from business cards, making the database more complete over time.`
     },
     {
       id: 'a9',
@@ -209,7 +213,7 @@ The Coach Directory is "crowd-sourced" - parents can contribute contact info the
 
 **From Admin (Event Detail):** Click "Export CSV" on any team card. This exports that team's attendance with all coach details.
 
-**From Parent Summary:** Parents can also export from the Summary page.
+**From Parent/Player Summary:** Parents/players can also export from the Summary page.
 
 The export includes:
 • College name, division, conference, state
@@ -247,7 +251,7 @@ The export includes:
       <header className="bg-[#0a1628] text-white shadow-lg">
         <div className="max-w-5xl mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            <Link to="/home" className="flex items-center space-x-3">
+            <Link to={isAdminContext ? "/admin" : "/home"} className="flex items-center space-x-3">
               <OPLogo className="h-10 w-10" />
               <div>
                 <h1 className="text-lg font-bold leading-tight">Coach Tracker</h1>
@@ -255,7 +259,7 @@ The export includes:
               </div>
             </Link>
             <Link
-              to="/home"
+              to={isAdminContext ? "/admin" : "/home"}
               className="text-sm text-blue-300 hover:text-white"
             >
               ← Back
@@ -272,38 +276,46 @@ The export includes:
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Coach Tracker</h2>
           <p className="text-gray-600">
             This app helps track which college coaches attend your team's games at showcases and tournaments. 
-            Parents log sightings during games, and the data is compiled into exportable reports for recruiting follow-up.
+            Parents and players log sightings during games, and the data is compiled into exportable reports for recruiting follow-up.
           </p>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex mb-6 bg-white rounded-lg shadow-md p-1">
-          <button
-            onClick={() => setActiveTab('parent')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'parent'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            👨‍👩‍👧 For Parents
-          </button>
-          <button
-            onClick={() => setActiveTab('admin')}
-            className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
-              activeTab === 'admin'
-                ? 'bg-blue-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            ⚙️ For Admins
-          </button>
-        </div>
+        {/* Tab Navigation - only show tabs if admin context */}
+        {isAdminContext ? (
+          <div className="flex mb-6 bg-white rounded-lg shadow-md p-1">
+            <button
+              onClick={() => setActiveTab('parent')}
+              className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
+                activeTab === 'parent'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              👨‍👩‍👧 For Parents/Players
+            </button>
+            <button
+              onClick={() => setActiveTab('admin')}
+              className={`flex-1 py-3 px-4 rounded-md font-medium transition-colors ${
+                activeTab === 'admin'
+                  ? 'bg-blue-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-100'
+              }`}
+            >
+              ⚙️ For Admins
+            </button>
+          </div>
+        ) : (
+          <div className="flex mb-6 bg-white rounded-lg shadow-md p-1">
+            <div className="flex-1 py-3 px-4 rounded-md font-medium bg-blue-600 text-white text-center">
+              👨‍👩‍👧 Help for Parents/Players
+            </div>
+          </div>
+        )}
 
         {/* Quick Start */}
         {activeTab === 'parent' && (
           <div className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg shadow-md p-6 mb-6 text-white">
-            <h3 className="text-lg font-bold mb-3">🚀 Quick Start for Parents</h3>
+            <h3 className="text-lg font-bold mb-3">🚀 Quick Start for Parents/Players</h3>
             <ol className="space-y-2 text-blue-50">
               <li><strong>1.</strong> Open the link your team manager shared</li>
               <li><strong>2.</strong> Tap on your current game</li>
@@ -314,14 +326,14 @@ The export includes:
           </div>
         )}
 
-        {activeTab === 'admin' && (
+        {activeTab === 'admin' && isAdminContext && (
           <div className="bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg shadow-md p-6 mb-6 text-white">
             <h3 className="text-lg font-bold mb-3">🚀 Quick Start for Admins</h3>
             <ol className="space-y-2 text-blue-50">
               <li><strong>1.</strong> Create an Event (name + dates)</li>
               <li><strong>2.</strong> Add your club teams to the event</li>
               <li><strong>3.</strong> Enter each team's game schedule</li>
-              <li><strong>4.</strong> Share the tracker links with parents</li>
+              <li><strong>4.</strong> Share the tracker links with parents/players</li>
               <li><strong>5.</strong> Export attendance data after the event!</li>
             </ol>
           </div>
@@ -335,7 +347,7 @@ The export includes:
             </h3>
           </div>
           <div>
-            {(activeTab === 'parent' ? parentFAQ : adminFAQ).map(item => (
+            {((activeTab === 'admin' && isAdminContext) ? adminFAQ : parentFAQ).map(item => (
               <FAQItem key={item.id} item={item} />
             ))}
           </div>
@@ -345,7 +357,7 @@ The export includes:
         <div className="mt-4 text-center">
           <button
             onClick={() => {
-              const items = activeTab === 'parent' ? parentFAQ : adminFAQ
+              const items = (activeTab === 'admin' && isAdminContext) ? adminFAQ : parentFAQ
               const allExpanded = items.every(item => expandedItems[item.id])
               const newState = {}
               items.forEach(item => {
@@ -355,7 +367,7 @@ The export includes:
             }}
             className="text-blue-600 hover:text-blue-800 text-sm"
           >
-            {(activeTab === 'parent' ? parentFAQ : adminFAQ).every(item => expandedItems[item.id])
+            {((activeTab === 'admin' && isAdminContext) ? adminFAQ : parentFAQ).every(item => expandedItems[item.id])
               ? 'Collapse All'
               : 'Expand All'}
           </button>
@@ -372,12 +384,12 @@ The export includes:
         {/* Navigation links */}
         <div className="mt-6 grid grid-cols-2 gap-4">
           <Link
-            to="/home"
+            to={isAdminContext ? "/admin" : "/home"}
             className="bg-white rounded-lg shadow-md p-4 text-center hover:shadow-lg transition-shadow"
           >
-            <div className="text-2xl mb-1">🏠</div>
-            <div className="font-medium text-gray-900">Club Dashboard</div>
-            <div className="text-sm text-gray-500">View all events</div>
+            <div className="text-2xl mb-1">{isAdminContext ? '⚙️' : '🏠'}</div>
+            <div className="font-medium text-gray-900">{isAdminContext ? 'Admin Dashboard' : 'Club Dashboard'}</div>
+            <div className="text-sm text-gray-500">{isAdminContext ? 'Manage events' : 'View all events'}</div>
           </Link>
           <Link
             to="/directory"

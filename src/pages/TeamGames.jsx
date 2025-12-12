@@ -264,7 +264,7 @@ export default function TeamGames() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              to="/help"
+              to="/help?context=parent"
               className="bg-gray-700 text-gray-200 p-1.5 rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors"
               title="Help"
             >

@@ -216,7 +216,7 @@ export default function GameAttendance() {
           + Add College Coaches
         </button>
         <div className="text-center mt-2">
-          <Link to="/help" className="text-sm text-gray-500 hover:text-blue-600">
+          <Link to="/help?context=parent" className="text-sm text-gray-500 hover:text-blue-600">
             Need help? View quick guide →
           </Link>
         </div>

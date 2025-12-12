@@ -492,7 +492,7 @@ export default function ImportCoaches({ session }) {
               <div className="flex justify-between items-start mb-4">
                 <h2 className="text-lg font-semibold">Step 1: Upload File</h2>
                 <a 
-                  href="/help" 
+                  href="/help?context=admin" 
                   target="_blank"
                   className="text-sm text-blue-600 hover:text-blue-800"
                 >
