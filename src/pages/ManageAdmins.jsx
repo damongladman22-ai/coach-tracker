@@ -125,18 +125,61 @@ export default function ManageAdmins({ session }) {
     if (!confirm(`Cancel invitation for ${invite.name}?`)) return
 
     try {
-      const { error } = await supabase
-        .from('allowed_admins')
-        .delete()
-        .eq('id', invite.id)
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      // Call Edge Function to cancel (deletes from allowed_admins AND auth)
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-admins`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession?.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'cancel',
+            email: invite.email
+          })
+        }
+      )
 
-      if (error) throw error
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
 
       showToast('Invitation cancelled')
       fetchData()
     } catch (err) {
       console.error('Error cancelling invite:', err)
-      showToast('Error cancelling invitation', 'error')
+      showToast(err.message || 'Error cancelling invitation', 'error')
+    }
+  }
+
+  const resendInvite = async (invite) => {
+    try {
+      const { data: { session: currentSession } } = await supabase.auth.getSession()
+      
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/invite-admin`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentSession?.access_token}`
+          },
+          body: JSON.stringify({
+            action: 'resend',
+            email: invite.email
+          })
+        }
+      )
+
+      const result = await response.json()
+      if (!response.ok) throw new Error(result.error)
+
+      showToast(`Invitation resent to ${invite.email}`)
+    } catch (err) {
+      console.error('Error resending invite:', err)
+      showToast(err.message || 'Error resending invitation', 'error')
     }
   }
 
@@ -373,12 +416,20 @@ export default function ManageAdmins({ session }) {
                     {formatDate(invite.invited_at)}
                   </td>
                   <td className="px-6 py-4">
-                    <button
-                      onClick={() => cancelInvite(invite)}
-                      className="text-red-600 hover:text-red-800 text-sm font-medium"
-                    >
-                      Cancel
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => resendInvite(invite)}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      >
+                        Resend
+                      </button>
+                      <button
+                        onClick={() => cancelInvite(invite)}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
