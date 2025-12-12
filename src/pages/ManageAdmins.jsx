@@ -7,6 +7,7 @@ export default function ManageAdmins({ session }) {
   const [invites, setInvites] = useState([])
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [revoking, setRevoking] = useState(null)
   const [toast, setToast] = useState(null)
   
   // Form state
@@ -24,20 +25,31 @@ export default function ManageAdmins({ session }) {
 
   const fetchData = async () => {
     try {
-      // Fetch all invites
+      // Fetch actual auth users via Edge Function
+      const usersResponse = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-admins`,
+        {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          }
+        }
+      )
+      
+      if (usersResponse.ok) {
+        const { users } = await usersResponse.json()
+        setAdmins(users || [])
+      }
+
+      // Fetch pending invites from allowed_admins
       const { data: inviteData, error } = await supabase
         .from('allowed_admins')
         .select('*')
+        .is('registered_at', null)
         .order('invited_at', { ascending: false })
 
       if (error) throw error
-
-      // Separate registered vs pending
-      const registered = inviteData?.filter(i => i.registered_at) || []
-      const pending = inviteData?.filter(i => !i.registered_at) || []
-
-      setAdmins(registered)
-      setInvites(pending)
+      setInvites(inviteData || [])
     } catch (err) {
       console.error('Error fetching admins:', err)
       showToast('Error loading admin list', 'error')
@@ -118,7 +130,50 @@ export default function ManageAdmins({ session }) {
     }
   }
 
+  const revokeAccess = async (admin) => {
+    if (admin.id === session.user.id) {
+      showToast('You cannot revoke your own access', 'error')
+      return
+    }
+
+    if (!confirm(`Revoke admin access for ${admin.email}? This will delete their account and they will no longer be able to log in.`)) return
+
+    setRevoking(admin.id)
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-admins`,
+        {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`
+          },
+          body: JSON.stringify({
+            userId: admin.id,
+            currentUserId: session.user.id
+          })
+        }
+      )
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to revoke access')
+      }
+
+      showToast(`Access revoked for ${admin.email}`)
+      fetchData()
+    } catch (err) {
+      console.error('Error revoking access:', err)
+      showToast(err.message || 'Error revoking access', 'error')
+    } finally {
+      setRevoking(null)
+    }
+  }
+
   const formatDate = (dateStr) => {
+    if (!dateStr) return 'Never'
     return new Date(dateStr).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
@@ -232,15 +287,11 @@ export default function ManageAdmins({ session }) {
       </div>
 
       {/* Pending Invites */}
-      <div className="mt-8 bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <h2 className="text-lg font-semibold">Pending Invitations</h2>
-        </div>
-        {invites.length === 0 ? (
-          <div className="p-6 text-center text-gray-500">
-            No pending invitations
+      {invites.length > 0 && (
+        <div className="mt-8 bg-white rounded-lg shadow-md overflow-hidden">
+          <div className="px-6 py-4 border-b bg-yellow-50">
+            <h2 className="text-lg font-semibold text-yellow-800">Pending Invitations</h2>
           </div>
-        ) : (
           <table className="w-full">
             <thead className="bg-gray-50 text-left text-sm text-gray-600">
               <tr>
@@ -270,34 +321,60 @@ export default function ManageAdmins({ session }) {
               ))}
             </tbody>
           </table>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Current Admins */}
-      <div className="mt-6 bg-white rounded-lg shadow-md overflow-hidden">
+      <div className="mt-8 bg-white rounded-lg shadow-md overflow-hidden">
         <div className="px-6 py-4 border-b bg-gray-50">
           <h2 className="text-lg font-semibold">Current Admins</h2>
+          <p className="text-sm text-gray-500 mt-1">Users with admin access to this application</p>
         </div>
         {admins.length === 0 ? (
           <div className="p-6 text-center text-gray-500">
-            No registered admins yet (invites that have been accepted will appear here)
+            No admin users found
           </div>
         ) : (
           <table className="w-full">
             <thead className="bg-gray-50 text-left text-sm text-gray-600">
               <tr>
-                <th className="px-6 py-3 font-medium">Name</th>
                 <th className="px-6 py-3 font-medium">Email</th>
-                <th className="px-6 py-3 font-medium">Registered</th>
+                <th className="px-6 py-3 font-medium">Created</th>
+                <th className="px-6 py-3 font-medium">Last Sign In</th>
+                <th className="px-6 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {admins.map((admin) => (
                 <tr key={admin.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">{admin.name}</td>
-                  <td className="px-6 py-4 text-gray-600">{admin.email}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center gap-2">
+                      {admin.email}
+                      {admin.id === session.user.id && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                          You
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-6 py-4 text-gray-500 text-sm">
-                    {formatDate(admin.registered_at)}
+                    {formatDate(admin.created_at)}
+                  </td>
+                  <td className="px-6 py-4 text-gray-500 text-sm">
+                    {formatDate(admin.last_sign_in_at)}
+                  </td>
+                  <td className="px-6 py-4">
+                    {admin.id === session.user.id ? (
+                      <span className="text-gray-400 text-sm">—</span>
+                    ) : (
+                      <button
+                        onClick={() => revokeAccess(admin)}
+                        disabled={revoking === admin.id}
+                        className="text-red-600 hover:text-red-800 text-sm font-medium disabled:text-red-300"
+                      >
+                        {revoking === admin.id ? 'Revoking...' : 'Revoke Access'}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
