@@ -489,7 +489,16 @@ export default function ImportCoaches({ session }) {
           <>
             {/* Step 1: Upload File */}
             <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <h2 className="text-lg font-semibold mb-4">Step 1: Upload File</h2>
+              <div className="flex justify-between items-start mb-4">
+                <h2 className="text-lg font-semibold">Step 1: Upload File</h2>
+                <a 
+                  href="/help" 
+                  target="_blank"
+                  className="text-sm text-blue-600 hover:text-blue-800"
+                >
+                  View help guide →
+                </a>
+              </div>
               <p className="text-gray-600 mb-4">
                 Upload an Excel (.xlsx) or CSV file with coach data. The file should have columns for 
                 school name, coach first/last names (or full name), and optionally email, phone, and title.

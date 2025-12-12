@@ -31,6 +31,9 @@ export default function AdminLayout({ session, title, children }) {
               <Link to="/admin/schools" className="text-gray-300 hover:text-white transition-colors">
                 Schools
               </Link>
+              <Link to="/help" className="text-gray-300 hover:text-white transition-colors">
+                Help
+              </Link>
             </nav>
           </div>
           <div className="flex items-center space-x-4">

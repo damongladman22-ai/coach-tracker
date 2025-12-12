@@ -215,13 +215,26 @@ export default function GameAttendance() {
         >
           + Add College Coaches
         </button>
+        <div className="text-center mt-2">
+          <Link to="/help" className="text-sm text-gray-500 hover:text-blue-600">
+            Need help? View quick guide →
+          </Link>
+        </div>
       </div>
 
       {/* Attendance List */}
       <main className="px-4 pb-4">
         {attendance.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
-            No coaches logged yet. Tap the button above to add coaches.
+          <div className="bg-white rounded-lg shadow-md p-6 text-center">
+            <div className="text-gray-400 text-4xl mb-3">👀</div>
+            <p className="text-gray-600 font-medium mb-2">No coaches logged yet</p>
+            <p className="text-sm text-gray-500 mb-4">
+              Tap the green button above to log college coaches watching this game.
+            </p>
+            <div className="text-xs text-gray-400 bg-gray-50 rounded-lg p-3">
+              <strong>Tip:</strong> Search for a college, then check off the coaches you see. 
+              If a coach isn't listed, you can add them on the fly!
+            </div>
           </div>
         ) : (
           <div className="space-y-4">
