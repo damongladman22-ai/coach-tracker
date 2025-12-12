@@ -267,7 +267,40 @@ export default function DedupCoaches({ session }) {
     setMerging(`${keepCoach.id}-${deleteCoach.id}`)
     
     try {
-      // Move attendance records to the keeper
+      // Step 1: Auto-merge non-conflicting fields from deleteCoach to keepCoach
+      const fieldsToMerge = {}
+      const mergedFields = []
+      
+      // Check each field - if keeper is empty and duplicate has value, use duplicate's value
+      if (!keepCoach.email && deleteCoach.email) {
+        fieldsToMerge.email = deleteCoach.email
+        mergedFields.push('email')
+      }
+      if (!keepCoach.phone && deleteCoach.phone) {
+        fieldsToMerge.phone = deleteCoach.phone
+        mergedFields.push('phone')
+      }
+      if (!keepCoach.title && deleteCoach.title) {
+        fieldsToMerge.title = deleteCoach.title
+        mergedFields.push('title')
+      }
+      // Also merge name if keeper has initial and duplicate has full name
+      if (keepCoach.first_name.length <= 2 && deleteCoach.first_name.length > 2) {
+        fieldsToMerge.first_name = deleteCoach.first_name
+        mergedFields.push('first name')
+      }
+      
+      // Update keeper with merged fields if any
+      if (Object.keys(fieldsToMerge).length > 0) {
+        const { error: mergeError } = await supabase
+          .from('coaches')
+          .update(fieldsToMerge)
+          .eq('id', keepCoach.id)
+        
+        if (mergeError) throw mergeError
+      }
+      
+      // Step 2: Move attendance records to the keeper
       const { error: updateError } = await supabase
         .from('attendance')
         .update({ coach_id: keepCoach.id })
@@ -275,7 +308,7 @@ export default function DedupCoaches({ session }) {
 
       if (updateError) throw updateError
 
-      // Delete the duplicate coach
+      // Step 3: Delete the duplicate coach
       const { error: deleteError } = await supabase
         .from('coaches')
         .delete()
@@ -283,7 +316,12 @@ export default function DedupCoaches({ session }) {
 
       if (deleteError) throw deleteError
 
-      showToast(`Merged into ${keepCoach.first_name} ${keepCoach.last_name}`)
+      // Build success message
+      let message = `Merged into ${keepCoach.first_name} ${keepCoach.last_name}`
+      if (mergedFields.length > 0) {
+        message += ` (added ${mergedFields.join(', ')} from duplicate)`
+      }
+      showToast(message)
       setSelectedPair(null)
       
       // Refresh data
@@ -456,10 +494,20 @@ export default function DedupCoaches({ session }) {
                     <div className="font-medium text-lg">
                       {coach1.first_name} {coach1.last_name}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    {coach1.title && (
+                      <div className="text-sm text-gray-600">{coach1.title}</div>
+                    )}
+                    <div className="text-sm text-gray-500 mt-1">
                       {count1} attendance record{count1 !== 1 ? 's' : ''}
                     </div>
-                    <div className="text-xs text-gray-400">ID: {coach1.id.slice(0, 8)}...</div>
+                    <div className="mt-2 space-y-1 text-xs">
+                      <div className={coach1.email ? 'text-green-600' : 'text-gray-400'}>
+                        📧 {coach1.email || '(no email)'}
+                      </div>
+                      <div className={coach1.phone ? 'text-green-600' : 'text-gray-400'}>
+                        📞 {coach1.phone || '(no phone)'}
+                      </div>
+                    </div>
                   </div>
 
                   {/* Coach 2 */}
@@ -469,10 +517,20 @@ export default function DedupCoaches({ session }) {
                     <div className="font-medium text-lg">
                       {coach2.first_name} {coach2.last_name}
                     </div>
-                    <div className="text-sm text-gray-500">
+                    {coach2.title && (
+                      <div className="text-sm text-gray-600">{coach2.title}</div>
+                    )}
+                    <div className="text-sm text-gray-500 mt-1">
                       {count2} attendance record{count2 !== 1 ? 's' : ''}
                     </div>
-                    <div className="text-xs text-gray-400">ID: {coach2.id.slice(0, 8)}...</div>
+                    <div className="mt-2 space-y-1 text-xs">
+                      <div className={coach2.email ? 'text-green-600' : 'text-gray-400'}>
+                        📧 {coach2.email || '(no email)'}
+                      </div>
+                      <div className={coach2.phone ? 'text-green-600' : 'text-gray-400'}>
+                        📞 {coach2.phone || '(no phone)'}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
@@ -487,7 +545,7 @@ export default function DedupCoaches({ session }) {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-sm text-gray-600 text-center mb-2">
-                      Choose which coach to keep (attendance records will be merged):
+                      Choose which coach to keep. Missing contact info will be auto-filled from the other record:
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <button
@@ -526,6 +584,8 @@ export default function DedupCoaches({ session }) {
           <li><strong>Exact duplicates</strong> = same first name, last name, and school</li>
           <li><strong>Possible duplicates</strong> = similar names at same school (typos, nicknames, initials)</li>
           <li>When you merge, all attendance records move to the coach you keep</li>
+          <li><strong>Smart merge:</strong> Contact info (email, phone, title) from the duplicate is automatically added if the keeper is missing it</li>
+          <li>If one record has an initial (e.g., "J.") and the other has the full name, the full name is preserved</li>
           <li>Click ✕ to <strong>permanently ignore</strong> pairs that aren't duplicates (won't show again)</li>
           <li>Use "Clear all ignored pairs" to review previously ignored pairs again</li>
         </ul>

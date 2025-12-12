@@ -288,7 +288,43 @@ export default function DedupSchools({ session }) {
     setMerging(`${keepSchool.id}-${deleteSchool.id}`)
     
     try {
-      // First, reassign all coaches from deleteSchool to keepSchool
+      // Step 1: Auto-merge non-conflicting fields from deleteSchool to keepSchool
+      const fieldsToMerge = {}
+      const mergedFields = []
+      
+      // Check each field - if keeper is empty and duplicate has value, use duplicate's value
+      if (!keepSchool.city && deleteSchool.city) {
+        fieldsToMerge.city = deleteSchool.city
+        mergedFields.push('city')
+      }
+      if (!keepSchool.state && deleteSchool.state) {
+        fieldsToMerge.state = deleteSchool.state
+        mergedFields.push('state')
+      }
+      if (!keepSchool.type && deleteSchool.type) {
+        fieldsToMerge.type = deleteSchool.type
+        mergedFields.push('type')
+      }
+      if (!keepSchool.conference && deleteSchool.conference) {
+        fieldsToMerge.conference = deleteSchool.conference
+        mergedFields.push('conference')
+      }
+      if (!keepSchool.division && deleteSchool.division) {
+        fieldsToMerge.division = deleteSchool.division
+        mergedFields.push('division')
+      }
+      
+      // Update keeper with merged fields if any
+      if (Object.keys(fieldsToMerge).length > 0) {
+        const { error: mergeError } = await supabase
+          .from('schools')
+          .update(fieldsToMerge)
+          .eq('id', keepSchool.id)
+        
+        if (mergeError) throw mergeError
+      }
+      
+      // Step 2: Reassign all coaches from deleteSchool to keepSchool
       const { error: updateError } = await supabase
         .from('coaches')
         .update({ school_id: keepSchool.id })
@@ -296,7 +332,7 @@ export default function DedupSchools({ session }) {
 
       if (updateError) throw updateError
 
-      // Then delete the duplicate school
+      // Step 3: Delete the duplicate school
       const { error: deleteError } = await supabase
         .from('schools')
         .delete()
@@ -304,8 +340,16 @@ export default function DedupSchools({ session }) {
 
       if (deleteError) throw deleteError
 
+      // Build success message
       const coachCount = coachCounts[deleteSchool.id] || 0
-      showToast(`Merged "${deleteSchool.school}" into "${keepSchool.school}"${coachCount > 0 ? ` (${coachCount} coach${coachCount !== 1 ? 'es' : ''} reassigned)` : ''}`)
+      let message = `Merged "${deleteSchool.school}" into "${keepSchool.school}"`
+      if (coachCount > 0) {
+        message += ` (${coachCount} coach${coachCount !== 1 ? 'es' : ''} reassigned)`
+      }
+      if (mergedFields.length > 0) {
+        message += ` — added ${mergedFields.join(', ')}`
+      }
+      showToast(message)
       setSelectedPair(null)
       
       // Refresh data
@@ -471,19 +515,18 @@ export default function DedupSchools({ session }) {
                     isSelected ? 'border-blue-300' : 'border-gray-200'
                   }`}>
                     <div className="font-medium text-lg">{school1.school}</div>
-                    <div className="text-sm text-gray-600">
-                      {school1.city}, {school1.state}
+                    <div className={`text-sm ${school1.city && school1.state ? 'text-gray-600' : 'text-gray-400'}`}>
+                      {school1.city || '(no city)'}, {school1.state || '(no state)'}
                     </div>
-                    <div className="text-sm text-gray-500">
-                      {school1.division} • {school1.conference || 'No conference'}
+                    <div className={`text-sm ${school1.division ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {school1.division || '(no division)'} • {school1.conference || '(no conference)'}
                     </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      {school1.type}
+                    <div className={`text-sm mt-1 ${school1.type ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {school1.type || '(no type)'}
                     </div>
                     <div className="mt-2 text-sm font-medium text-blue-600">
                       {count1} coach{count1 !== 1 ? 'es' : ''}
                     </div>
-                    <div className="text-xs text-gray-400">ID: {school1.id.slice(0, 8)}...</div>
                   </div>
 
                   {/* School 2 */}
@@ -491,19 +534,18 @@ export default function DedupSchools({ session }) {
                     isSelected ? 'border-blue-300' : 'border-gray-200'
                   }`}>
                     <div className="font-medium text-lg">{school2.school}</div>
-                    <div className="text-sm text-gray-600">
-                      {school2.city}, {school2.state}
+                    <div className={`text-sm ${school2.city && school2.state ? 'text-gray-600' : 'text-gray-400'}`}>
+                      {school2.city || '(no city)'}, {school2.state || '(no state)'}
                     </div>
-                    <div className="text-sm text-gray-500">
-                      {school2.division} • {school2.conference || 'No conference'}
+                    <div className={`text-sm ${school2.division ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {school2.division || '(no division)'} • {school2.conference || '(no conference)'}
                     </div>
-                    <div className="text-sm text-gray-500 mt-1">
-                      {school2.type}
+                    <div className={`text-sm mt-1 ${school2.type ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {school2.type || '(no type)'}
                     </div>
                     <div className="mt-2 text-sm font-medium text-blue-600">
                       {count2} coach{count2 !== 1 ? 'es' : ''}
                     </div>
-                    <div className="text-xs text-gray-400">ID: {school2.id.slice(0, 8)}...</div>
                   </div>
                 </div>
 
@@ -518,7 +560,7 @@ export default function DedupSchools({ session }) {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-sm text-gray-600 text-center mb-2">
-                      Choose which school to keep (coaches will be reassigned):
+                      Choose which school to keep. Missing info will be auto-filled from the other record:
                     </p>
                     <div className="grid grid-cols-2 gap-2">
                       <button
@@ -557,6 +599,7 @@ export default function DedupSchools({ session }) {
           <li><strong>Exact duplicates</strong> = same school name (after normalization)</li>
           <li><strong>Possible duplicates</strong> = similar names, abbreviations (St. vs Saint, etc.)</li>
           <li>When you merge, <strong>all coaches</strong> from the deleted school move to the kept school</li>
+          <li><strong>Smart merge:</strong> Missing info (city, state, division, conference, type) is automatically filled from the duplicate</li>
           <li>Click ✕ to <strong>permanently ignore</strong> pairs that aren't duplicates (won't show again)</li>
           <li>Use "Clear all ignored pairs" to review previously ignored pairs again</li>
         </ul>
