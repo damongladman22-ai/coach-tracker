@@ -18,13 +18,13 @@ export default function AdminDashboard({ session }) {
 
   return (
     <AdminLayout session={session} title="Dashboard">
-      {/* Share with Parents Section */}
+      {/* Share with Parents/Players Section */}
       <div className="bg-gradient-to-r from-blue-600 to-cyan-600 rounded-lg shadow-lg p-6 mb-6 text-white">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <h2 className="text-xl font-bold mb-1">Share with Parents</h2>
+            <h2 className="text-xl font-bold mb-1">Share with Parents/Players</h2>
             <p className="text-blue-100 text-sm">
-              Send this link to your club — parents can find their team and track coach attendance
+              Send this link to your club — parents and players can find their team and track coach attendance
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -66,7 +66,7 @@ export default function AdminDashboard({ session }) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
             </svg>
-            Preview what parents see →
+            Preview what parents/players see →
           </Link>
         </div>
       </div>

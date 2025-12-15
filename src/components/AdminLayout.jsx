@@ -30,7 +30,7 @@ export default function AdminLayout({ session, title, children }) {
           <div className="flex items-center space-x-6">
             <Link to="/admin" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
               <OPLogo className="h-10 w-auto" />
-              <span className="text-xl font-bold text-white hidden sm:inline">Coach Tracker</span>
+              <span className="text-xl font-bold text-white">Coach Tracker</span>
             </Link>
             {/* Desktop Nav */}
             <nav className="hidden md:flex space-x-4">

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import OPLogo from '../components/OPLogo'
 
@@ -9,6 +9,11 @@ export default function Help() {
   
   const [activeTab, setActiveTab] = useState(context === 'admin' ? 'admin' : 'parent')
   const [expandedItems, setExpandedItems] = useState({})
+
+  // Scroll to top when page loads
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [])
 
   const toggleItem = (id) => {
     setExpandedItems(prev => ({
