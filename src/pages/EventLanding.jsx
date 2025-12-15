@@ -180,19 +180,29 @@ export default function EventLanding() {
       <header className="op-header shadow-lg">
         <div className="op-gradient-border"></div>
         <div className="max-w-4xl mx-auto px-4 py-4">
-          {/* Top row with logo */}
-          <Link to="/home" className="flex items-center gap-3 hover:opacity-90 transition-opacity mb-3">
-            <OPLogo className="h-10 w-auto" />
-            <span className="text-lg font-bold text-white">Coach Tracker</span>
-          </Link>
+          {/* Top row with logo and nav */}
+          <div className="flex items-center justify-between mb-3">
+            <Link to="/home" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+              <OPLogo className="h-10 w-auto" />
+              <span className="text-lg font-bold text-white hidden sm:inline">Coach Tracker</span>
+            </Link>
+            <nav className="flex items-center gap-4">
+              <Link to="/directory" className="text-sm text-gray-300 hover:text-white">
+                Directory
+              </Link>
+              <Link to="/help?context=parent" className="text-sm text-gray-300 hover:text-white">
+                Help
+              </Link>
+            </nav>
+          </div>
           {/* Breadcrumb navigation */}
           <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">
             <Link to="/home" className="hover:text-cyan-300 transition-colors">Home</Link>
             <span>›</span>
-            <span className="text-gray-200">{event?.event_name}</span>
+            <span className="text-gray-200 truncate">{event?.event_name}</span>
           </div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-white">{event?.event_name}</h1>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl sm:text-2xl font-bold text-white">{event?.event_name}</h1>
             {active && (
               <span className="bg-green-500/20 text-green-300 text-sm font-medium px-2.5 py-0.5 rounded flex items-center gap-1 border border-green-500/30">
                 <span className="bg-green-400 h-2 w-2 rounded-full animate-pulse"></span>
@@ -200,7 +210,7 @@ export default function EventLanding() {
               </span>
             )}
           </div>
-          <p className="text-cyan-300 mt-1">
+          <p className="text-cyan-300 mt-1 text-sm sm:text-base">
             {formatDateRange(event?.start_date, event?.end_date)}
           </p>
         </div>
@@ -208,24 +218,24 @@ export default function EventLanding() {
 
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* Event Stats */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Event Overview</h2>
-          <div className="grid grid-cols-4 gap-4 text-center">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-gray-800">{eventTeams.length}</div>
-              <div className="text-sm text-gray-500">Teams</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-center">
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+              <div className="text-2xl sm:text-3xl font-bold text-gray-800">{eventTeams.length}</div>
+              <div className="text-xs sm:text-sm text-gray-500">Teams</div>
             </div>
-            <div className="bg-cyan-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-cyan-600">{totalStats.games}</div>
-              <div className="text-sm text-gray-500">Games</div>
+            <div className="bg-cyan-50 rounded-lg p-3 sm:p-4">
+              <div className="text-2xl sm:text-3xl font-bold text-cyan-600">{totalStats.games}</div>
+              <div className="text-xs sm:text-sm text-gray-500">Games</div>
             </div>
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-blue-600">{totalStats.schools}</div>
-              <div className="text-sm text-gray-500">Schools</div>
+            <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
+              <div className="text-2xl sm:text-3xl font-bold text-blue-600">{totalStats.schools}</div>
+              <div className="text-xs sm:text-sm text-gray-500">Schools</div>
             </div>
-            <div className="bg-purple-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-purple-600">{totalStats.coaches}</div>
-              <div className="text-sm text-gray-500">Coaches</div>
+            <div className="bg-purple-50 rounded-lg p-3 sm:p-4">
+              <div className="text-2xl sm:text-3xl font-bold text-purple-600">{totalStats.coaches}</div>
+              <div className="text-xs sm:text-sm text-gray-500">Coaches</div>
             </div>
           </div>
         </div>

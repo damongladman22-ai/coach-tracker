@@ -305,52 +305,63 @@ export default function ParentSummary() {
       <div className="op-header shadow-lg">
         <div className="op-gradient-border"></div>
         <div className="max-w-4xl mx-auto px-4 py-4">
-          {/* Breadcrumb navigation */}
-          <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">
-            <Link to="/home" className="flex items-center gap-1.5 hover:text-cyan-300 transition-colors">
-              <OPLogo className="h-5 w-auto" />
-              <span>Home</span>
+          <div className="flex justify-between items-start">
+            <div className="flex-1 min-w-0">
+              {/* Breadcrumb navigation */}
+              <div className="flex items-center gap-2 text-sm text-gray-400 mb-2 flex-wrap">
+                <Link to="/home" className="flex items-center gap-1.5 hover:text-cyan-300 transition-colors">
+                  <OPLogo className="h-5 w-auto" />
+                  <span>Home</span>
+                </Link>
+                <span>›</span>
+                <Link to={`/e/${eventSlug}`} className="hover:text-cyan-300 transition-colors truncate">
+                  {eventTeam?.events?.event_name}
+                </Link>
+                <span className="hidden sm:inline">›</span>
+                <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-cyan-300 transition-colors hidden sm:inline truncate">
+                  {eventTeam?.club_teams?.team_name}
+                </Link>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white truncate">
+                {eventTeam?.club_teams?.team_name} - Summary
+              </h1>
+              {eventTeam?.events?.start_date && (
+                <p className="text-sm text-cyan-300">
+                  {formatDate(eventTeam.events.start_date)}
+                  {eventTeam.events.end_date && eventTeam.events.end_date !== eventTeam.events.start_date && 
+                    ` - ${formatDate(eventTeam.events.end_date)}`}
+                </p>
+              )}
+            </div>
+            <Link
+              to="/help?context=parent"
+              className="ml-2 bg-gray-700 text-gray-200 p-1.5 rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors flex-shrink-0"
+              title="Help"
+            >
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
             </Link>
-            <span>›</span>
-            <Link to={`/e/${eventSlug}`} className="hover:text-cyan-300 transition-colors">
-              {eventTeam?.events?.event_name}
-            </Link>
-            <span>›</span>
-            <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-cyan-300 transition-colors">
-              {eventTeam?.club_teams?.team_name}
-            </Link>
-            <span>›</span>
-            <span className="text-gray-200">Summary</span>
           </div>
-          <h1 className="text-2xl font-bold text-white">
-            {eventTeam?.club_teams?.team_name} - Summary
-          </h1>
-          {eventTeam?.events?.start_date && (
-            <p className="text-sm text-cyan-300">
-              {formatDate(eventTeam.events.start_date)}
-              {eventTeam.events.end_date && eventTeam.events.end_date !== eventTeam.events.start_date && 
-                ` - ${formatDate(eventTeam.events.end_date)}`}
-            </p>
-          )}
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
         {/* Stats Summary */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-6">
           <h2 className="text-lg font-semibold mb-4">Attendance Summary</h2>
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="bg-cyan-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-cyan-600">{games.length}</div>
-              <div className="text-sm text-gray-600">Games</div>
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
+            <div className="bg-cyan-50 rounded-lg p-3 sm:p-4">
+              <div className="text-2xl sm:text-3xl font-bold text-cyan-600">{games.length}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Games</div>
             </div>
-            <div className="bg-blue-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-blue-600">{uniqueSchools}</div>
-              <div className="text-sm text-gray-600">Schools</div>
+            <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
+              <div className="text-2xl sm:text-3xl font-bold text-blue-600">{uniqueSchools}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Schools</div>
             </div>
-            <div className="bg-purple-50 rounded-lg p-4">
-              <div className="text-3xl font-bold text-purple-600">{uniqueCoaches}</div>
-              <div className="text-sm text-gray-600">Coaches</div>
+            <div className="bg-purple-50 rounded-lg p-3 sm:p-4">
+              <div className="text-2xl sm:text-3xl font-bold text-purple-600">{uniqueCoaches}</div>
+              <div className="text-xs sm:text-sm text-gray-600">Coaches</div>
             </div>
           </div>
         </div>

@@ -122,7 +122,7 @@ export default function AdminDashboard({ session }) {
       </div>
 
       {/* Settings Section */}
-      <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Settings</h2>
+      <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Settings & Help</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Link
           to="/admin/admins"
@@ -137,6 +137,21 @@ export default function AdminDashboard({ session }) {
             <h2 className="text-xl font-semibold text-gray-800">Manage Admins</h2>
           </div>
           <p className="text-gray-600">Invite new admins and manage access</p>
+        </Link>
+
+        <Link
+          to="/help?context=admin"
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-blue-100 rounded-lg">
+              <svg className="h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800">Help & FAQ</h2>
+          </div>
+          <p className="text-gray-600">View guides, FAQs, and troubleshooting tips</p>
         </Link>
       </div>
     </AdminLayout>

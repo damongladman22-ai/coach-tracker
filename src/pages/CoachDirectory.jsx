@@ -356,11 +356,15 @@ export default function CoachDirectory() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/home" className="flex items-center gap-3">
             <OPLogo className="h-10 w-10" />
-            <span className="text-xl font-bold">Coach Directory</span>
+            <span className="text-xl font-bold hidden sm:inline">Coach Directory</span>
+            <span className="text-xl font-bold sm:hidden">Directory</span>
           </Link>
           <nav className="flex items-center gap-4">
             <Link to="/home" className="text-sm text-gray-300 hover:text-white">
               Events
+            </Link>
+            <Link to="/help?context=parent" className="text-sm text-gray-300 hover:text-white">
+              Help
             </Link>
           </nav>
         </div>
