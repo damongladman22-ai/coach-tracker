@@ -66,6 +66,10 @@ export default function Schools({ session }) {
   const [showCoachForm, setShowCoachForm] = useState(null)
   const [coachFormData, setCoachFormData] = useState({ first_name: '', last_name: '', email: '', phone: '', title: '' })
   
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 50
+  
   // Add School state
   const [showAddSchool, setShowAddSchool] = useState(false)
   const [schoolFormData, setSchoolFormData] = useState({
@@ -286,9 +290,16 @@ export default function Schools({ session }) {
     school.conference?.toLowerCase().includes(search.toLowerCase())
   )
 
-  // Show more results when searching (up to 200)
-  const displayLimit = search.trim() ? 200 : 100
-  const displayedSchools = filteredSchools.slice(0, displayLimit)
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredSchools.length / ITEMS_PER_PAGE)
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+  const displayedSchools = filteredSchools.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+
+  // Reset to page 1 when search changes
+  const handleSearchChange = (e) => {
+    setSearch(e.target.value)
+    setCurrentPage(1)
+  }
 
   return (
     <AdminLayout session={session} title="Schools & Coaches">
@@ -297,7 +308,7 @@ export default function Schools({ session }) {
         <input
           type="text"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={handleSearchChange}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="Search schools by name, state, or conference..."
         />
@@ -519,13 +530,17 @@ export default function Schools({ session }) {
       )}
 
       {/* Stats */}
-      <div className="mb-4 text-sm text-gray-600">
-        {search.trim() 
-          ? `Found ${filteredSchools.length} schools matching "${search}"`
-          : `${schools.length} schools in database`
-        }
-        {filteredSchools.length > displayLimit && (
-          <span className="text-orange-600"> (showing first {displayLimit})</span>
+      <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+        <div className="text-sm text-gray-600">
+          {search.trim() 
+            ? `Found ${filteredSchools.length} schools matching "${search}"`
+            : `${schools.length} schools in database`
+          }
+        </div>
+        {totalPages > 1 && (
+          <div className="text-sm text-gray-500">
+            Showing {startIndex + 1}-{Math.min(startIndex + ITEMS_PER_PAGE, filteredSchools.length)} of {filteredSchools.length}
+          </div>
         )}
       </div>
 
@@ -701,9 +716,56 @@ export default function Schools({ session }) {
             </div>
           ))}
 
-          {filteredSchools.length > displayLimit && (
-            <div className="text-center py-4 text-gray-500">
-              Showing first {displayLimit} results. Refine your search to see more.
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-4 mt-4 border-t">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(1)}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  First
+                </button>
+                <button
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ← Prev
+                </button>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-600">Page</span>
+                <select
+                  value={currentPage}
+                  onChange={(e) => setCurrentPage(Number(e.target.value))}
+                  className="px-2 py-1 border rounded text-sm"
+                >
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    <option key={page} value={page}>{page}</option>
+                  ))}
+                </select>
+                <span className="text-sm text-gray-600">of {totalPages}</span>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Next →
+                </button>
+                <button
+                  onClick={() => setCurrentPage(totalPages)}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Last
+                </button>
+              </div>
             </div>
           )}
 
