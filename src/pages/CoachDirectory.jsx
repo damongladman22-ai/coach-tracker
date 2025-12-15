@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import OPLogo from '../components/OPLogo';
 
@@ -18,6 +18,9 @@ const US_STATES = [
 const DIVISIONS = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'Junior College'];
 
 export default function CoachDirectory() {
+  const [searchParams] = useSearchParams();
+  const isAdminContext = searchParams.get('context') === 'admin';
+  
   const [coaches, setCoaches] = useState([]);
   const [schools, setSchools] = useState([]);
   const [conferences, setConferences] = useState([]);
@@ -354,16 +357,16 @@ export default function CoachDirectory() {
       {/* Header */}
       <header className="bg-[#0a1628] text-white">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link to="/home" className="flex items-center gap-3">
+          <Link to={isAdminContext ? "/admin" : "/home"} className="flex items-center gap-3">
             <OPLogo className="h-10 w-10" />
             <span className="text-xl font-bold hidden sm:inline">Coach Directory</span>
             <span className="text-xl font-bold sm:hidden">Directory</span>
           </Link>
           <nav className="flex items-center gap-4">
-            <Link to="/home" className="text-sm text-gray-300 hover:text-white">
-              Events
+            <Link to={isAdminContext ? "/admin" : "/home"} className="text-sm text-gray-300 hover:text-white">
+              {isAdminContext ? "Dashboard" : "Events"}
             </Link>
-            <Link to="/help?context=parent" className="text-sm text-gray-300 hover:text-white">
+            <Link to={isAdminContext ? "/help?context=admin" : "/help?context=parent"} className="text-sm text-gray-300 hover:text-white">
               Help
             </Link>
           </nav>
