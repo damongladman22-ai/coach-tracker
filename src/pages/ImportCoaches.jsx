@@ -487,9 +487,16 @@ export default function ImportCoaches({ session }) {
           </div>
         ) : (
           <>
+            {/* Mobile Notice */}
+            <div className="sm:hidden bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <p className="text-sm text-amber-800">
+                <strong>Tip:</strong> This page works best on a larger screen. The preview table may require horizontal scrolling on mobile devices.
+              </p>
+            </div>
+
             {/* Step 1: Upload File */}
-            <div className="bg-white rounded-lg shadow p-6 mb-6">
-              <div className="flex justify-between items-start mb-4">
+            <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2 mb-4">
                 <h2 className="text-lg font-semibold">Step 1: Upload File</h2>
                 <a 
                   href="/help?context=admin" 
@@ -499,7 +506,7 @@ export default function ImportCoaches({ session }) {
                   View help guide →
                 </a>
               </div>
-              <p className="text-gray-600 mb-4">
+              <p className="text-gray-600 mb-4 text-sm sm:text-base">
                 Upload an Excel (.xlsx) or CSV file with coach data. The file should have columns for 
                 school name, coach first/last names (or full name), and optionally email, phone, and title.
               </p>
@@ -518,13 +525,13 @@ export default function ImportCoaches({ session }) {
 
             {/* Step 2: Column Mapping */}
             {parsedData && (
-              <div className="bg-white rounded-lg shadow p-6 mb-6">
+              <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
                 <h2 className="text-lg font-semibold mb-4">Step 2: Map Columns</h2>
-                <p className="text-gray-600 mb-4">
+                <p className="text-gray-600 mb-4 text-sm sm:text-base">
                   Verify the auto-detected columns or adjust as needed.
                 </p>
                 
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       School Column *

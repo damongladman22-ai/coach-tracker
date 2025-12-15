@@ -381,24 +381,24 @@ export default function DedupCoaches({ session }) {
       )}
 
       {/* Stats */}
-      <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+      <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-6">
         <h2 className="text-lg font-semibold mb-4">Duplicate Analysis</h2>
-        <div className="grid grid-cols-4 gap-4 text-center">
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-3xl font-bold text-gray-800">{coaches.length}</div>
-            <div className="text-sm text-gray-500">Total Coaches</div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 text-center">
+          <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+            <div className="text-2xl sm:text-3xl font-bold text-gray-800">{coaches.length}</div>
+            <div className="text-xs sm:text-sm text-gray-500">Total Coaches</div>
           </div>
-          <div className="bg-red-50 rounded-lg p-4">
-            <div className="text-3xl font-bold text-red-600">{exactCount}</div>
-            <div className="text-sm text-gray-500">Exact Duplicates</div>
+          <div className="bg-red-50 rounded-lg p-3 sm:p-4">
+            <div className="text-2xl sm:text-3xl font-bold text-red-600">{exactCount}</div>
+            <div className="text-xs sm:text-sm text-gray-500">Exact Duplicates</div>
           </div>
-          <div className="bg-yellow-50 rounded-lg p-4">
-            <div className="text-3xl font-bold text-yellow-600">{fuzzyCount}</div>
-            <div className="text-sm text-gray-500">Possible Duplicates</div>
+          <div className="bg-yellow-50 rounded-lg p-3 sm:p-4">
+            <div className="text-2xl sm:text-3xl font-bold text-yellow-600">{fuzzyCount}</div>
+            <div className="text-xs sm:text-sm text-gray-500">Possible Duplicates</div>
           </div>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="text-3xl font-bold text-gray-500">{dismissedPairs.length}</div>
-            <div className="text-sm text-gray-500">Ignored Pairs</div>
+          <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+            <div className="text-2xl sm:text-3xl font-bold text-gray-500">{dismissedPairs.length}</div>
+            <div className="text-xs sm:text-sm text-gray-500">Ignored Pairs</div>
           </div>
         </div>
         {dismissedPairs.length > 0 && (

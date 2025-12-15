@@ -306,9 +306,9 @@ export default function ManageAdmins({ session }) {
         </div>
       )}
 
-      <div className="grid md:grid-cols-2 gap-6">
+      <div className="grid lg:grid-cols-2 gap-6">
         {/* Invite Form */}
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6">
           <h2 className="text-lg font-semibold mb-4">Invite New Admin</h2>
           <p className="text-sm text-gray-600 mb-4">
             Enter the name and email of the person you want to invite. They'll receive an email with a link to create their account.
@@ -364,7 +364,7 @@ export default function ManageAdmins({ session }) {
         </div>
 
         {/* Info Card */}
-        <div className="bg-blue-50 rounded-lg p-6">
+        <div className="bg-blue-50 rounded-lg p-4 sm:p-6">
           <h3 className="font-semibold text-blue-900 mb-2">How it works</h3>
           <ul className="space-y-2 text-sm text-blue-800">
             <li className="flex items-start gap-2">
@@ -395,52 +395,81 @@ export default function ManageAdmins({ session }) {
       {/* Pending Invites */}
       {invites.length > 0 && (
         <div className="mt-8 bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="px-6 py-4 border-b bg-yellow-50">
+          <div className="px-4 sm:px-6 py-4 border-b bg-yellow-50">
             <h2 className="text-lg font-semibold text-yellow-800">Pending Invitations</h2>
           </div>
-          <table className="w-full">
-            <thead className="bg-gray-50 text-left text-sm text-gray-600">
-              <tr>
-                <th className="px-6 py-3 font-medium">Name</th>
-                <th className="px-6 py-3 font-medium">Email</th>
-                <th className="px-6 py-3 font-medium">Invited</th>
-                <th className="px-6 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {invites.map((invite) => (
-                <tr key={invite.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">{invite.name}</td>
-                  <td className="px-6 py-4 text-gray-600">{invite.email}</td>
-                  <td className="px-6 py-4 text-gray-500 text-sm">
-                    {formatDate(invite.invited_at)}
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => resendInvite(invite)}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                      >
-                        Resend
-                      </button>
-                      <button
-                        onClick={() => cancelInvite(invite)}
-                        className="text-red-600 hover:text-red-800 text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </td>
+          
+          {/* Mobile Card View */}
+          <div className="sm:hidden divide-y">
+            {invites.map((invite) => (
+              <div key={invite.id} className="p-4">
+                <div className="font-medium">{invite.name}</div>
+                <div className="text-sm text-gray-600 mt-1 break-all">{invite.email}</div>
+                <div className="text-xs text-gray-500 mt-1">Invited {formatDate(invite.invited_at)}</div>
+                <div className="flex gap-4 mt-3">
+                  <button
+                    onClick={() => resendInvite(invite)}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  >
+                    Resend
+                  </button>
+                  <button
+                    onClick={() => cancelInvite(invite)}
+                    className="text-red-600 hover:text-red-800 text-sm font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden sm:block overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-50 text-left text-sm text-gray-600">
+                <tr>
+                  <th className="px-6 py-3 font-medium">Name</th>
+                  <th className="px-6 py-3 font-medium">Email</th>
+                  <th className="px-6 py-3 font-medium">Invited</th>
+                  <th className="px-6 py-3 font-medium">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y">
+                {invites.map((invite) => (
+                  <tr key={invite.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">{invite.name}</td>
+                    <td className="px-6 py-4 text-gray-600">{invite.email}</td>
+                    <td className="px-6 py-4 text-gray-500 text-sm">
+                      {formatDate(invite.invited_at)}
+                    </td>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => resendInvite(invite)}
+                          className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        >
+                          Resend
+                        </button>
+                        <button
+                          onClick={() => cancelInvite(invite)}
+                          className="text-red-600 hover:text-red-800 text-sm font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {/* Current Admins */}
       <div className="mt-8 bg-white rounded-lg shadow-md overflow-hidden">
-        <div className="px-6 py-4 border-b bg-gray-50">
+        <div className="px-4 sm:px-6 py-4 border-b bg-gray-50">
           <h2 className="text-lg font-semibold">Current Admins</h2>
           <p className="text-sm text-gray-500 mt-1">Users with admin access to this application</p>
         </div>
@@ -449,32 +478,25 @@ export default function ManageAdmins({ session }) {
             No admin users found
           </div>
         ) : (
-          <table className="w-full">
-            <thead className="bg-gray-50 text-left text-sm text-gray-600">
-              <tr>
-                <th className="px-6 py-3 font-medium">Name</th>
-                <th className="px-6 py-3 font-medium">Email</th>
-                <th className="px-6 py-3 font-medium">Last Sign In</th>
-                <th className="px-6 py-3 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
+          <>
+            {/* Mobile Card View */}
+            <div className="sm:hidden divide-y">
               {admins.map((admin) => (
-                <tr key={admin.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
+                <div key={admin.id} className="p-4">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {editingName === admin.id ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex-1 flex items-center gap-2 min-w-0">
                         <input
                           type="text"
                           value={editNameValue}
                           onChange={(e) => setEditNameValue(e.target.value)}
-                          className="px-2 py-1 border rounded text-sm w-40"
+                          className="flex-1 min-w-0 px-2 py-1 border rounded text-sm"
                           placeholder="Enter name"
                           autoFocus
                         />
                         <button
                           onClick={() => saveAdminName(admin)}
-                          className="text-green-600 hover:text-green-800"
+                          className="text-green-600 hover:text-green-800 p-1 flex-shrink-0"
                         >
                           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -482,7 +504,7 @@ export default function ManageAdmins({ session }) {
                         </button>
                         <button
                           onClick={cancelEditingName}
-                          className="text-gray-400 hover:text-gray-600"
+                          className="text-gray-400 hover:text-gray-600 p-1 flex-shrink-0"
                         >
                           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -490,15 +512,13 @@ export default function ManageAdmins({ session }) {
                         </button>
                       </div>
                     ) : (
-                      <div className="flex items-center gap-2">
-                        {admin.name ? (
-                          <span>{admin.name}</span>
-                        ) : (
-                          <span className="text-gray-400 italic">No name set</span>
-                        )}
+                      <>
+                        <span className="font-medium">
+                          {admin.name || <span className="text-gray-400 italic">No name</span>}
+                        </span>
                         <button
                           onClick={() => startEditingName(admin)}
-                          className="text-gray-400 hover:text-blue-600"
+                          className="text-gray-400 hover:text-blue-600 p-1"
                           title="Edit name"
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -510,14 +530,12 @@ export default function ManageAdmins({ session }) {
                             You
                           </span>
                         )}
-                      </div>
+                      </>
                     )}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">{admin.email}</td>
-                  <td className="px-6 py-4 text-gray-500 text-sm">
-                    {formatDate(admin.last_sign_in_at)}
-                  </td>
-                  <td className="px-6 py-4">
+                  </div>
+                  <div className="text-sm text-gray-600 mt-1 break-all">{admin.email}</div>
+                  <div className="text-xs text-gray-500 mt-1">Last sign in: {formatDate(admin.last_sign_in_at)}</div>
+                  <div className="mt-3">
                     {admin.id === session.user.id ? (
                       <span className="text-gray-400 text-sm">—</span>
                     ) : (
@@ -529,17 +547,106 @@ export default function ManageAdmins({ session }) {
                         {revoking === admin.id ? 'Revoking...' : 'Revoke Access'}
                       </button>
                     )}
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+
+            {/* Desktop Table View */}
+            <div className="hidden sm:block overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 text-left text-sm text-gray-600">
+                  <tr>
+                    <th className="px-6 py-3 font-medium">Name</th>
+                    <th className="px-6 py-3 font-medium">Email</th>
+                    <th className="px-6 py-3 font-medium">Last Sign In</th>
+                    <th className="px-6 py-3 font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {admins.map((admin) => (
+                    <tr key={admin.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4">
+                        {editingName === admin.id ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editNameValue}
+                              onChange={(e) => setEditNameValue(e.target.value)}
+                              className="px-2 py-1 border rounded text-sm w-40"
+                              placeholder="Enter name"
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => saveAdminName(admin)}
+                              className="text-green-600 hover:text-green-800"
+                            >
+                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={cancelEditingName}
+                              className="text-gray-400 hover:text-gray-600"
+                            >
+                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            {admin.name ? (
+                              <span>{admin.name}</span>
+                            ) : (
+                              <span className="text-gray-400 italic">No name set</span>
+                            )}
+                            <button
+                              onClick={() => startEditingName(admin)}
+                              className="text-gray-400 hover:text-blue-600"
+                              title="Edit name"
+                            >
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                            {admin.id === session.user.id && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                                You
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">{admin.email}</td>
+                      <td className="px-6 py-4 text-gray-500 text-sm">
+                        {formatDate(admin.last_sign_in_at)}
+                      </td>
+                      <td className="px-6 py-4">
+                        {admin.id === session.user.id ? (
+                          <span className="text-gray-400 text-sm">—</span>
+                        ) : (
+                          <button
+                            onClick={() => revokeAccess(admin)}
+                            disabled={revoking === admin.id}
+                            className="text-red-600 hover:text-red-800 text-sm font-medium disabled:text-red-300"
+                          >
+                            {revoking === admin.id ? 'Revoking...' : 'Revoke Access'}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {/* Current User Note */}
       <div className="mt-6 text-center text-sm text-gray-500">
-        You are logged in as <strong>{session.user.email}</strong>
+        You are logged in as <strong className="break-all">{session.user.email}</strong>
       </div>
     </AdminLayout>
   )
