@@ -301,6 +301,12 @@ export default function Schools({ session }) {
     setCurrentPage(1)
   }
 
+  // Change page and scroll to top
+  const goToPage = (page) => {
+    setCurrentPage(page)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   return (
     <AdminLayout session={session} title="Schools & Coaches">
       {/* Search and Add School */}
@@ -720,14 +726,14 @@ export default function Schools({ session }) {
           {totalPages > 1 && (
             <div className="flex flex-wrap items-center justify-center gap-2 py-4 mt-4 border-t">
               <button
-                onClick={() => setCurrentPage(1)}
+                onClick={() => goToPage(1)}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 First
               </button>
               <button
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                onClick={() => goToPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -738,7 +744,7 @@ export default function Schools({ session }) {
                 <span className="text-sm text-gray-600">Page</span>
                 <select
                   value={currentPage}
-                  onChange={(e) => setCurrentPage(Number(e.target.value))}
+                  onChange={(e) => goToPage(Number(e.target.value))}
                   className="px-2 py-1 border rounded text-sm"
                 >
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
@@ -749,14 +755,14 @@ export default function Schools({ session }) {
               </div>
               
               <button
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Next →
               </button>
               <button
-                onClick={() => setCurrentPage(totalPages)}
+                onClick={() => goToPage(totalPages)}
                 disabled={currentPage === totalPages}
                 className="px-3 py-1.5 text-sm bg-gray-100 rounded hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
