@@ -107,6 +107,13 @@ export default function TeamGames() {
           .order('game_date');
 
         if (gamesError) throw gamesError;
+        
+        // If all games are closed, redirect to summary
+        if (gamesData && gamesData.length > 0 && gamesData.every(g => g.is_closed)) {
+          navigate(`/e/${eventSlug}/${teamSlug}/summary`, { replace: true });
+          return;
+        }
+        
         setGames(gamesData || []);
 
       } catch (err) {

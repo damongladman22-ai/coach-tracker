@@ -55,11 +55,12 @@ export default function EventLanding() {
           // Get games for this event team
           const { data: gamesData } = await supabase
             .from('games')
-            .select('id')
+            .select('id, is_closed')
             .eq('event_team_id', et.id);
 
           if (gamesData && gamesData.length > 0) {
             const gameIds = gamesData.map(g => g.id);
+            const hasOpenGames = gamesData.some(g => !g.is_closed);
             
             // Get attendance for these games
             const { data: attendanceData } = await supabase
@@ -78,10 +79,11 @@ export default function EventLanding() {
             stats[et.id] = {
               games: gamesData.length,
               schools: uniqueSchools.size,
-              coaches: uniqueCoaches.size
+              coaches: uniqueCoaches.size,
+              hasOpenGames: hasOpenGames
             };
           } else {
-            stats[et.id] = { games: 0, schools: 0, coaches: 0 };
+            stats[et.id] = { games: 0, schools: 0, coaches: 0, hasOpenGames: false };
           }
         }
         
@@ -279,15 +281,21 @@ export default function EventLanding() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Link
-                        to={`/e/${eventSlug}/${et.slug}`}
-                        className="flex-1 sm:flex-none bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 text-center"
-                      >
-                        {active ? 'Live Tracker' : 'View Games'}
-                      </Link>
+                      {stats.hasOpenGames && (
+                        <Link
+                          to={`/e/${eventSlug}/${et.slug}`}
+                          className="flex-1 sm:flex-none bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 text-center"
+                        >
+                          {active ? 'Live Tracker' : 'View Games'}
+                        </Link>
+                      )}
                       <Link
                         to={`/e/${eventSlug}/${et.slug}/summary`}
-                        className="flex-1 sm:flex-none bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-green-200 text-center"
+                        className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium text-center ${
+                          stats.hasOpenGames 
+                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
                       >
                         Summary
                       </Link>

@@ -415,12 +415,14 @@ export default function ParentSummary() {
             <p className="text-gray-500 mb-4">
               No college coaches have been logged for this event yet.
             </p>
-            <Link
-              to={`/e/${eventSlug}/${teamSlug}`}
-              className="inline-flex items-center text-blue-600 hover:text-blue-800"
-            >
-              Go to Live Tracker to add coaches →
-            </Link>
+            {games.some(g => !g.is_closed) && (
+              <Link
+                to={`/e/${eventSlug}/${teamSlug}`}
+                className="inline-flex items-center text-blue-600 hover:text-blue-800"
+              >
+                Go to Live Tracker to add coaches →
+              </Link>
+            )}
           </div>
         ) : viewMode === 'games' ? (
           /* Game-Centric View */

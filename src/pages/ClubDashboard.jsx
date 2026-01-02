@@ -41,13 +41,34 @@ export default function ClubDashboard() {
 
       if (teamsError) throw teamsError;
 
-      // Group by event
+      // Fetch games to check if any are open for each event team
+      const eventTeamIds = (eventTeamsData || []).map(et => et.id);
+      let gamesData = [];
+      if (eventTeamIds.length > 0) {
+        const { data } = await supabase
+          .from('games')
+          .select('id, event_team_id, is_closed')
+          .in('event_team_id', eventTeamIds);
+        gamesData = data || [];
+      }
+
+      // Create a map of event_team_id -> hasOpenGames
+      const openGamesMap = {};
+      eventTeamIds.forEach(id => {
+        const teamGames = gamesData.filter(g => g.event_team_id === id);
+        openGamesMap[id] = teamGames.some(g => !g.is_closed);
+      });
+
+      // Group by event and attach hasOpenGames
       const byEvent = {};
       (eventTeamsData || []).forEach(et => {
         if (!byEvent[et.event_id]) {
           byEvent[et.event_id] = [];
         }
-        byEvent[et.event_id].push(et);
+        byEvent[et.event_id].push({
+          ...et,
+          hasOpenGames: openGamesMap[et.id] || false
+        });
       });
       setEventTeams(byEvent);
 
@@ -339,15 +360,21 @@ function EventCard({ event, teams, formatDateRange, isActive = false, isPast = f
                     <div className="text-xs text-gray-500">{et.club_teams?.gender}</div>
                   </div>
                   <div className="flex gap-2">
-                    <Link
-                      to={`/e/${event.slug}/${et.slug}`}
-                      className="op-button px-3 py-1.5 rounded text-sm font-medium"
-                    >
-                      Live Tracker
-                    </Link>
+                    {et.hasOpenGames && (
+                      <Link
+                        to={`/e/${event.slug}/${et.slug}`}
+                        className="op-button px-3 py-1.5 rounded text-sm font-medium"
+                      >
+                        Live Tracker
+                      </Link>
+                    )}
                     <Link
                       to={`/e/${event.slug}/${et.slug}/summary`}
-                      className="bg-gray-100 text-gray-700 px-3 py-1.5 rounded text-sm font-medium hover:bg-gray-200"
+                      className={`px-3 py-1.5 rounded text-sm font-medium ${
+                        et.hasOpenGames
+                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          : 'op-button'
+                      }`}
                     >
                       Summary
                     </Link>
