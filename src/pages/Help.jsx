@@ -107,6 +107,18 @@ The page refreshes every few seconds, so you'll see each other's entries appear 
 • College coaches often wear school-branded gear
 • Ask them! Most coaches are happy to hand out business cards
 • If unsure, add what you know and someone else can update it later`
+    },
+    {
+      id: 'p9',
+      question: 'Why can\'t I edit a game? It shows a lock icon.',
+      answer: `When a game shows a 🔒 lock icon and "Closed" badge, it means an admin has closed that game to lock in the attendance data.
+
+This typically happens after:
+• The event is over
+• All coach attendance has been captured
+• The admin wants to prevent accidental changes
+
+You can still view the attendance and access the Summary page - you just can't add or remove coaches. If you think something needs to be changed, contact your club admin.`
     }
   ]
 
@@ -226,6 +238,23 @@ The export includes:
 • College name, division, conference, state
 • Coach names and emails
 • Which games each coach attended (as columns)`
+    },
+    {
+      id: 'a10',
+      question: 'How do I close a game to lock editing?',
+      answer: `Once you've captured all attendance for a game, you can close it to prevent further edits by parents/players:
+
+1. Go to Admin → Events → click on the event
+2. Find the game you want to close
+3. Click the "Close" button next to the game
+
+**What happens when a game is closed:**
+• Parents/players see a lock icon and "Closed" badge
+• The "Add Coaches" button changes to "View Summary"
+• Coach names become view-only (no delete option)
+• Direct links to the game redirect to the Summary page
+
+**Admins retain full access** to closed games and can reopen them anytime by clicking "Reopen".`
     }
   ]
 
