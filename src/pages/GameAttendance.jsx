@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 export default function GameAttendance() {
   const { eventSlug, teamSlug, gameId } = useParams()
+  const navigate = useNavigate()
   const [game, setGame] = useState(null)
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(true)
@@ -28,6 +29,12 @@ export default function GameAttendance() {
       .select('*')
       .eq('id', gameId)
       .single()
+    
+    // If game is closed, redirect to summary
+    if (gameData?.is_closed) {
+      navigate(`/e/${eventSlug}/${teamSlug}/summary`, { replace: true })
+      return
+    }
     
     setGame(gameData)
 

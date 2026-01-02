@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRealtimeAttendance, useRealtimeCoaches } from '../hooks/useRealtimeAttendance';
 import { SchoolSearch } from '../components/SchoolSearch';
@@ -27,6 +27,7 @@ import OPLogo from '../components/OPLogo';
  */
 export default function TeamGames() {
   const { eventSlug, teamSlug } = useParams();
+  const navigate = useNavigate();
   
   // Page data
   const [eventTeam, setEventTeam] = useState(null);
@@ -322,27 +323,46 @@ export default function TeamGames() {
           <div className="space-y-4 pb-20">
             {games.map((game, index) => {
               const schoolAttendance = getGameAttendanceBySchool(game.id);
+              const isClosed = game.is_closed;
+              
               return (
                 <div 
                   key={game.id} 
                   ref={el => gameRefs.current[game.id] = el}
-                  className="bg-white rounded-lg border shadow-sm scroll-mt-32"
+                  className={`bg-white rounded-lg border shadow-sm scroll-mt-32 ${isClosed ? 'opacity-75' : ''}`}
                 >
                   {/* Game header */}
                   <div className="p-4 border-b">
                     <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm text-gray-500">
-                          <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)}
-                        </p>
-                        <p className="font-semibold text-lg">vs {game.opponent}</p>
+                      <div className="flex items-start gap-2">
+                        {isClosed && (
+                          <svg className="h-5 w-5 text-gray-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                          </svg>
+                        )}
+                        <div>
+                          <p className="text-sm text-gray-500">
+                            <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)}
+                            {isClosed && <span className="ml-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Closed</span>}
+                          </p>
+                          <p className="font-semibold text-lg">vs {game.opponent}</p>
+                        </div>
                       </div>
-                      <button
-                        onClick={() => setSelectedGame(game)}
-                        className="bg-blue-600 text-white px-4 py-3 rounded-lg text-sm font-medium hover:bg-blue-700 active:bg-blue-800"
-                      >
-                        + Add Coaches
-                      </button>
+                      {isClosed ? (
+                        <button
+                          onClick={() => navigate(`/e/${eventSlug}/${teamSlug}/summary`)}
+                          className="bg-gray-500 text-white px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-600"
+                        >
+                          View Summary
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setSelectedGame(game)}
+                          className="bg-blue-600 text-white px-4 py-3 rounded-lg text-sm font-medium hover:bg-blue-700 active:bg-blue-800"
+                        >
+                          + Add Coaches
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -354,7 +374,7 @@ export default function TeamGames() {
                       </div>
                     ) : schoolAttendance.length === 0 ? (
                       <p className="text-gray-500 text-center py-4">
-                        No coaches logged yet. Tap "Add Coaches" to start.
+                        {isClosed ? 'No coaches were logged for this game.' : 'No coaches logged yet. Tap "Add Coaches" to start.'}
                       </p>
                     ) : (
                       <div className="space-y-3">
@@ -366,19 +386,28 @@ export default function TeamGames() {
                             </p>
                             <div className="flex flex-wrap gap-2">
                               {coaches.map(coach => (
-                                <span 
-                                  key={coach.attendanceId}
-                                  onClick={() => handleRemoveAttendance(
-                                    coach.attendanceId, 
-                                    `${coach.first_name} ${coach.last_name}`
-                                  )}
-                                  className="inline-flex items-center gap-1 bg-white px-3 py-1.5 rounded-full text-sm border cursor-pointer hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors"
-                                >
-                                  {coach.first_name} {coach.last_name}
-                                  <svg className="h-4 w-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                  </svg>
-                                </span>
+                                isClosed ? (
+                                  <span 
+                                    key={coach.attendanceId}
+                                    className="inline-flex items-center bg-white px-3 py-1.5 rounded-full text-sm border"
+                                  >
+                                    {coach.first_name} {coach.last_name}
+                                  </span>
+                                ) : (
+                                  <span 
+                                    key={coach.attendanceId}
+                                    onClick={() => handleRemoveAttendance(
+                                      coach.attendanceId, 
+                                      `${coach.first_name} ${coach.last_name}`
+                                    )}
+                                    className="inline-flex items-center gap-1 bg-white px-3 py-1.5 rounded-full text-sm border cursor-pointer hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-colors"
+                                  >
+                                    {coach.first_name} {coach.last_name}
+                                    <svg className="h-4 w-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                    </svg>
+                                  </span>
+                                )
                               ))}
                             </div>
                           </div>

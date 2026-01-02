@@ -151,6 +151,24 @@ export default function EventDetail({ session }) {
     if (!error) fetchData()
   }
 
+  const toggleGameClosed = async (game, eventTeamId) => {
+    const newStatus = !game.is_closed
+    const { error } = await supabase
+      .from('games')
+      .update({ is_closed: newStatus })
+      .eq('id', game.id)
+    
+    if (!error) {
+      // Update local state
+      setGames(prev => ({
+        ...prev,
+        [eventTeamId]: prev[eventTeamId].map(g => 
+          g.id === game.id ? { ...g, is_closed: newStatus } : g
+        )
+      }))
+    }
+  }
+
   const getShareableLink = (eventTeam) => {
     const baseUrl = window.location.origin
     return `${baseUrl}/e/${event.slug}/${eventTeam.slug}`
@@ -474,12 +492,33 @@ export default function EventDetail({ session }) {
                 {games[eventTeam.id]?.length > 0 ? (
                   <div className="space-y-2">
                     {games[eventTeam.id].map((game) => (
-                      <div key={game.id} className="flex justify-between items-center py-2 border-b">
-                        <span>
-                          <span className="font-medium">{formatDate(game.game_date)}</span>
-                          <span className="text-gray-600"> vs {game.opponent}</span>
+                      <div key={game.id} className={`flex justify-between items-center py-2 border-b ${game.is_closed ? 'bg-gray-50' : ''}`}>
+                        <span className="flex items-center gap-2">
+                          {game.is_closed && (
+                            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                            </svg>
+                          )}
+                          <span className={game.is_closed ? 'text-gray-500' : ''}>
+                            <span className="font-medium">{formatDate(game.game_date)}</span>
+                            <span className="text-gray-600"> vs {game.opponent}</span>
+                          </span>
+                          {game.is_closed && (
+                            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Closed</span>
+                          )}
                         </span>
-                        <div className="space-x-2">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => toggleGameClosed(game, eventTeam.id)}
+                            className={`text-sm px-2 py-1 rounded ${
+                              game.is_closed 
+                                ? 'text-green-600 hover:text-green-800 hover:bg-green-50' 
+                                : 'text-orange-600 hover:text-orange-800 hover:bg-orange-50'
+                            }`}
+                            title={game.is_closed ? 'Reopen game for parent/player editing' : 'Close game to lock parent/player editing'}
+                          >
+                            {game.is_closed ? 'Reopen' : 'Close'}
+                          </button>
                           <button
                             onClick={() => handleEditGame(game, eventTeam.id)}
                             className="text-blue-600 hover:text-blue-800 text-sm"
