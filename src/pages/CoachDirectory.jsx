@@ -48,6 +48,7 @@ export default function CoachDirectory() {
     phone: ''
   });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null); // coach id being deleted
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   // Load all data on mount
@@ -321,6 +322,38 @@ export default function CoachDirectory() {
     }
   };
 
+  const deleteCoach = async (coach) => {
+    const confirmMessage = `Delete ${coach.first_name} ${coach.last_name}?\n\nThis will also remove any attendance records for this coach.`;
+    if (!confirm(confirmMessage)) return;
+
+    setDeleting(coach.id);
+
+    try {
+      // Delete attendance records first (foreign key constraint)
+      await supabase
+        .from('attendance')
+        .delete()
+        .eq('coach_id', coach.id);
+
+      // Delete the coach
+      const { error } = await supabase
+        .from('coaches')
+        .delete()
+        .eq('id', coach.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setCoaches(prev => prev.filter(c => c.id !== coach.id));
+      setToast({ show: true, message: 'Coach deleted', type: 'success' });
+    } catch (err) {
+      console.error('Error deleting coach:', err);
+      setToast({ show: true, message: 'Error deleting: ' + err.message, type: 'error' });
+    } finally {
+      setDeleting(null);
+    }
+  };
+
   // Auto-hide toast
   useEffect(() => {
     if (toast.show) {
@@ -571,6 +604,23 @@ export default function CoachDirectory() {
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                           </svg>
                           <span className="text-xs">Edit</span>
+                        </button>
+                        <button
+                          onClick={() => deleteCoach(coach)}
+                          disabled={deleting === coach.id}
+                          className="inline-flex items-center gap-1 text-gray-400 hover:text-red-600 ml-1"
+                          title="Delete coach"
+                        >
+                          {deleting === coach.id ? (
+                            <span className="text-xs">...</span>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                              <span className="text-xs">Delete</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
