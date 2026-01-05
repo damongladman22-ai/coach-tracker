@@ -212,6 +212,72 @@ export default function CoachDirectory() {
     setShowOnlyWithEmail(false);
   };
 
+  // Export filtered coaches to CSV
+  const exportToCSV = () => {
+    // Build CSV header
+    const headers = ['School', 'City', 'State', 'Division', 'Conference', 'First Name', 'Last Name', 'Title', 'Email', 'Phone'];
+    
+    // Build CSV rows from filtered coaches
+    const rows = filteredCoaches.map(coach => {
+      const school = coach.schools;
+      return [
+        school?.school || '',
+        school?.city || '',
+        school?.state || '',
+        school?.division || '',
+        school?.conference || '',
+        coach.first_name || '',
+        coach.last_name || '',
+        coach.title || '',
+        coach.email || '',
+        coach.phone || ''
+      ];
+    });
+    
+    // Sort by school name, then last name
+    rows.sort((a, b) => {
+      const schoolCompare = a[0].localeCompare(b[0]);
+      if (schoolCompare !== 0) return schoolCompare;
+      return a[6].localeCompare(b[6]); // Last name
+    });
+    
+    // Convert to CSV string
+    const escapeCSV = (value) => {
+      if (value === null || value === undefined) return '';
+      const str = String(value);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+    
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(escapeCSV).join(','))
+    ].join('\n');
+    
+    // Create and trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    
+    // Generate filename with filter info
+    let filename = 'coach-directory';
+    if (divisionFilter) filename += `-${divisionFilter.replace(/\s+/g, '')}`;
+    if (stateFilter) filename += `-${stateFilter.replace(/\s+/g, '')}`;
+    if (conferenceFilter) filename += `-${conferenceFilter.replace(/\s+/g, '-').substring(0, 20)}`;
+    filename += '.csv';
+    
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    setToast({ show: true, message: `Exported ${filteredCoaches.length} coaches`, type: 'success' });
+  };
+
   // Open edit modal for a coach
   const openEditCoach = (coach) => {
     setEditingCoach(coach);
@@ -501,12 +567,26 @@ export default function CoachDirectory() {
         </div>
 
         {/* Stats Bar */}
-        <div className="flex flex-wrap items-center gap-4 mb-4 text-sm text-gray-600">
-          <span>{stats.totalSchools} schools</span>
-          <span>•</span>
-          <span>{stats.totalCoaches} coaches</span>
-          <span>•</span>
-          <span>{stats.withEmail} with email</span>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+            <span>{stats.totalSchools} schools</span>
+            <span>•</span>
+            <span>{stats.totalCoaches} coaches</span>
+            <span>•</span>
+            <span>{stats.withEmail} with email</span>
+          </div>
+          
+          {filteredCoaches.length > 0 && (
+            <button
+              onClick={exportToCSV}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              Export CSV
+            </button>
+          )}
         </div>
 
         {/* Results */}
