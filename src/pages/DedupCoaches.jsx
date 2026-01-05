@@ -146,8 +146,10 @@ export default function DedupCoaches({ session }) {
     }
 
     // Last name must match or be very similar for fuzzy
+    // Allow more distance for longer names (e.g., "Waldron" vs "Waldrum")
+    const maxLastNameDistance = lastName1.length >= 6 || lastName2.length >= 6 ? 2 : 1
     const lastNameMatch = lastName1 === lastName2 || 
-      levenshtein(lastName1, lastName2) <= 1
+      levenshtein(lastName1, lastName2) <= maxLastNameDistance
 
     if (!lastNameMatch) return null
 
@@ -183,6 +185,7 @@ export default function DedupCoaches({ session }) {
     // Close matches
     if (levenshtein(firstName1, firstName2) === 1) score += 30
     if (levenshtein(lastName1, lastName2) === 1) score += 30
+    if (levenshtein(lastName1, lastName2) === 2) score += 20
 
     // Initial matches
     if (firstName1[0] === firstName2[0]) score += 10
