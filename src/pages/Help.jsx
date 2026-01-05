@@ -93,6 +93,19 @@ You can also add or update contact info if you have a coach's business card!`
 This is great for follow-up emails after the tournament.`
     },
     {
+      id: 'p6b',
+      question: 'How do I email coaches from the Summary?',
+      answer: `Each school card in the Summary view has an "Email Coaches" button:
+
+• If coaches have email addresses, you'll see them listed with a ✓
+• Click the button to open your email app with all coaches as recipients
+• The subject line is pre-filled with the event name
+
+**Adding missing emails:** If a coach doesn't have an email, you'll see an input field. Enter their email and click "Save" - it will be stored in the directory for everyone to use!
+
+The button shows how many coaches can be emailed (e.g., "Email 2 of 3 Coaches").`
+    },
+    {
       id: 'p7',
       question: 'Multiple people are logging at the same time - is that okay?',
       answer: `Absolutely! The app is designed for this. Multiple parents and players can add coaches simultaneously without conflicts.

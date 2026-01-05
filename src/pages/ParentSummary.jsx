@@ -9,12 +9,283 @@ import {
 import OPLogo from '../components/OPLogo';
 
 /**
+ * SchoolCoachEmailCard - Displays coaches from a school with email functionality
+ * 
+ * Features:
+ * - Shows coach emails inline
+ * - Allows adding missing emails
+ * - "Email All" button to compose email to all coaches
+ */
+function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showToast }) {
+  const [editingEmails, setEditingEmails] = useState({}); // coachId -> email input value
+  const [savingEmail, setSavingEmail] = useState(null); // coachId being saved
+
+  // Get unique coaches (by id) to avoid duplicates
+  const uniqueCoaches = React.useMemo(() => {
+    const seen = new Set();
+    return coaches.filter(c => {
+      if (seen.has(c.id)) return false;
+      seen.add(c.id);
+      return true;
+    });
+  }, [coaches]);
+
+  const coachesWithEmail = uniqueCoaches.filter(c => c.email);
+  const coachesWithoutEmail = uniqueCoaches.filter(c => !c.email);
+
+  const handleSaveEmail = async (coach) => {
+    const email = editingEmails[coach.id]?.trim();
+    if (!email) return;
+
+    // Basic email validation
+    if (!email.includes('@') || !email.includes('.')) {
+      showToast('Please enter a valid email address', 'error');
+      return;
+    }
+
+    setSavingEmail(coach.id);
+    
+    const { error } = await supabase
+      .from('coaches')
+      .update({ email })
+      .eq('id', coach.id);
+
+    if (error) {
+      showToast('Failed to save email', 'error');
+    } else {
+      showToast(`Email saved for ${coach.first_name} ${coach.last_name}`, 'success');
+      setEditingEmails(prev => {
+        const next = { ...prev };
+        delete next[coach.id];
+        return next;
+      });
+      // Notify parent to refresh data
+      if (onEmailSaved) onEmailSaved(coach.id, email);
+    }
+    
+    setSavingEmail(null);
+  };
+
+  const handleEmailAll = () => {
+    if (coachesWithEmail.length === 0) {
+      showToast('No coaches have email addresses', 'error');
+      return;
+    }
+
+    const emails = coachesWithEmail.map(c => c.email).join(',');
+    const subject = encodeURIComponent(`Following up from ${eventName}`);
+    window.location.href = `mailto:${emails}?subject=${subject}`;
+  };
+
+  return (
+    <div className="border-l-4 border-blue-400 pl-3 py-2">
+      <div className="flex justify-between items-start mb-2">
+        <div>
+          <div className="font-medium text-gray-900">{school.school}</div>
+          <div className="text-xs text-gray-500">
+            {school.division} • {school.conference || 'Independent'} • {school.state}
+          </div>
+        </div>
+      </div>
+      
+      {/* Coach list with emails */}
+      <div className="space-y-2 mb-3">
+        {uniqueCoaches.map(coach => (
+          <div key={coach.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-gray-700">
+              {coach.first_name} {coach.last_name}
+              {coach.title && <span className="text-gray-400 text-xs ml-1">({coach.title})</span>}
+            </span>
+            
+            {coach.email ? (
+              <span className="flex items-center gap-1">
+                <a
+                  href={`mailto:${coach.email}`}
+                  className="text-blue-600 hover:text-blue-800 text-xs"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {coach.email}
+                </a>
+                <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+            ) : (
+              <div className="flex items-center gap-1">
+                <input
+                  type="email"
+                  placeholder="Add email..."
+                  value={editingEmails[coach.id] || ''}
+                  onChange={(e) => setEditingEmails(prev => ({ ...prev, [coach.id]: e.target.value }))}
+                  className="text-xs border rounded px-2 py-1 w-40"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveEmail(coach)}
+                />
+                <button
+                  onClick={() => handleSaveEmail(coach)}
+                  disabled={!editingEmails[coach.id]?.trim() || savingEmail === coach.id}
+                  className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingEmail === coach.id ? '...' : 'Save'}
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      
+      {/* Email All button */}
+      <button
+        onClick={handleEmailAll}
+        disabled={coachesWithEmail.length === 0}
+        className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded transition-colors ${
+          coachesWithEmail.length === 0
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+        }`}
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        {coachesWithEmail.length === 0 
+          ? 'No emails available'
+          : coachesWithEmail.length === uniqueCoaches.length
+            ? `Email All ${uniqueCoaches.length} Coach${uniqueCoaches.length !== 1 ? 'es' : ''}`
+            : `Email ${coachesWithEmail.length} of ${uniqueCoaches.length} Coaches`
+        }
+      </button>
+    </div>
+  );
+}
+
+/**
+ * CollegeCentricEmailSection - Email section for college-centric view
+ * Shows coaches with emails and allows adding missing ones
+ */
+function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToast }) {
+  const [editingEmails, setEditingEmails] = useState({});
+  const [savingEmail, setSavingEmail] = useState(null);
+
+  const coachesWithEmail = coaches.filter(c => c.email);
+
+  const handleSaveEmail = async (coach) => {
+    const email = editingEmails[coach.id]?.trim();
+    if (!email) return;
+
+    if (!email.includes('@') || !email.includes('.')) {
+      showToast('Please enter a valid email address', 'error');
+      return;
+    }
+
+    setSavingEmail(coach.id);
+    
+    const { error } = await supabase
+      .from('coaches')
+      .update({ email })
+      .eq('id', coach.id);
+
+    if (error) {
+      showToast('Failed to save email', 'error');
+    } else {
+      showToast(`Email saved for ${coach.first_name} ${coach.last_name}`, 'success');
+      setEditingEmails(prev => {
+        const next = { ...prev };
+        delete next[coach.id];
+        return next;
+      });
+      if (onEmailSaved) onEmailSaved(coach.id, email);
+    }
+    
+    setSavingEmail(null);
+  };
+
+  const handleEmailAll = () => {
+    if (coachesWithEmail.length === 0) {
+      showToast('No coaches have email addresses', 'error');
+      return;
+    }
+
+    const emails = coachesWithEmail.map(c => c.email).join(',');
+    const subject = encodeURIComponent(`Following up from ${eventName}`);
+    window.location.href = `mailto:${emails}?subject=${subject}`;
+  };
+
+  return (
+    <div>
+      <div className="text-xs text-gray-500 font-medium mb-2">Contact Coaches:</div>
+      <div className="space-y-2 mb-3">
+        {coaches.map(coach => (
+          <div key={coach.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="text-gray-700">
+              {coach.first_name} {coach.last_name}
+              {coach.title && <span className="text-gray-400 text-xs ml-1">({coach.title})</span>}
+            </span>
+            
+            {coach.email ? (
+              <span className="flex items-center gap-1">
+                <a
+                  href={`mailto:${coach.email}`}
+                  className="text-blue-600 hover:text-blue-800 text-xs"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {coach.email}
+                </a>
+                <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+            ) : (
+              <div className="flex items-center gap-1">
+                <input
+                  type="email"
+                  placeholder="Add email..."
+                  value={editingEmails[coach.id] || ''}
+                  onChange={(e) => setEditingEmails(prev => ({ ...prev, [coach.id]: e.target.value }))}
+                  className="text-xs border rounded px-2 py-1 w-40"
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveEmail(coach)}
+                />
+                <button
+                  onClick={() => handleSaveEmail(coach)}
+                  disabled={!editingEmails[coach.id]?.trim() || savingEmail === coach.id}
+                  className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingEmail === coach.id ? '...' : 'Save'}
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      
+      <button
+        onClick={handleEmailAll}
+        disabled={coachesWithEmail.length === 0}
+        className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded transition-colors ${
+          coachesWithEmail.length === 0
+            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+        }`}
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+        {coachesWithEmail.length === 0 
+          ? 'No emails available'
+          : coachesWithEmail.length === coaches.length
+            ? `Email All ${coaches.length} Coach${coaches.length !== 1 ? 'es' : ''}`
+            : `Email ${coachesWithEmail.length} of ${coaches.length} Coaches`
+        }
+      </button>
+    </div>
+  );
+}
+
+/**
  * Parent Summary Page - Read-only view of event attendance
  * 
  * Features:
  * - Game-centric and College-centric views
  * - CSV export
- * - No editing capabilities
+ * - Email coaches directly from summary
  */
 export default function ParentSummary() {
   const { eventSlug, teamSlug } = useParams();
@@ -37,6 +308,19 @@ export default function ParentSummary() {
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ show: true, message, type });
+  }, []);
+
+  // Handle email saved - update local attendance state
+  const handleEmailSaved = useCallback((coachId, email) => {
+    setAttendance(prev => prev.map(a => {
+      if (a.coaches?.id === coachId) {
+        return {
+          ...a,
+          coaches: { ...a.coaches, email }
+        };
+      }
+      return a;
+    }));
   }, []);
 
   // Load page data
@@ -446,33 +730,16 @@ export default function ParentSummary() {
                     {schoolAttendance.length === 0 ? (
                       <p className="text-gray-500 text-sm italic">No coaches logged</p>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {schoolAttendance.map(({ school, coaches }) => (
-                          <div key={school.id} className="border-l-4 border-blue-400 pl-3">
-                            <div className="font-medium text-gray-900">{school.school}</div>
-                            <div className="text-xs text-gray-500 mb-1">
-                              {school.division} • {school.conference || 'Independent'} • {school.state}
-                            </div>
-                            <div className="text-sm space-y-0.5">
-                              {coaches.map(c => (
-                                <div key={c.id} className="flex flex-wrap items-center gap-x-2">
-                                  <span className="text-gray-700">
-                                    {c.first_name} {c.last_name}
-                                    {c.title && <span className="text-gray-400 text-xs ml-1">({c.title})</span>}
-                                  </span>
-                                  {c.email && (
-                                    <a
-                                      href={`mailto:${c.email}`}
-                                      className="text-blue-600 hover:text-blue-800 text-xs"
-                                      onClick={e => e.stopPropagation()}
-                                    >
-                                      {c.email}
-                                    </a>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
+                          <SchoolCoachEmailCard
+                            key={school.id}
+                            school={school}
+                            coaches={coaches}
+                            eventName={eventTeam?.events?.event_name || 'Event'}
+                            onEmailSaved={handleEmailSaved}
+                            showToast={showToast}
+                          />
                         ))}
                       </div>
                     )}
@@ -484,53 +751,68 @@ export default function ParentSummary() {
         ) : (
           /* College-Centric View */
           <div className="space-y-4">
-            {getAttendanceBySchool().map(({ school, gameCoaches }) => (
-              <div key={school.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-                <div className="bg-gray-50 px-4 py-3 border-b">
-                  <div className="font-semibold text-gray-900">{school.school}</div>
-                  <div className="text-xs text-gray-500">
-                    {school.division} • {school.conference || 'Independent'} • {school.state}
+            {getAttendanceBySchool().map(({ school, gameCoaches }) => {
+              // Collect all unique coaches from this school across all games
+              const allCoaches = [];
+              const seenIds = new Set();
+              Object.values(gameCoaches).flat().forEach(c => {
+                if (!seenIds.has(c.id)) {
+                  seenIds.add(c.id);
+                  allCoaches.push(c);
+                }
+              });
+              const coachesWithEmail = allCoaches.filter(c => c.email);
+              
+              return (
+                <div key={school.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+                  <div className="bg-gray-50 px-4 py-3 border-b">
+                    <div className="font-semibold text-gray-900">{school.school}</div>
+                    <div className="text-xs text-gray-500">
+                      {school.division} • {school.conference || 'Independent'} • {school.state}
+                    </div>
                   </div>
-                </div>
-                <div className="p-4">
-                  <div className="space-y-2">
-                    {games.map((game, index) => {
-                      const coaches = gameCoaches[game.id] || [];
-                      if (coaches.length === 0) return null;
-                      return (
-                        <div key={game.id} className="flex items-start gap-3 text-sm">
-                          <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded shrink-0">
-                            Game {index + 1}
-                          </span>
-                          <div>
-                            <span className="text-gray-500">
-                              {formatDateShort(game.game_date)} vs {game.opponent}:
+                  <div className="p-4">
+                    {/* Game-by-game breakdown */}
+                    <div className="space-y-2 mb-4">
+                      {games.map((game, index) => {
+                        const coaches = gameCoaches[game.id] || [];
+                        if (coaches.length === 0) return null;
+                        return (
+                          <div key={game.id} className="flex items-start gap-3 text-sm">
+                            <span className="bg-gray-100 text-gray-700 text-xs font-medium px-2 py-0.5 rounded shrink-0">
+                              Game {index + 1}
                             </span>
-                            <div className="text-gray-900 mt-0.5">
-                              {coaches.map((c, i) => (
-                                <span key={c.id}>
-                                  {i > 0 && ', '}
-                                  <span>{c.first_name} {c.last_name}</span>
-                                  {c.email && (
-                                    <a
-                                      href={`mailto:${c.email}`}
-                                      className="text-blue-600 hover:text-blue-800 text-xs ml-1"
-                                      onClick={e => e.stopPropagation()}
-                                    >
-                                      ({c.email})
-                                    </a>
-                                  )}
-                                </span>
-                              ))}
+                            <div>
+                              <span className="text-gray-500">
+                                {formatDateShort(game.game_date)} vs {game.opponent}:
+                              </span>
+                              <div className="text-gray-900 mt-0.5">
+                                {coaches.map((c, i) => (
+                                  <span key={c.id}>
+                                    {i > 0 && ', '}
+                                    {c.first_name} {c.last_name}
+                                  </span>
+                                ))}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
+                    
+                    {/* Email section */}
+                    <div className="border-t pt-3">
+                      <CollegeCentricEmailSection
+                        coaches={allCoaches}
+                        eventName={eventTeam?.events?.event_name || 'Event'}
+                        onEmailSaved={handleEmailSaved}
+                        showToast={showToast}
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
