@@ -12,11 +12,11 @@ import OPLogo from '../components/OPLogo';
  * SchoolCoachEmailCard - Displays coaches from a school with email functionality
  * 
  * Features:
- * - Shows coach emails inline
- * - Allows adding missing emails
- * - "Email All" button to compose email to all coaches
+ * - Shows coach emails inline (when enabled)
+ * - Allows adding missing emails (when enabled)
+ * - "Email All" button to compose email to all coaches (when enabled)
  */
-function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showToast }) {
+function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showToast, emailEnabled = true }) {
   const [editingEmails, setEditingEmails] = useState({}); // coachId -> email input value
   const [savingEmail, setSavingEmail] = useState(null); // coachId being saved
 
@@ -88,7 +88,7 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
         </div>
       </div>
       
-      {/* Coach list with emails */}
+      {/* Coach list */}
       <div className="space-y-2 mb-3">
         {uniqueCoaches.map(coach => (
           <div key={coach.id} className="flex flex-wrap items-center gap-2 text-sm">
@@ -97,71 +97,76 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
               {coach.title && <span className="text-gray-400 text-xs ml-1">({coach.title})</span>}
             </span>
             
-            {coach.email ? (
-              <span className="flex items-center gap-1">
-                <a
-                  href={`mailto:${coach.email}`}
-                  className="text-blue-600 hover:text-blue-800 text-xs"
-                  onClick={e => e.stopPropagation()}
-                >
-                  {coach.email}
-                </a>
-                <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </span>
-            ) : (
-              <div className="flex items-center gap-1">
-                <input
-                  type="email"
-                  placeholder="Add email..."
-                  value={editingEmails[coach.id] || ''}
-                  onChange={(e) => setEditingEmails(prev => ({ ...prev, [coach.id]: e.target.value }))}
-                  className="text-xs border rounded px-2 py-1 w-40"
-                  onKeyDown={(e) => e.key === 'Enter' && handleSaveEmail(coach)}
-                />
-                <button
-                  onClick={() => handleSaveEmail(coach)}
-                  disabled={!editingEmails[coach.id]?.trim() || savingEmail === coach.id}
-                  className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {savingEmail === coach.id ? '...' : 'Save'}
-                </button>
-              </div>
-            )}
+            {emailEnabled ? (
+              // Email functionality enabled
+              coach.email ? (
+                <span className="flex items-center gap-1">
+                  <a
+                    href={`mailto:${coach.email}`}
+                    className="text-blue-600 hover:text-blue-800 text-xs"
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {coach.email}
+                  </a>
+                  <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <input
+                    type="email"
+                    placeholder="Add email..."
+                    value={editingEmails[coach.id] || ''}
+                    onChange={(e) => setEditingEmails(prev => ({ ...prev, [coach.id]: e.target.value }))}
+                    className="text-xs border rounded px-2 py-1 w-40"
+                    onKeyDown={(e) => e.key === 'Enter' && handleSaveEmail(coach)}
+                  />
+                  <button
+                    onClick={() => handleSaveEmail(coach)}
+                    disabled={!editingEmails[coach.id]?.trim() || savingEmail === coach.id}
+                    className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingEmail === coach.id ? '...' : 'Save'}
+                  </button>
+                </div>
+              )
+            ) : null /* Email functionality disabled - show nothing */}
           </div>
         ))}
       </div>
       
-      {/* Email All button */}
-      <button
-        onClick={handleEmailAll}
-        disabled={coachesWithEmail.length === 0}
-        className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded transition-colors ${
-          coachesWithEmail.length === 0
-            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-            : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-        }`}
-      >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-        </svg>
-        {coachesWithEmail.length === 0 
-          ? 'No emails available'
-          : coachesWithEmail.length === uniqueCoaches.length
-            ? `Email All ${uniqueCoaches.length} Coach${uniqueCoaches.length !== 1 ? 'es' : ''}`
-            : `Email ${coachesWithEmail.length} of ${uniqueCoaches.length} Coaches`
-        }
-      </button>
+      {/* Email All button - only show when enabled */}
+      {emailEnabled && (
+        <button
+          onClick={handleEmailAll}
+          disabled={coachesWithEmail.length === 0}
+          className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded transition-colors ${
+            coachesWithEmail.length === 0
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+          }`}
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+          </svg>
+          {coachesWithEmail.length === 0 
+            ? 'No emails available'
+            : coachesWithEmail.length === uniqueCoaches.length
+              ? `Email All ${uniqueCoaches.length} Coach${uniqueCoaches.length !== 1 ? 'es' : ''}`
+              : `Email ${coachesWithEmail.length} of ${uniqueCoaches.length} Coaches`
+          }
+        </button>
+      )}
     </div>
   );
 }
 
 /**
  * CollegeCentricEmailSection - Email section for college-centric view
- * Shows coaches with emails and allows adding missing ones
+ * Shows coaches with emails and allows adding missing ones (when enabled)
  */
-function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToast }) {
+function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToast, emailEnabled = true }) {
   const [editingEmails, setEditingEmails] = useState({});
   const [savingEmail, setSavingEmail] = useState(null);
 
@@ -208,6 +213,11 @@ function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToas
     const subject = encodeURIComponent(`Following up from ${eventName}`);
     window.location.href = `mailto:${emails}?subject=${subject}`;
   };
+
+  // If email is disabled, don't show this section at all
+  if (!emailEnabled) {
+    return null;
+  }
 
   return (
     <div>
@@ -297,6 +307,9 @@ export default function ParentSummary() {
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(null);
   
+  // Settings
+  const [emailEnabled, setEmailEnabled] = useState(true);
+  
   // View toggle
   const [viewMode, setViewMode] = useState('games'); // 'games' or 'colleges'
   
@@ -321,6 +334,22 @@ export default function ParentSummary() {
       }
       return a;
     }));
+  }, []);
+
+  // Load settings
+  useEffect(() => {
+    async function loadSettings() {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'summary_email_enabled')
+        .single();
+      
+      if (data) {
+        setEmailEnabled(data.value === 'true');
+      }
+    }
+    loadSettings();
   }, []);
 
   // Load page data
@@ -739,6 +768,7 @@ export default function ParentSummary() {
                             eventName={eventTeam?.events?.event_name || 'Event'}
                             onEmailSaved={handleEmailSaved}
                             showToast={showToast}
+                            emailEnabled={emailEnabled}
                           />
                         ))}
                       </div>
@@ -807,6 +837,7 @@ export default function ParentSummary() {
                         eventName={eventTeam?.events?.event_name || 'Event'}
                         onEmailSaved={handleEmailSaved}
                         showToast={showToast}
+                        emailEnabled={emailEnabled}
                       />
                     </div>
                   </div>

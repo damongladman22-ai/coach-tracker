@@ -26,6 +26,9 @@ export default function CoachDirectory() {
   const [conferences, setConferences] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  // Settings
+  const [emailLinksEnabled, setEmailLinksEnabled] = useState(true);
+  
   // Search/Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
@@ -57,6 +60,17 @@ export default function CoachDirectory() {
       setLoading(true);
       
       try {
+        // Load email setting
+        const { data: settingData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'directory_email_enabled')
+          .single();
+        
+        if (settingData) {
+          setEmailLinksEnabled(settingData.value === 'true');
+        }
+
         // Fetch all coaches with school info
         let allCoaches = [];
         let from = 0;
@@ -649,16 +663,26 @@ export default function CoachDirectory() {
                       
                       <div className="flex flex-wrap items-center gap-3 text-sm">
                         {coach.email && (
-                          <a
-                            href={`mailto:${coach.email}`}
-                            className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
-                          >
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                            </svg>
-                            <span className="hidden sm:inline">{coach.email}</span>
-                            <span className="sm:hidden">Email</span>
-                          </a>
+                          emailLinksEnabled ? (
+                            <a
+                              href={`mailto:${coach.email}`}
+                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                            >
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                              </svg>
+                              <span className="hidden sm:inline">{coach.email}</span>
+                              <span className="sm:hidden">Email</span>
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-gray-600">
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                              </svg>
+                              <span className="hidden sm:inline">{coach.email}</span>
+                              <span className="sm:hidden">Email</span>
+                            </span>
+                          )
                         )}
                         {coach.phone && (
                           <a

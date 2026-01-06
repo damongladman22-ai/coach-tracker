@@ -1,10 +1,55 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 
 export default function AdminDashboard({ session }) {
   const [copied, setCopied] = useState(false)
+  const [settings, setSettings] = useState({
+    summary_email_enabled: true,
+    directory_email_enabled: true
+  })
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsToast, setSettingsToast] = useState({ show: false, message: '' })
+
+  // Load settings on mount
+  useEffect(() => {
+    async function loadSettings() {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('key, value')
+      
+      if (data && data.length > 0) {
+        const settingsObj = {}
+        data.forEach(row => {
+          settingsObj[row.key] = row.value === 'true'
+        })
+        setSettings(prev => ({ ...prev, ...settingsObj }))
+      }
+    }
+    loadSettings()
+  }, [])
+
+  // Save a setting
+  const updateSetting = async (key, value) => {
+    setSavingSettings(true)
+    
+    // Upsert the setting
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({ key, value: String(value) }, { onConflict: 'key' })
+    
+    if (error) {
+      console.error('Error saving setting:', error)
+      setSettingsToast({ show: true, message: 'Failed to save setting' })
+    } else {
+      setSettings(prev => ({ ...prev, [key]: value }))
+      setSettingsToast({ show: true, message: 'Setting saved!' })
+    }
+    
+    setSavingSettings(false)
+    setTimeout(() => setSettingsToast({ show: false, message: '' }), 2000)
+  }
 
   const getClubLink = () => {
     return `${window.location.origin}/home`
@@ -124,6 +169,72 @@ export default function AdminDashboard({ session }) {
       {/* Settings Section */}
       <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Settings & Help</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {/* Email Settings Card */}
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-yellow-100 rounded-lg">
+              <svg className="h-6 w-6 text-yellow-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800">Email Settings</h2>
+          </div>
+          <p className="text-gray-600 text-sm mb-4">Control whether users can send emails to coaches from the app.</p>
+          
+          <div className="space-y-4">
+            {/* Summary Email Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-gray-700">Summary Page Emails</div>
+                <div className="text-xs text-gray-500">Email buttons and addresses in attendance summary</div>
+              </div>
+              <button
+                onClick={() => updateSetting('summary_email_enabled', !settings.summary_email_enabled)}
+                disabled={savingSettings}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.summary_email_enabled ? 'bg-blue-600' : 'bg-gray-300'
+                } ${savingSettings ? 'opacity-50' : ''}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.summary_email_enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+            
+            {/* Directory Email Toggle */}
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-gray-700">Directory Email Links</div>
+                <div className="text-xs text-gray-500">Clickable email links in coach directory</div>
+              </div>
+              <button
+                onClick={() => updateSetting('directory_email_enabled', !settings.directory_email_enabled)}
+                disabled={savingSettings}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  settings.directory_email_enabled ? 'bg-blue-600' : 'bg-gray-300'
+                } ${savingSettings ? 'opacity-50' : ''}`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    settings.directory_email_enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+          
+          {settingsToast.show && (
+            <div className="mt-3 text-sm text-green-600 flex items-center gap-1">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {settingsToast.message}
+            </div>
+          )}
+        </div>
+
         <Link
           to="/admin/admins"
           className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
