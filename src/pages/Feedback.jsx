@@ -90,8 +90,6 @@ export default function Feedback({ session }) {
     switch (type) {
       case 'suggestion': return '💡';
       case 'bug': return '🐛';
-      case 'question': return '❓';
-      case 'compliment': return '⭐';
       default: return '📝';
     }
   };
@@ -126,8 +124,7 @@ export default function Feedback({ session }) {
     total: feedback.length,
     unread: feedback.filter(f => !f.is_read).length,
     suggestions: feedback.filter(f => f.type === 'suggestion').length,
-    bugs: feedback.filter(f => f.type === 'bug').length,
-    questions: feedback.filter(f => f.type === 'question').length
+    bugs: feedback.filter(f => f.type === 'bug').length
   };
 
   return (
@@ -136,7 +133,7 @@ export default function Feedback({ session }) {
         <h1 className="text-2xl font-bold mb-6">Feedback</h1>
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-gray-900">{stats.total}</div>
             <div className="text-sm text-gray-500">Total</div>
@@ -152,10 +149,6 @@ export default function Feedback({ session }) {
           <div className="bg-white rounded-lg shadow p-4">
             <div className="text-2xl font-bold text-red-600">{stats.bugs}</div>
             <div className="text-sm text-gray-500">🐛 Bugs</div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-4">
-            <div className="text-2xl font-bold text-purple-600">{stats.questions}</div>
-            <div className="text-sm text-gray-500">❓ Questions</div>
           </div>
         </div>
 
@@ -184,9 +177,6 @@ export default function Feedback({ session }) {
                 <option value="all">All Types</option>
                 <option value="suggestion">💡 Suggestions</option>
                 <option value="bug">🐛 Bugs</option>
-                <option value="question">❓ Questions</option>
-                <option value="compliment">⭐ Compliments</option>
-                <option value="other">📝 Other</option>
               </select>
             </div>
             <div className="flex items-end">

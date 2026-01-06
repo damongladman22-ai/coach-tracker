@@ -137,9 +137,7 @@ You can still view the attendance and access the Summary page - you just can't a
       answer: `Look for the blue "Feedback" button in the bottom-left corner of any page. Tap it to open a quick form where you can:
 
 • **Suggest improvements** - Ideas to make the app better
-• **Report bugs** - Something not working right?
-• **Ask questions** - Need help with something?
-• **Give compliments** - Let us know what you love!
+• **Report a bug** - Something not working right?
 
 Your feedback goes directly to the club admins.`
     }

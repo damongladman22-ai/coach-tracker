@@ -148,10 +148,7 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     >
                       <option value="suggestion">💡 Suggestion</option>
-                      <option value="bug">🐛 Bug Report</option>
-                      <option value="question">❓ Question</option>
-                      <option value="compliment">⭐ Compliment</option>
-                      <option value="other">📝 Other</option>
+                      <option value="bug">🐛 Report a Bug</option>
                     </select>
                   </div>
 
