@@ -152,9 +152,11 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
           </svg>
           {coachesWithEmail.length === 0 
             ? 'No emails available'
-            : coachesWithEmail.length === uniqueCoaches.length
-              ? `Email All ${uniqueCoaches.length} Coach${uniqueCoaches.length !== 1 ? 'es' : ''}`
-              : `Email ${coachesWithEmail.length} of ${uniqueCoaches.length} Coaches`
+            : coachesWithEmail.length === 1
+              ? 'Email Coach'
+              : coachesWithEmail.length === uniqueCoaches.length
+                ? `Email ${uniqueCoaches.length} Coaches`
+                : `Email ${coachesWithEmail.length} of ${uniqueCoaches.length} Coaches`
           }
         </button>
       )}
@@ -280,9 +282,11 @@ function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToas
         </svg>
         {coachesWithEmail.length === 0 
           ? 'No emails available'
-          : coachesWithEmail.length === coaches.length
-            ? `Email All ${coaches.length} Coach${coaches.length !== 1 ? 'es' : ''}`
-            : `Email ${coachesWithEmail.length} of ${coaches.length} Coaches`
+          : coachesWithEmail.length === 1
+            ? 'Email Coach'
+            : coachesWithEmail.length === coaches.length
+              ? `Email ${coaches.length} Coaches`
+              : `Email ${coachesWithEmail.length} of ${coaches.length} Coaches`
         }
       </button>
     </div>
