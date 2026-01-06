@@ -308,7 +308,7 @@ export default function ParentSummary() {
   const [emailEnabled, setEmailEnabled] = useState(true);
   
   // View toggle
-  const [viewMode, setViewMode] = useState('games'); // 'games' or 'colleges'
+  const [viewMode, setViewMode] = useState('colleges'); // 'games' or 'colleges'
   
   // Export state
   const [exporting, setExporting] = useState(false);
