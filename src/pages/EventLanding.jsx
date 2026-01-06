@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { PageLoader, ErrorMessage } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
+import FeedbackButton from '../components/FeedbackButton';
 
 /**
  * Public Event Landing Page
@@ -307,6 +308,9 @@ export default function EventLanding() {
           </div>
         )}
       </div>
+
+      {/* Feedback Button */}
+      <FeedbackButton />
     </div>
   );
 }

@@ -18,6 +18,7 @@ export default function AdminLayout({ session, title, children }) {
     { to: '/admin/events', label: 'Events' },
     { to: '/admin/schools', label: 'Schools' },
     { to: '/directory?context=admin', label: 'Directory' },
+    { to: '/admin/feedback', label: 'Feedback' },
     { to: '/admin/admins', label: 'Admins' },
     { to: '/help?context=admin', label: 'Help' },
   ]
@@ -46,6 +47,9 @@ export default function AdminLayout({ session, title, children }) {
               </Link>
               <Link to="/directory?context=admin" className="text-gray-300 hover:text-white transition-colors">
                 Directory
+              </Link>
+              <Link to="/admin/feedback" className="text-gray-300 hover:text-white transition-colors">
+                Feedback
               </Link>
               <Link to="/help?context=admin" className="text-gray-300 hover:text-white transition-colors">
                 Help

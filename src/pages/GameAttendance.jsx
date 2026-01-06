@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import FeedbackButton from '../components/FeedbackButton'
 
 export default function GameAttendance() {
   const { eventSlug, teamSlug, gameId } = useParams()
@@ -438,6 +439,9 @@ export default function GameAttendance() {
           </div>
         </div>
       )}
+
+      {/* Feedback Button */}
+      <FeedbackButton />
     </div>
   )
 }

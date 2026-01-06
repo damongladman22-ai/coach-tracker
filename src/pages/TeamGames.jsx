@@ -14,6 +14,7 @@ import {
   CardSkeleton 
 } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
+import FeedbackButton from '../components/FeedbackButton';
 
 /**
  * Mobile-Optimized Parent Team Page
@@ -542,6 +543,9 @@ export default function TeamGames() {
         type={toast.type}
         onClose={() => setToast(t => ({ ...t, show: false }))}
       />
+
+      {/* Feedback Button - offset to clear bottom nav when visible */}
+      <FeedbackButton offset={viewMode === 'games' && games.length > 1 && !selectedGame ? 70 : 0} />
     </div>
   );
 }

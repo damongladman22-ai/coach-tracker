@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import OPLogo from '../components/OPLogo';
+import FeedbackButton from '../components/FeedbackButton';
 
 // US States for filter dropdown
 const US_STATES = [
@@ -876,6 +877,9 @@ export default function CoachDirectory() {
           {toast.message}
         </div>
       )}
+
+      {/* Feedback Button */}
+      <FeedbackButton />
     </div>
   );
 }

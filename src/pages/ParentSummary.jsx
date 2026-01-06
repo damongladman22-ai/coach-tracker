@@ -7,6 +7,7 @@ import {
   Toast
 } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
+import FeedbackButton from '../components/FeedbackButton';
 
 /**
  * SchoolCoachEmailCard - Displays coaches from a school with email functionality
@@ -851,6 +852,9 @@ export default function ParentSummary() {
         type={toast.type}
         onClose={() => setToast(t => ({ ...t, show: false }))}
       />
+
+      {/* Feedback Button */}
+      <FeedbackButton />
     </div>
   );
 }

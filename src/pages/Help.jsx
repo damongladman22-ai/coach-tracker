@@ -130,6 +130,18 @@ This typically happens after:
 • The admin wants to prevent accidental changes
 
 You can still view the attendance and access the Summary page - you just can't add or remove coaches. If you think something needs to be changed, contact your club admin.`
+    },
+    {
+      id: 'p10',
+      question: 'How do I send feedback or report a problem?',
+      answer: `Look for the blue "Feedback" button in the bottom-left corner of any page. Tap it to open a quick form where you can:
+
+• **Suggest improvements** - Ideas to make the app better
+• **Report bugs** - Something not working right?
+• **Ask questions** - Need help with something?
+• **Give compliments** - Let us know what you love!
+
+Your feedback goes directly to the club admins. You can optionally leave your name and email if you'd like a response.`
     }
   ]
 
@@ -293,6 +305,25 @@ The export includes:
 • When OFF: Emails are displayed as plain text (visible but not clickable)
 
 Both settings are enabled by default. Changes take effect immediately for all users.`
+    },
+    {
+      id: 'a12',
+      question: 'How do I view feedback from parents and players?',
+      answer: `Go to Admin Dashboard → Feedback (or click "Feedback" in the navigation).
+
+The Feedback page shows:
+• **Stats cards** - Total submissions, unread count, breakdown by type
+• **Filter options** - Filter by read/unread status or feedback type
+• **List view** - All feedback with preview text and timestamp
+• **Detail panel** - Full message, contact info, and page context
+
+**Managing feedback:**
+• Click any item to view details (automatically marks as read)
+• "Mark Unread" to flag for follow-up
+• "Reply via Email" if they provided contact info
+• "Delete" to remove feedback you've addressed
+
+Parents and players see a blue "Feedback" button in the bottom corner of every page.`
     }
   ]
 

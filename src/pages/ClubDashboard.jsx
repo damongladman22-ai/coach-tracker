@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { PageLoader, ErrorMessage } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
+import FeedbackButton from '../components/FeedbackButton';
 
 /**
  * Public Club Dashboard - Landing page for parents
@@ -395,6 +396,9 @@ function EventCard({ event, teams, formatDateRange, isActive = false, isPast = f
           </div>
         </div>
       )}
+
+      {/* Feedback Button */}
+      <FeedbackButton />
     </div>
   );
 }
