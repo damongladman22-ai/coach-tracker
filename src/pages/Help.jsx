@@ -141,7 +141,7 @@ You can still view the attendance and access the Summary page - you just can't a
 • **Ask questions** - Need help with something?
 • **Give compliments** - Let us know what you love!
 
-Your feedback goes directly to the club admins. You can optionally leave your name and email if you'd like a response.`
+Your feedback goes directly to the club admins.`
     }
   ]
 
@@ -315,12 +315,11 @@ The Feedback page shows:
 • **Stats cards** - Total submissions, unread count, breakdown by type
 • **Filter options** - Filter by read/unread status or feedback type
 • **List view** - All feedback with preview text and timestamp
-• **Detail panel** - Full message, contact info, and page context
+• **Detail panel** - Full message and page context
 
 **Managing feedback:**
 • Click any item to view details (automatically marks as read)
 • "Mark Unread" to flag for follow-up
-• "Reply via Email" if they provided contact info
 • "Delete" to remove feedback you've addressed
 
 Parents and players see a blue "Feedback" button in the bottom corner of every page.`

@@ -248,9 +248,6 @@ export default function Feedback({ session }) {
                           <span className="text-xs text-gray-400 ml-auto">{formatDate(item.created_at)}</span>
                         </div>
                         <p className="text-sm text-gray-600 truncate">{item.message}</p>
-                        {item.name && (
-                          <p className="text-xs text-gray-400 mt-1">From: {item.name}</p>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -294,23 +291,6 @@ export default function Feedback({ session }) {
                       </p>
                     </div>
 
-                    {(selectedFeedback.name || selectedFeedback.email) && (
-                      <div className="mb-4 p-3 bg-gray-50 rounded-lg">
-                        <p className="text-sm text-gray-500 mb-1">Contact Info</p>
-                        {selectedFeedback.name && (
-                          <p className="text-gray-900">{selectedFeedback.name}</p>
-                        )}
-                        {selectedFeedback.email && (
-                          <a 
-                            href={`mailto:${selectedFeedback.email}`}
-                            className="text-blue-600 hover:underline"
-                          >
-                            {selectedFeedback.email}
-                          </a>
-                        )}
-                      </div>
-                    )}
-
                     <div className="mb-4">
                       <p className="text-sm text-gray-500 mb-1">Message</p>
                       <p className="text-gray-900 whitespace-pre-wrap">{selectedFeedback.message}</p>
@@ -322,20 +302,6 @@ export default function Feedback({ session }) {
                         Page: <code className="bg-gray-100 px-1 py-0.5 rounded">{selectedFeedback.page_url}</code>
                       </p>
                     </div>
-
-                    {selectedFeedback.email && (
-                      <div className="mt-4 pt-4 border-t">
-                        <a
-                          href={`mailto:${selectedFeedback.email}?subject=Re: Your Coach Tracker Feedback&body=%0A%0A---%0AOriginal feedback:%0A${encodeURIComponent(selectedFeedback.message)}`}
-                          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                          Reply via Email
-                        </a>
-                      </div>
-                    )}
                   </div>
                 </>
               ) : (

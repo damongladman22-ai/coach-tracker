@@ -23,14 +23,10 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
   // Form state
   const [feedbackType, setFeedbackType] = useState('suggestion');
   const [message, setMessage] = useState('');
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
 
   const resetForm = () => {
     setFeedbackType('suggestion');
     setMessage('');
-    setName('');
-    setEmail('');
     setError(null);
     setSubmitted(false);
   };
@@ -63,8 +59,6 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
         .insert({
           type: feedbackType,
           message: message.trim(),
-          name: name.trim() || null,
-          email: email.trim() || null,
           page_url: location.pathname,
           user_agent: navigator.userAgent
         });
@@ -174,39 +168,6 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
                       required
                     />
-                  </div>
-
-                  {/* Optional Contact Info */}
-                  <div className="pt-2 border-t">
-                    <p className="text-xs text-gray-500 mb-3">
-                      Optional: Leave your contact info if you'd like a response
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Name
-                        </label>
-                        <input
-                          type="text"
-                          value={name}
-                          onChange={e => setName(e.target.value)}
-                          placeholder="Your name"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Email
-                        </label>
-                        <input
-                          type="email"
-                          value={email}
-                          onChange={e => setEmail(e.target.value)}
-                          placeholder="you@example.com"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                        />
-                      </div>
-                    </div>
                   </div>
 
                   {/* Error Message */}
