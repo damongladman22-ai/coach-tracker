@@ -268,6 +268,21 @@ The export includes:
 • Direct links to the game redirect to the Summary page
 
 **Admins retain full access** to closed games and can reopen them anytime by clicking "Reopen".`
+    },
+    {
+      id: 'a11',
+      question: 'How do I control email functionality for users?',
+      answer: `You can enable or disable email features from the Admin Dashboard under "Email Settings":
+
+**Summary Page Emails** (toggle on/off)
+• When ON: Parents/players see coach email addresses and "Email All Coaches" buttons in the Summary view
+• When OFF: Email addresses and buttons are hidden from the Summary view
+
+**Directory Email Links** (toggle on/off)
+• When ON: Emails in the Coach Directory are clickable mailto: links
+• When OFF: Emails are displayed as plain text (visible but not clickable)
+
+Both settings are enabled by default. Changes take effect immediately for all users.`
     }
   ]
 
