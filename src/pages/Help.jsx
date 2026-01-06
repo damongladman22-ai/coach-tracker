@@ -168,16 +168,28 @@ Find both links on the Admin Dashboard and Event Detail pages. Tap "Copy" to cop
     {
       id: 'a4',
       question: 'How does the Bulk Import work?',
-      answer: `The Bulk Import tool lets you add many coaches at once from a spreadsheet:
+      answer: `The Bulk Import tool has two modes:
 
-1. Go to Admin → Import Coaches
+**Add New Coaches** - Import coaches that don't exist yet:
+1. Select "Add New Coaches" mode
 2. Upload an Excel or CSV file
 3. Map your columns to our fields (school, first name, last name, email, etc.)
 4. The system will match coaches to schools in our database
 5. Review matches and fix any that didn't match
-6. Click "Import" to add them all
+6. Click "Import" to add them
 
-After importing, run the Dedup tool to merge any duplicates.`
+**Update Existing Coaches** - Update contact info for coaches already in the database:
+1. Select "Update Existing Coaches" mode
+2. Upload your file with updated contact information
+3. The system finds matching coaches by school + name
+4. Preview shows what will be updated:
+   • Checkboxes appear next to each field that can be updated
+   • Check/uncheck individual fields to control exactly what gets updated
+   • Green text = will be updated, gray strikethrough = old value being replaced
+5. "Only fill blank fields" option prevents overwriting existing data
+6. Click "Update" to apply only the selected changes
+
+After importing new coaches, run the Dedup tool to merge any duplicates.`
     },
     {
       id: 'a5',
