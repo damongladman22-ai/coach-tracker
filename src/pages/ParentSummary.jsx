@@ -152,11 +152,7 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
           </svg>
           {coachesWithEmail.length === 0 
             ? 'No emails available'
-            : coachesWithEmail.length === 1
-              ? 'Email Coach'
-              : coachesWithEmail.length === uniqueCoaches.length
-                ? `Email ${uniqueCoaches.length} Coaches`
-                : `Email ${coachesWithEmail.length} of ${uniqueCoaches.length} Coaches`
+            : 'Email Coaches'
           }
         </button>
       )}
@@ -282,11 +278,7 @@ function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToas
         </svg>
         {coachesWithEmail.length === 0 
           ? 'No emails available'
-          : coachesWithEmail.length === 1
-            ? 'Email Coach'
-            : coachesWithEmail.length === coaches.length
-              ? `Email ${coaches.length} Coaches`
-              : `Email ${coachesWithEmail.length} of ${coaches.length} Coaches`
+          : 'Email Coaches'
         }
       </button>
     </div>

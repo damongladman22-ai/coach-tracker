@@ -101,9 +101,7 @@ This is great for follow-up emails after the tournament.`
 • Click the button to open your email app with all coaches as recipients
 • The subject line is pre-filled with the event name
 
-**Adding missing emails:** If a coach doesn't have an email, you'll see an input field. Enter their email and click "Save" - it will be stored in the directory for everyone to use!
-
-The button shows how many coaches can be emailed (e.g., "Email 2 of 3 Coaches").`
+**Adding missing emails:** If a coach doesn't have an email, you'll see an input field. Enter their email and click "Save" - it will be stored in the directory for everyone to use!`
     },
     {
       id: 'p7',
@@ -275,7 +273,7 @@ The export includes:
       answer: `You can enable or disable email features from the Admin Dashboard under "Email Settings":
 
 **Summary Page Emails** (toggle on/off)
-• When ON: Parents/players see coach email addresses and "Email All Coaches" buttons in the Summary view
+• When ON: Parents/players see coach email addresses and "Email Coaches" buttons in the Summary view
 • When OFF: Email addresses and buttons are hidden from the Summary view
 
 **Directory Email Links** (toggle on/off)
