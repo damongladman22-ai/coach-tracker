@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRealtimeAttendance } from '../hooks/useRealtimeAttendance';
@@ -31,10 +31,6 @@ export default function TeamGames() {
   
   // Toast notifications
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-
-  // Game navigation refs
-  const gameRefs = useRef({});
-  const [currentGameIndex, setCurrentGameIndex] = useState(0);
 
   // Polling-based attendance hook (auto-refreshes every 5 seconds)
   const { 
@@ -129,46 +125,6 @@ export default function TeamGames() {
     return schoolIds.size;
   };
 
-  // Navigation between games
-  const scrollToGame = (index) => {
-    const game = games[index];
-    if (game && gameRefs.current[game.id]) {
-      gameRefs.current[game.id].scrollIntoView({ behavior: 'smooth', block: 'start' });
-      setCurrentGameIndex(index);
-    }
-  };
-
-  const goToPrevGame = () => {
-    if (currentGameIndex > 0) {
-      scrollToGame(currentGameIndex - 1);
-    }
-  };
-
-  const goToNextGame = () => {
-    if (currentGameIndex < games.length - 1) {
-      scrollToGame(currentGameIndex + 1);
-    }
-  };
-
-  // Update current game index based on scroll position
-  useEffect(() => {
-    const handleScroll = () => {
-      const scrollPosition = window.scrollY + 200;
-      
-      for (let i = games.length - 1; i >= 0; i--) {
-        const game = games[i];
-        const element = gameRefs.current[game.id];
-        if (element && element.offsetTop <= scrollPosition) {
-          setCurrentGameIndex(i);
-          break;
-        }
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [games]);
-
   // Loading state
   if (pageLoading) {
     return <PageLoader message="Loading team schedule..." />;
@@ -188,7 +144,7 @@ export default function TeamGames() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-8">
       {/* Auto-refresh status indicator */}
       <ConnectionStatus lastUpdate={lastUpdate} />
 
@@ -256,11 +212,7 @@ export default function TeamGames() {
               const isClosed = game.is_closed;
               
               return (
-                <div 
-                  key={game.id} 
-                  ref={el => gameRefs.current[game.id] = el}
-                  className="scroll-mt-32"
-                >
+                <div key={game.id}>
                   {isClosed ? (
                     // Closed game - show as non-clickable card
                     <div className="bg-white rounded-lg border shadow-sm p-4 opacity-75">
@@ -326,56 +278,6 @@ export default function TeamGames() {
         )}
       </main>
 
-      {/* Floating Game Navigation - show when multiple games */}
-      {games.length > 1 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-40 px-4 py-3">
-          <div className="flex items-center justify-between max-w-lg mx-auto">
-            <button
-              onClick={goToPrevGame}
-              disabled={currentGameIndex === 0}
-              className={`flex items-center gap-1 px-4 py-2 rounded-lg font-medium ${
-                currentGameIndex === 0
-                  ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-blue-600 active:bg-blue-50'
-              }`}
-            >
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Prev
-            </button>
-            
-            <div className="flex items-center gap-2">
-              {games.map((_, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => scrollToGame(idx)}
-                  className={`w-2.5 h-2.5 rounded-full transition-colors ${
-                    idx === currentGameIndex ? 'bg-blue-600' : 'bg-gray-300'
-                  }`}
-                  aria-label={`Go to game ${idx + 1}`}
-                />
-              ))}
-            </div>
-            
-            <button
-              onClick={goToNextGame}
-              disabled={currentGameIndex === games.length - 1}
-              className={`flex items-center gap-1 px-4 py-2 rounded-lg font-medium ${
-                currentGameIndex === games.length - 1
-                  ? 'text-gray-300 cursor-not-allowed'
-                  : 'text-blue-600 active:bg-blue-50'
-              }`}
-            >
-              Next
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Toast notifications */}
       <Toast 
         show={toast.show}
@@ -384,8 +286,8 @@ export default function TeamGames() {
         onClose={() => setToast(t => ({ ...t, show: false }))}
       />
 
-      {/* Feedback Button - offset to clear bottom nav when visible */}
-      <FeedbackButton offset={games.length > 1 ? 70 : 0} />
+      {/* Feedback Button */}
+      <FeedbackButton />
     </div>
   );
 }
