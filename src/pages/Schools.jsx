@@ -566,20 +566,20 @@ export default function Schools({ session }) {
                     {school.city}, {school.state} • {school.division} • {school.conference}
                   </p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1">
                   <button
                     onClick={(e) => openEditSchool(school, e)}
-                    className="text-blue-600 hover:text-blue-800 text-sm px-2 py-1"
+                    className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 text-sm px-3 py-2 rounded-lg"
                   >
                     Edit
                   </button>
                   <button
                     onClick={(e) => deleteSchool(school, e)}
-                    className="text-red-600 hover:text-red-800 text-sm px-2 py-1"
+                    className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded-lg"
                   >
                     Delete
                   </button>
-                  <span className="text-gray-400 ml-2">
+                  <span className="text-gray-400 ml-2 p-2">
                     {expandedSchool === school.id ? '▼' : '▶'}
                   </span>
                 </div>

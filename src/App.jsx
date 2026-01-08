@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // Admin Pages
 import AdminLogin from './pages/AdminLogin'
@@ -52,10 +53,11 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        {/* Admin Routes */}
-        <Route path="/admin" element={session ? <AdminDashboard session={session} /> : <AdminLogin />} />
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Routes>
+          {/* Admin Routes */}
+          <Route path="/admin" element={session ? <AdminDashboard session={session} /> : <AdminLogin />} />
         <Route path="/admin/setup" element={<AdminSetup />} />
         <Route path="/admin/teams" element={session ? <ClubTeams session={session} /> : <AdminLogin />} />
         <Route path="/admin/events" element={session ? <Events session={session} /> : <AdminLogin />} />
@@ -81,6 +83,7 @@ function App() {
         <Route path="/" element={session ? <AdminDashboard session={session} /> : <ClubDashboard />} />
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   )
 }
 

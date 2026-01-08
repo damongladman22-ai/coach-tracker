@@ -92,7 +92,6 @@ export default function ImportCoaches({ session }) {
       }
       
       setSchools(allSchools);
-      console.log('Loaded schools:', allSchools.length);
       setSchoolsLoading(false);
     }
     loadSchools();
@@ -128,7 +127,6 @@ export default function ImportCoaches({ session }) {
       }
       
       setExistingCoaches(allCoaches);
-      console.log('Loaded existing coaches:', allCoaches.length);
       setCoachesLoading(false);
     }
     loadExistingCoaches();

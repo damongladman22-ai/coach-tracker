@@ -199,22 +199,22 @@ export default function Events({ session }) {
                     {formatDate(event.start_date)} - {formatDate(event.end_date)}
                   </p>
                 </div>
-                <div className="space-x-2">
+                <div className="flex flex-wrap gap-1">
                   <Link
                     to={`/admin/events/${event.id}`}
-                    className="text-blue-600 hover:text-blue-800"
+                    className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm"
                   >
                     Manage
                   </Link>
                   <button
                     onClick={() => handleEdit(event)}
-                    className="text-gray-600 hover:text-gray-800"
+                    className="text-gray-600 hover:text-gray-800 hover:bg-gray-100 px-3 py-2 rounded-lg text-sm"
                   >
                     Edit
                   </button>
                   <button
                     onClick={() => handleDelete(event.id)}
-                    className="text-red-600 hover:text-red-800"
+                    className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-2 rounded-lg text-sm"
                   >
                     Delete
                   </button>

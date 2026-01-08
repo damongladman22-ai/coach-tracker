@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
@@ -409,7 +409,7 @@ export default function AttendanceMatrix({ session }) {
                       const hasAttendance = Object.keys(attendance).some(key => key.startsWith(`${coach.id}-`))
                       
                       return (
-                        <>
+                        <React.Fragment key={coach.id}>
                           {/* School separator row */}
                           {isNewSchool && (
                             <tr key={`school-${coach.school?.id || idx}`} className="bg-blue-50">
@@ -469,7 +469,7 @@ export default function AttendanceMatrix({ session }) {
                               )}
                             </td>
                           </tr>
-                        </>
+                        </React.Fragment>
                       )
                     })}
                   </tbody>

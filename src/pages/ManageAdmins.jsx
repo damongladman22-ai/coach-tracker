@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { isValidEmail } from '../lib/validation'
 import AdminLayout from '../components/AdminLayout'
 
 export default function ManageAdmins({ session }) {
@@ -73,8 +74,8 @@ export default function ManageAdmins({ session }) {
       return
     }
 
-    // Basic email validation
-    if (!email.includes('@') || !email.includes('.')) {
+    // Email validation
+    if (!isValidEmail(email)) {
       showToast('Please enter a valid email address', 'error')
       return
     }

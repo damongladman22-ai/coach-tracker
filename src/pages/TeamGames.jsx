@@ -6,7 +6,9 @@ import {
   PageLoader, 
   ErrorMessage, 
   EmptyState,
-  ConnectionStatus
+  ConnectionStatus,
+  GameCardSkeleton,
+  Skeleton
 } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
@@ -115,9 +117,29 @@ export default function TeamGames() {
     return schoolIds.size;
   };
 
-  // Loading state
+  // Loading state - show skeleton with page structure
   if (pageLoading) {
-    return <PageLoader message="Loading team schedule..." />;
+    return (
+      <div className="min-h-screen bg-gray-50 pb-8">
+        {/* Header skeleton */}
+        <header className="op-header border-b border-gray-700">
+          <div className="op-gradient-border"></div>
+          <div className="px-4 py-3">
+            <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">
+              <Skeleton className="h-4 w-16" />
+              <span>›</span>
+              <Skeleton className="h-4 w-24" />
+            </div>
+            <Skeleton className="h-7 w-48 mb-1" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+        </header>
+        
+        <main className="p-4">
+          <GameCardSkeleton count={3} />
+        </main>
+      </div>
+    );
   }
 
   // Error state

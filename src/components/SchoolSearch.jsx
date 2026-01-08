@@ -44,7 +44,6 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
         }
         
         setSchools(allSchools);
-        console.log('SchoolSearch loaded schools:', allSchools.length);
       } catch (err) {
         console.error('Error loading schools:', err);
       } finally {

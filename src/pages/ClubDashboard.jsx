@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { PageLoader, ErrorMessage } from '../components/LoadingStates';
+import { PageLoader, ErrorMessage, CardSkeleton, Skeleton } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
 
@@ -157,7 +157,30 @@ export default function ClubDashboard() {
   };
 
   if (loading) {
-    return <PageLoader message="Loading events..." />;
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header skeleton */}
+        <header className="op-header shadow-lg">
+          <div className="op-gradient-border"></div>
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-full" />
+              <div>
+                <Skeleton className="h-7 w-48 mb-2" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            </div>
+          </div>
+        </header>
+        
+        <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+          <Skeleton className="h-6 w-32 mb-4" />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </main>
+      </div>
+    );
   }
 
   if (error) {

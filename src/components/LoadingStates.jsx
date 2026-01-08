@@ -211,6 +211,91 @@ export function CardSkeleton() {
   );
 }
 
+/**
+ * List item skeleton for loading states
+ */
+export function ListItemSkeleton({ count = 3 }) {
+  return (
+    <div className="space-y-3">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="flex items-center gap-3 p-3 bg-white rounded-lg border">
+          <Skeleton className="h-10 w-10 rounded-full flex-shrink-0" />
+          <div className="flex-1">
+            <Skeleton className="h-4 w-2/3 mb-2" />
+            <Skeleton className="h-3 w-1/2" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Table skeleton for loading states
+ */
+export function TableSkeleton({ rows = 5, cols = 4 }) {
+  return (
+    <div className="bg-white rounded-lg border overflow-hidden">
+      {/* Header */}
+      <div className="bg-gray-50 border-b p-3 flex gap-4">
+        {Array.from({ length: cols }).map((_, i) => (
+          <Skeleton key={i} className="h-4 flex-1" />
+        ))}
+      </div>
+      {/* Rows */}
+      <div className="divide-y">
+        {Array.from({ length: rows }).map((_, rowIdx) => (
+          <div key={rowIdx} className="p-3 flex gap-4">
+            {Array.from({ length: cols }).map((_, colIdx) => (
+              <Skeleton key={colIdx} className="h-4 flex-1" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Game card skeleton for loading states
+ */
+export function GameCardSkeleton({ count = 3 }) {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="bg-white rounded-lg border shadow-sm p-4">
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex-1">
+              <Skeleton className="h-4 w-24 mb-2" />
+              <Skeleton className="h-6 w-48" />
+            </div>
+            <Skeleton className="h-10 w-28 rounded-lg" />
+          </div>
+          <div className="mt-3 pt-3 border-t">
+            <Skeleton className="h-4 w-40" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Stats skeleton for dashboard-style loading
+ */
+export function StatsSkeleton({ count = 4 }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="bg-white rounded-lg border p-4">
+          <Skeleton className="h-3 w-16 mb-2" />
+          <Skeleton className="h-8 w-12" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Add slide-up animation style
 const style = document.createElement('style');
 style.textContent = `

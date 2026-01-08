@@ -373,23 +373,23 @@ export default function EventDetail({ session }) {
                   <h3 className="text-xl font-semibold">{eventTeam.club_teams.team_name}</h3>
                   <p className="text-gray-500">{eventTeam.club_teams.gender}</p>
                 </div>
-                <div className="flex space-x-2">
+                <div className="flex flex-wrap gap-2">
                   <Link
                     to={`/admin/events/${eventId}/matrix/${eventTeam.id}`}
-                    className="bg-purple-100 text-purple-700 px-3 py-1 rounded text-sm hover:bg-purple-200"
+                    className="bg-purple-100 text-purple-700 px-3 py-2 rounded text-sm hover:bg-purple-200"
                   >
                     Attendance Matrix
                   </Link>
                   <button
                     onClick={() => exportToCSV(eventTeam)}
                     disabled={exporting === eventTeam.id}
-                    className="bg-blue-100 text-blue-700 px-3 py-1 rounded text-sm hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400"
+                    className="bg-blue-100 text-blue-700 px-3 py-2 rounded text-sm hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400"
                   >
                     {exporting === eventTeam.id ? 'Exporting...' : 'Export CSV'}
                   </button>
                   <button
                     onClick={() => copyLink(eventTeam)}
-                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                    className={`px-3 py-2 rounded text-sm transition-colors ${
                       copiedLink === `tracker-${eventTeam.id}`
                         ? 'bg-green-500 text-white'
                         : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'
@@ -399,7 +399,7 @@ export default function EventDetail({ session }) {
                   </button>
                   <button
                     onClick={() => copySummaryLink(eventTeam)}
-                    className={`px-3 py-1 rounded text-sm transition-colors ${
+                    className={`px-3 py-2 rounded text-sm transition-colors ${
                       copiedLink === `summary-${eventTeam.id}`
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -409,7 +409,7 @@ export default function EventDetail({ session }) {
                   </button>
                   <button
                     onClick={() => removeTeamFromEvent(eventTeam.id)}
-                    className="text-red-600 hover:text-red-800 text-sm"
+                    className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded"
                   >
                     Remove
                   </button>
@@ -507,10 +507,10 @@ export default function EventDetail({ session }) {
                             <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Closed</span>
                           )}
                         </span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => toggleGameClosed(game, eventTeam.id)}
-                            className={`text-sm px-2 py-1 rounded ${
+                            className={`text-sm px-3 py-2 rounded ${
                               game.is_closed 
                                 ? 'text-green-600 hover:text-green-800 hover:bg-green-50' 
                                 : 'text-orange-600 hover:text-orange-800 hover:bg-orange-50'
@@ -521,13 +521,13 @@ export default function EventDetail({ session }) {
                           </button>
                           <button
                             onClick={() => handleEditGame(game, eventTeam.id)}
-                            className="text-blue-600 hover:text-blue-800 text-sm"
+                            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 text-sm px-3 py-2 rounded"
                           >
                             Edit
                           </button>
                           <button
                             onClick={() => deleteGame(game.id)}
-                            className="text-red-600 hover:text-red-800 text-sm"
+                            className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded"
                           >
                             Delete
                           </button>

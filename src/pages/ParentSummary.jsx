@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { isValidEmail } from '../lib/validation';
 import { 
   PageLoader, 
   ErrorMessage,
@@ -38,8 +39,8 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
     const email = editingEmails[coach.id]?.trim();
     if (!email) return;
 
-    // Basic email validation
-    if (!email.includes('@') || !email.includes('.')) {
+    // Email validation
+    if (!isValidEmail(email)) {
       showToast('Please enter a valid email address', 'error');
       return;
     }
@@ -81,9 +82,9 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
   return (
     <div className="border-l-4 border-blue-400 pl-3 py-2">
       <div className="flex justify-between items-start mb-2">
-        <div>
-          <div className="font-medium text-gray-900">{school.school}</div>
-          <div className="text-xs text-gray-500">
+        <div className="min-w-0 flex-1 mr-2">
+          <div className="font-medium text-gray-900 truncate">{school.school}</div>
+          <div className="text-xs text-gray-500 truncate">
             {school.division} • {school.conference || 'Independent'} • {school.state}
           </div>
         </div>
@@ -104,12 +105,12 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
                 <span className="flex items-center gap-1">
                   <a
                     href={`mailto:${coach.email}`}
-                    className="text-blue-600 hover:text-blue-800 text-xs"
+                    className="text-blue-600 hover:text-blue-800 text-xs break-all"
                     onClick={e => e.stopPropagation()}
                   >
                     {coach.email}
                   </a>
-                  <svg className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className="h-4 w-4 text-green-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </span>
@@ -120,13 +121,13 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
                     placeholder="Add email..."
                     value={editingEmails[coach.id] || ''}
                     onChange={(e) => setEditingEmails(prev => ({ ...prev, [coach.id]: e.target.value }))}
-                    className="text-xs border rounded px-2 py-1 w-40"
+                    className="text-sm border rounded px-3 py-2 w-44"
                     onKeyDown={(e) => e.key === 'Enter' && handleSaveEmail(coach)}
                   />
                   <button
                     onClick={() => handleSaveEmail(coach)}
                     disabled={!editingEmails[coach.id]?.trim() || savingEmail === coach.id}
-                    className="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-sm bg-blue-600 text-white px-3 py-2 rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {savingEmail === coach.id ? '...' : 'Save'}
                   </button>
@@ -175,7 +176,7 @@ function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToas
     const email = editingEmails[coach.id]?.trim();
     if (!email) return;
 
-    if (!email.includes('@') || !email.includes('.')) {
+    if (!isValidEmail(email)) {
       showToast('Please enter a valid email address', 'error');
       return;
     }
@@ -873,8 +874,8 @@ export default function ParentSummary() {
               return (
                 <div key={school.id} className="bg-white rounded-lg shadow-md overflow-hidden">
                   <div className="bg-gray-50 px-4 py-3 border-b">
-                    <div className="font-semibold text-gray-900">{school.school}</div>
-                    <div className="text-xs text-gray-500">
+                    <div className="font-semibold text-gray-900 truncate">{school.school}</div>
+                    <div className="text-xs text-gray-500 truncate">
                       {school.division} • {school.conference || 'Independent'} • {school.state}
                     </div>
                   </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { isValidEmail } from '../lib/validation';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
 
@@ -36,6 +37,7 @@ export default function CoachDirectory() {
   const [divisionFilter, setDivisionFilter] = useState('');
   const [conferenceFilter, setConferenceFilter] = useState('');
   const [showOnlyWithEmail, setShowOnlyWithEmail] = useState(false);
+  const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -338,6 +340,12 @@ export default function CoachDirectory() {
       return;
     }
 
+    // Validate email if provided
+    if (coachForm.email.trim() && !isValidEmail(coachForm.email)) {
+      setToast({ show: true, message: 'Please enter a valid email address', type: 'error' });
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -491,92 +499,111 @@ export default function CoachDirectory() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {/* Search */}
-            <div className="lg:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Search
-              </label>
+          {/* Search - always visible */}
+          <div className="flex gap-2">
+            <div className="flex-1">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Coach name or school..."
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Search coach name or school..."
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
               />
             </div>
-            
-            {/* State Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                State
-              </label>
-              <select
-                value={stateFilter}
-                onChange={e => setStateFilter(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All States</option>
-                {US_STATES.map(state => (
-                  <option key={state} value={state}>{state}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Division Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Division
-              </label>
-              <select
-                value={divisionFilter}
-                onChange={e => setDivisionFilter(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Divisions</option>
-                {DIVISIONS.map(div => (
-                  <option key={div} value={div}>{div}</option>
-                ))}
-              </select>
-            </div>
-            
-            {/* Conference Filter */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Conference
-              </label>
-              <select
-                value={conferenceFilter}
-                onChange={e => setConferenceFilter(e.target.value)}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">All Conferences</option>
-                {conferences.map(conf => (
-                  <option key={conf} value={conf}>{conf}</option>
-                ))}
-              </select>
-            </div>
+            {/* Filter toggle button - mobile only */}
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="md:hidden flex items-center gap-2 px-4 py-3 border rounded-lg bg-gray-50 hover:bg-gray-100"
+            >
+              <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+              </svg>
+              {(stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail) && (
+                <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
+                  {[stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail].filter(Boolean).length}
+                </span>
+              )}
+            </button>
           </div>
           
-          {/* Filter options row */}
-          <div className="mt-4 flex flex-wrap items-center gap-4">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showOnlyWithEmail}
-                onChange={e => setShowOnlyWithEmail(e.target.checked)}
-                className="rounded text-blue-600"
-              />
-              <span className="text-sm text-gray-600">Only show coaches with email</span>
-            </label>
+          {/* Filters - collapsible on mobile, always visible on desktop */}
+          <div className={`${showFilters ? 'block' : 'hidden'} md:block mt-4`}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* State Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  State
+                </label>
+                <select
+                  value={stateFilter}
+                  onChange={e => setStateFilter(e.target.value)}
+                  className="w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
+                >
+                  <option value="">All States</option>
+                  {US_STATES.map(state => (
+                    <option key={state} value={state}>{state}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Division Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Division
+                </label>
+                <select
+                  value={divisionFilter}
+                  onChange={e => setDivisionFilter(e.target.value)}
+                  className="w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
+                >
+                  <option value="">All Divisions</option>
+                  {DIVISIONS.map(div => (
+                    <option key={div} value={div}>{div}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Conference Filter */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Conference
+                </label>
+                <select
+                  value={conferenceFilter}
+                  onChange={e => setConferenceFilter(e.target.value)}
+                  className="w-full px-3 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 text-base"
+                >
+                  <option value="">All Conferences</option>
+                  {conferences.map(conf => (
+                    <option key={conf} value={conf}>{conf}</option>
+                  ))}
+                </select>
+              </div>
+              
+              {/* Email filter + Clear */}
+              <div className="flex flex-col justify-end">
+                <label className="flex items-center gap-2 cursor-pointer py-3">
+                  <input
+                    type="checkbox"
+                    checked={showOnlyWithEmail}
+                    onChange={e => setShowOnlyWithEmail(e.target.checked)}
+                    className="w-5 h-5 rounded text-blue-600"
+                  />
+                  <span className="text-sm text-gray-600">Only with email</span>
+                </label>
+              </div>
+            </div>
             
+            {/* Clear filters */}
             {(searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail) && (
-              <button
-                onClick={clearFilters}
-                className="text-sm text-blue-600 hover:text-blue-800"
-              >
-                Clear all filters
-              </button>
+              <div className="mt-4 pt-4 border-t">
+                <button
+                  onClick={clearFilters}
+                  className="text-sm text-blue-600 hover:text-blue-800 py-2"
+                >
+                  Clear all filters
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -629,22 +656,26 @@ export default function CoachDirectory() {
             {paginatedSchools.map(({ school, coaches: schoolCoaches }) => (
               <div key={school.id} className="bg-white rounded-lg shadow overflow-hidden">
                 {/* School Header */}
-                <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-white flex justify-between items-start">
-                  <div>
-                    <h3 className="font-semibold text-lg">{school.school}</h3>
-                    <p className="text-blue-100 text-sm">
-                      {school.city}, {school.state} • {school.division} • {school.conference}
-                    </p>
+                <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-white">
+                  <div className="flex justify-between items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <h3 className="font-semibold text-lg truncate">{school.school}</h3>
+                      <p className="text-blue-100 text-sm truncate">
+                        {school.city}, {school.state} • {school.division}
+                      </p>
+                      <p className="text-blue-200 text-xs truncate">{school.conference}</p>
+                    </div>
+                    <button
+                      onClick={() => openAddCoach(school.id)}
+                      className="text-sm bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg flex items-center gap-1 flex-shrink-0"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span className="hidden sm:inline">Add Coach</span>
+                      <span className="sm:hidden">Add</span>
+                    </button>
                   </div>
-                  <button
-                    onClick={() => openAddCoach(school.id)}
-                    className="text-sm bg-white/20 hover:bg-white/30 px-3 py-1 rounded-lg flex items-center gap-1"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Add Coach
-                  </button>
                 </div>
                 
                 {/* Coaches List */}
@@ -702,7 +733,7 @@ export default function CoachDirectory() {
                         )}
                         <button
                           onClick={() => openEditCoach(coach)}
-                          className="inline-flex items-center gap-1 text-gray-400 hover:text-blue-600 ml-2"
+                          className="inline-flex items-center gap-1 text-gray-400 hover:text-blue-600 p-2 -m-1 rounded-lg hover:bg-blue-50"
                           title="Update contact info"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -713,7 +744,7 @@ export default function CoachDirectory() {
                         <button
                           onClick={() => deleteCoach(coach)}
                           disabled={deleting === coach.id}
-                          className="inline-flex items-center gap-1 text-gray-400 hover:text-red-600 ml-1"
+                          className="inline-flex items-center gap-1 text-gray-400 hover:text-red-600 p-2 -m-1 rounded-lg hover:bg-red-50"
                           title="Delete coach"
                         >
                           {deleting === coach.id ? (
@@ -764,10 +795,15 @@ export default function CoachDirectory() {
 
       {/* Edit/Add Coach Modal */}
       {(editingCoach || showAddCoach) && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div 
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="coach-modal-title"
+        >
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="p-4 border-b">
-              <h2 className="text-lg font-semibold">
+              <h2 id="coach-modal-title" className="text-lg font-semibold">
                 {editingCoach ? 'Update Coach Info' : 'Add New Coach'}
               </h2>
               <p className="text-sm text-gray-500">
@@ -778,39 +814,44 @@ export default function CoachDirectory() {
               </p>
             </div>
             
-            <div className="p-4 space-y-4">
+            <form className="p-4 space-y-4" onSubmit={e => { e.preventDefault(); saveCoach(); }}>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="coach-first-name" className="block text-sm font-medium text-gray-700 mb-1">
                     First Name *
                   </label>
                   <input
+                    id="coach-first-name"
                     type="text"
                     value={coachForm.first_name}
                     onChange={e => setCoachForm({ ...coachForm, first_name: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     placeholder="John"
+                    required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label htmlFor="coach-last-name" className="block text-sm font-medium text-gray-700 mb-1">
                     Last Name *
                   </label>
                   <input
+                    id="coach-last-name"
                     type="text"
                     value={coachForm.last_name}
                     onChange={e => setCoachForm({ ...coachForm, last_name: e.target.value })}
                     className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                     placeholder="Smith"
+                    required
                   />
                 </div>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="coach-title" className="block text-sm font-medium text-gray-700 mb-1">
                   Title
                 </label>
                 <input
+                  id="coach-title"
                   type="text"
                   value={coachForm.title}
                   onChange={e => setCoachForm({ ...coachForm, title: e.target.value })}
@@ -820,10 +861,11 @@ export default function CoachDirectory() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="coach-email" className="block text-sm font-medium text-gray-700 mb-1">
                   Email
                 </label>
                 <input
+                  id="coach-email"
                   type="email"
                   value={coachForm.email}
                   onChange={e => setCoachForm({ ...coachForm, email: e.target.value })}
@@ -833,10 +875,11 @@ export default function CoachDirectory() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="coach-phone" className="block text-sm font-medium text-gray-700 mb-1">
                   Phone
                 </label>
                 <input
+                  id="coach-phone"
                   type="tel"
                   value={coachForm.phone}
                   onChange={e => setCoachForm({ ...coachForm, phone: e.target.value })}
@@ -848,11 +891,12 @@ export default function CoachDirectory() {
               <p className="text-xs text-gray-500">
                 Help build our coach directory! Add or update contact info to help families connect with coaches.
               </p>
-            </div>
+            </form>
             
             <div className="p-4 border-t flex gap-3">
               <button
                 onClick={closeModal}
+                type="button"
                 className="flex-1 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
               >
                 Cancel
@@ -860,6 +904,7 @@ export default function CoachDirectory() {
               <button
                 onClick={saveCoach}
                 disabled={saving}
+                type="button"
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-blue-400"
               >
                 {saving ? 'Saving...' : 'Save'}

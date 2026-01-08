@@ -275,16 +275,22 @@ export default function GameAttendance() {
 
       {/* Add Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50">
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-end justify-center z-50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="add-coach-modal-title"
+        >
           <div className="bg-white w-full max-w-lg rounded-t-2xl h-[85vh] flex flex-col">
             {/* Modal Header */}
             <div className="p-4 border-b flex justify-between items-center shrink-0">
-              <h2 className="text-lg font-semibold">
+              <h2 id="add-coach-modal-title" className="text-lg font-semibold">
                 {selectedSchool ? selectedSchool.school : 'Search for College'}
               </h2>
               <button 
                 onClick={closeModal}
                 className="text-gray-500 text-2xl p-2"
+                aria-label="Close modal"
               >
                 ×
               </button>
@@ -305,15 +311,17 @@ export default function GameAttendance() {
                     className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg mb-4 sticky top-0 bg-white z-10"
                     placeholder="Type college name..."
                     autoFocus
+                    aria-label="Search for college"
                   />
                   
                   {schools.length > 0 && (
-                    <div className="space-y-2">
+                    <div className="space-y-2" role="listbox" aria-label="Search results">
                       {schools.map((school) => (
                         <button
                           key={school.id}
                           onClick={() => selectSchool(school)}
                           className="w-full text-left p-4 bg-gray-50 rounded-lg hover:bg-gray-100 active:bg-gray-200"
+                          role="option"
                         >
                           <div className="font-medium text-base">{school.school}</div>
                           <div className="text-sm text-gray-500">
