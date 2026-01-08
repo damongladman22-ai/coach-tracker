@@ -252,15 +252,15 @@ export default function GameAttendance() {
                 <p className="text-xs text-gray-500 mb-2">
                   {school.division} • {school.conference}
                 </p>
-                <div className="space-y-2">
+                <div className="space-y-1">
                   {records.map((record) => (
-                    <div key={record.id} className="flex justify-between items-center py-1 border-t">
-                      <span>
+                    <div key={record.id} className="flex justify-between items-center py-2 border-t">
+                      <span className="text-gray-900">
                         {record.coaches.first_name} {record.coaches.last_name}
                       </span>
                       <button
                         onClick={() => deleteAttendance(record.id)}
-                        className="text-red-600 text-sm px-2"
+                        className="text-red-600 text-sm px-3 py-2 -my-2 -mr-2 hover:bg-red-50 rounded-lg active:bg-red-100"
                       >
                         Remove
                       </button>
@@ -302,13 +302,13 @@ export default function GameAttendance() {
                       setSearchTerm(e.target.value)
                       searchSchools(e.target.value)
                     }}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg mb-4 sticky top-0 bg-white"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg mb-4 sticky top-0 bg-white z-10"
                     placeholder="Type college name..."
                     autoFocus
                   />
                   
                   {schools.length > 0 && (
-                    <div className="space-y-2 pb-4">
+                    <div className="space-y-2">
                       {schools.map((school) => (
                         <button
                           key={school.id}
@@ -321,6 +321,8 @@ export default function GameAttendance() {
                           </div>
                         </button>
                       ))}
+                      {/* Large spacer so last items can scroll above keyboard */}
+                      <div className="h-[50vh]"></div>
                     </div>
                   )}
 
@@ -350,7 +352,7 @@ export default function GameAttendance() {
                   </p>
 
                   {coaches.length > 0 ? (
-                    <div className="space-y-2 mb-4 pb-2">
+                    <div className="space-y-2 mb-4">
                       {coaches.map((coach) => (
                         <button
                           key={coach.id}
@@ -420,6 +422,9 @@ export default function GameAttendance() {
                       + Add Coach Not Listed
                     </button>
                   )}
+                  
+                  {/* Large spacer so content can scroll above keyboard */}
+                  <div className="h-[50vh]"></div>
                 </>
               )}
             </div>

@@ -204,6 +204,9 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
                 Your feedback helps us improve the app for everyone
               </p>
             </div>
+            
+            {/* Spacer for mobile keyboard */}
+            <div className="h-32 sm:h-0"></div>
           </div>
         </div>
       )}

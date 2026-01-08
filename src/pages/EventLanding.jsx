@@ -189,11 +189,11 @@ export default function EventLanding() {
               <OPLogo className="h-10 w-auto" />
               <span className="text-lg font-bold text-white hidden sm:inline">Coach Tracker</span>
             </Link>
-            <nav className="flex items-center gap-4">
-              <Link to="/directory" className="text-sm text-gray-300 hover:text-white">
+            <nav className="flex items-center gap-2">
+              <Link to="/directory" className="text-sm text-gray-300 hover:text-white p-2 -m-2 rounded-lg">
                 Directory
               </Link>
-              <Link to="/help?context=parent" className="text-sm text-gray-300 hover:text-white">
+              <Link to="/help?context=parent" className="text-sm text-gray-300 hover:text-white p-2 -m-2 rounded-lg">
                 Help
               </Link>
             </nav>
