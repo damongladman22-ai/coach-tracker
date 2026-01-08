@@ -310,6 +310,9 @@ export default function ParentSummary() {
   // View toggle
   const [viewMode, setViewMode] = useState('colleges'); // 'games' or 'colleges'
   
+  // School search filter
+  const [searchTerm, setSearchTerm] = useState('');
+  
   // Export state
   const [exporting, setExporting] = useState(false);
   
@@ -677,7 +680,7 @@ export default function ParentSummary() {
         </div>
 
         {/* View Toggle and Export */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
           <div className="flex bg-white rounded-lg shadow-sm p-1">
             <button
               onClick={() => setViewMode('games')}
@@ -713,6 +716,50 @@ export default function ParentSummary() {
           </button>
         </div>
 
+        {/* School Search */}
+        {attendance.length > 0 && (
+          <div className="mb-6">
+            <div className="relative">
+              <svg 
+                className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search schools..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            {searchTerm && (
+              <p className="mt-2 text-sm text-gray-500">
+                {(() => {
+                  const allSchools = getAttendanceBySchool();
+                  const matchCount = allSchools.filter(({ school }) => 
+                    school.school.toLowerCase().includes(searchTerm.toLowerCase())
+                  ).length;
+                  return `${matchCount} of ${allSchools.length} school${allSchools.length !== 1 ? 's' : ''} match "${searchTerm}"`;
+                })()}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* No Data State */}
         {attendance.length === 0 ? (
           <div className="bg-white rounded-lg shadow-md p-8 text-center">
@@ -738,7 +785,17 @@ export default function ParentSummary() {
           /* Game-Centric View */
           <div className="space-y-4">
             {games.map((game, index) => {
-              const schoolAttendance = getGameAttendanceBySchool(game.id);
+              const allSchoolAttendance = getGameAttendanceBySchool(game.id);
+              const schoolAttendance = searchTerm
+                ? allSchoolAttendance.filter(({ school }) =>
+                    school.school.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                : allSchoolAttendance;
+              
+              // If searching and no matches for this game, still show the game header
+              const hasMatches = schoolAttendance.length > 0;
+              const hadOriginalData = allSchoolAttendance.length > 0;
+              
               return (
                 <div key={game.id} className="bg-white rounded-lg shadow-md overflow-hidden">
                   <div className="bg-gray-50 px-4 py-3 border-b">
@@ -753,8 +810,10 @@ export default function ParentSummary() {
                     </div>
                   </div>
                   <div className="p-4">
-                    {schoolAttendance.length === 0 ? (
+                    {!hadOriginalData ? (
                       <p className="text-gray-500 text-sm italic">No coaches logged</p>
+                    ) : !hasMatches ? (
+                      <p className="text-gray-400 text-sm italic">No matching schools</p>
                     ) : (
                       <div className="space-y-4">
                         {schoolAttendance.map(({ school, coaches }) => (
@@ -778,7 +837,29 @@ export default function ParentSummary() {
         ) : (
           /* College-Centric View */
           <div className="space-y-4">
-            {getAttendanceBySchool().map(({ school, gameCoaches }) => {
+            {(() => {
+              const allSchools = getAttendanceBySchool();
+              const filteredSchools = searchTerm 
+                ? allSchools.filter(({ school }) => 
+                    school.school.toLowerCase().includes(searchTerm.toLowerCase())
+                  )
+                : allSchools;
+              
+              if (filteredSchools.length === 0 && searchTerm) {
+                return (
+                  <div className="bg-white rounded-lg shadow-md p-8 text-center">
+                    <p className="text-gray-500">No schools match "{searchTerm}"</p>
+                    <button 
+                      onClick={() => setSearchTerm('')}
+                      className="mt-2 text-blue-600 hover:text-blue-800 text-sm"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                );
+              }
+              
+              return filteredSchools.map(({ school, gameCoaches }) => {
               // Collect all unique coaches from this school across all games
               const allCoaches = [];
               const seenIds = new Set();
@@ -788,7 +869,6 @@ export default function ParentSummary() {
                   allCoaches.push(c);
                 }
               });
-              const coachesWithEmail = allCoaches.filter(c => c.email);
               
               return (
                 <div key={school.id} className="bg-white rounded-lg shadow-md overflow-hidden">
@@ -840,7 +920,8 @@ export default function ParentSummary() {
                   </div>
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
         )}
       </div>

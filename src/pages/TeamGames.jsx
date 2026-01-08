@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRealtimeAttendance } from '../hooks/useRealtimeAttendance';
 import { 
   PageLoader, 
   ErrorMessage, 
-  Toast, 
   EmptyState,
   ConnectionStatus
 } from '../components/LoadingStates';
@@ -29,20 +28,11 @@ export default function TeamGames() {
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(null);
   
-  // Toast notifications
-  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
-
   // Polling-based attendance hook (auto-refreshes every 5 seconds)
   const { 
     attendance, 
-    loading: attendanceLoading,
     lastUpdate
   } = useRealtimeAttendance(eventTeam?.id);
-
-  // Show toast notification
-  const showToast = useCallback((message, type = 'success') => {
-    setToast({ show: true, message, type });
-  }, []);
 
   // Load page data
   useEffect(() => {
@@ -277,14 +267,6 @@ export default function TeamGames() {
           </div>
         )}
       </main>
-
-      {/* Toast notifications */}
-      <Toast 
-        show={toast.show}
-        message={toast.message}
-        type={toast.type}
-        onClose={() => setToast(t => ({ ...t, show: false }))}
-      />
 
       {/* Feedback Button */}
       <FeedbackButton />
