@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { isValidEmail } from '../lib/validation';
@@ -31,13 +31,17 @@ export default function CoachDirectory() {
   // Settings
   const [emailLinksEnabled, setEmailLinksEnabled] = useState(true);
   
-  // Search/Filter state
+  // Search/Filter state - separate input value from debounced value
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [divisionFilter, setDivisionFilter] = useState('');
   const [conferenceFilter, setConferenceFilter] = useState('');
   const [showOnlyWithEmail, setShowOnlyWithEmail] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
+  
+  // Debounce timer ref
+  const searchTimerRef = useRef(null);
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
@@ -56,6 +60,23 @@ export default function CoachDirectory() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(null); // coach id being deleted
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+
+  // Debounce search input - prevents excessive filtering on each keystroke
+  useEffect(() => {
+    if (searchTimerRef.current) {
+      clearTimeout(searchTimerRef.current);
+    }
+    
+    searchTimerRef.current = setTimeout(() => {
+      setSearchQuery(searchInput);
+    }, 300);
+    
+    return () => {
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+      }
+    };
+  }, [searchInput]);
 
   // Load all data on mount
   useEffect(() => {
@@ -222,6 +243,7 @@ export default function CoachDirectory() {
   }), [filteredCoaches, groupedBySchool]);
 
   const clearFilters = () => {
+    setSearchInput('');
     setSearchQuery('');
     setStateFilter('');
     setDivisionFilter('');
@@ -504,8 +526,8 @@ export default function CoachDirectory() {
             <div className="flex-1">
               <input
                 type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={e => setSearchInput(e.target.value)}
                 placeholder="Search coach name or school..."
                 className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base"
               />
@@ -595,7 +617,7 @@ export default function CoachDirectory() {
             </div>
             
             {/* Clear filters */}
-            {(searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail) && (
+            {(searchInput || searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail) && (
               <div className="mt-4 pt-4 border-t">
                 <button
                   onClick={clearFilters}

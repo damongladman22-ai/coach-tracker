@@ -4,13 +4,9 @@ import React, { useState } from 'react';
  * Ohio Premier Logo Component
  * 
  * Displays the OP Soccer logo with a fallback text display if image not found.
- * 
- * To add the real logo:
- * 1. Download from https://opsoccer.com/wp-content/uploads/2023/01/op-soccer-Logo-Dark.png
- * 2. Save as src/assets/op-soccer-logo.png
- * 3. The component will automatically use it
+ * Optimized for performance with lazy loading for non-critical renders.
  */
-export default function OPLogo({ className = "h-10 w-auto", showText = false }) {
+export default function OPLogo({ className = "h-10 w-auto", showText = false, eager = false }) {
   const [imgError, setImgError] = useState(false);
   
   // Try to import the logo
@@ -38,6 +34,8 @@ export default function OPLogo({ className = "h-10 w-auto", showText = false }) 
       src={logoSrc} 
       alt="Ohio Premier" 
       className={className}
+      loading={eager ? "eager" : "lazy"}
+      decoding="async"
       onError={() => setImgError(true)}
     />
   );

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FeedbackButton from '../components/FeedbackButton'
@@ -18,18 +18,30 @@ export default function GameAttendance() {
   const [showAddCoachForm, setShowAddCoachForm] = useState(false)
   const [newCoach, setNewCoach] = useState({ first_name: '', last_name: '' })
   const [saving, setSaving] = useState(false)
+  const [searching, setSearching] = useState(false)
+  
+  // Debounce ref for school search
+  const searchTimeoutRef = useRef(null)
 
   useEffect(() => {
     fetchGameData()
   }, [gameId])
 
   const fetchGameData = async () => {
-    // Fetch game
-    const { data: gameData } = await supabase
-      .from('games')
-      .select('*')
-      .eq('id', gameId)
-      .single()
+    // Fetch game and attendance in parallel
+    const [gameResult, attendanceResult] = await Promise.all([
+      supabase
+        .from('games')
+        .select('*')
+        .eq('id', gameId)
+        .single(),
+      supabase
+        .from('attendance')
+        .select('*, coaches(*, schools(*))')
+        .eq('game_id', gameId)
+    ])
+    
+    const gameData = gameResult.data
     
     // If game is closed, redirect to summary
     if (gameData?.is_closed) {
@@ -38,10 +50,7 @@ export default function GameAttendance() {
     }
     
     setGame(gameData)
-
-    // Fetch attendance
-    await fetchAttendance()
-    
+    setAttendance(attendanceResult.data || [])
     setLoading(false)
   }
 
@@ -54,20 +63,42 @@ export default function GameAttendance() {
     setAttendance(attendanceData || [])
   }
 
-  const searchSchools = async (term) => {
+  // Debounced school search - waits 300ms after typing stops
+  const searchSchools = useCallback((term) => {
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current)
+    }
+    
     if (term.length < 2) {
       setSchools([])
+      setSearching(false)
       return
     }
 
-    const { data } = await supabase
-      .from('schools')
-      .select('*')
-      .ilike('school', `%${term}%`)
-      .limit(20)
+    setSearching(true)
     
-    setSchools(data || [])
-  }
+    // Debounce: wait 300ms before searching
+    searchTimeoutRef.current = setTimeout(async () => {
+      const { data } = await supabase
+        .from('schools')
+        .select('id, school, city, state, division')
+        .ilike('school', `%${term}%`)
+        .limit(15)
+      
+      setSchools(data || [])
+      setSearching(false)
+    }, 300)
+  }, [])
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current)
+      }
+    }
+  }, [])
 
   const selectSchool = async (school) => {
     setSelectedSchool(school)
@@ -301,18 +332,25 @@ export default function GameAttendance() {
               {!selectedSchool ? (
                 /* School Search */
                 <>
-                  <input
-                    type="text"
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value)
-                      searchSchools(e.target.value)
-                    }}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg mb-4 sticky top-0 bg-white z-10"
-                    placeholder="Type college name..."
-                    autoFocus
-                    aria-label="Search for college"
-                  />
+                  <div className="relative sticky top-0 bg-white z-10 mb-4">
+                    <input
+                      type="text"
+                      value={searchTerm}
+                      onChange={(e) => {
+                        setSearchTerm(e.target.value)
+                        searchSchools(e.target.value)
+                      }}
+                      className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg pr-10"
+                      placeholder="Type college name..."
+                      autoFocus
+                      aria-label="Search for college"
+                    />
+                    {searching && (
+                      <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                        <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
+                      </div>
+                    )}
+                  </div>
                   
                   {schools.length > 0 && (
                     <div className="space-y-2" role="listbox" aria-label="Search results">

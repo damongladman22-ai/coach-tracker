@@ -3,8 +3,10 @@ import { supabase } from '../lib/supabase';
 
 /**
  * Hook for polling-based attendance updates
- * Auto-refreshes every 5 seconds (free tier friendly - no realtime subscription needed)
- * Multiple parents will see each other's entries with slight delay
+ * Features:
+ * - Adaptive polling: starts at 5s, slows to 10s if fetches are slow
+ * - Visibility-aware: pauses when tab is hidden
+ * - Free tier friendly - no realtime subscription needed
  */
 export function useRealtimeAttendance(eventTeamId) {
   const [attendance, setAttendance] = useState([]);
@@ -12,10 +14,17 @@ export function useRealtimeAttendance(eventTeamId) {
   const [error, setError] = useState(null);
   const [lastUpdate, setLastUpdate] = useState(null);
   const intervalRef = useRef(null);
+  const pollIntervalRef = useRef(5000); // Start at 5 seconds
+  const isVisibleRef = useRef(true);
 
   // Fetch attendance data with coach and school info
   const fetchAttendance = useCallback(async () => {
     if (!eventTeamId) return;
+    
+    // Skip if tab is not visible
+    if (!isVisibleRef.current) return;
+    
+    const startTime = Date.now();
 
     try {
       // Get all game IDs for this event team
@@ -64,15 +73,25 @@ export function useRealtimeAttendance(eventTeamId) {
       setAttendance(attendanceData || []);
       setError(null);
       setLastUpdate(new Date());
+      
+      // Adaptive polling: if fetch took > 2 seconds, slow down polling
+      const fetchTime = Date.now() - startTime;
+      if (fetchTime > 2000 && pollIntervalRef.current < 10000) {
+        pollIntervalRef.current = 10000; // Slow to 10 seconds
+      } else if (fetchTime < 1000 && pollIntervalRef.current > 5000) {
+        pollIntervalRef.current = 5000; // Speed back up to 5 seconds
+      }
     } catch (err) {
       console.error('Error fetching attendance:', err);
       setError(err.message);
+      // On error, slow down polling
+      pollIntervalRef.current = 10000;
     } finally {
       setLoading(false);
     }
   }, [eventTeamId]);
 
-  // Initial fetch and polling setup
+  // Initial fetch and adaptive polling setup
   useEffect(() => {
     if (!eventTeamId) {
       setLoading(false);
@@ -82,13 +101,42 @@ export function useRealtimeAttendance(eventTeamId) {
     // Initial fetch
     fetchAttendance();
 
-    // Set up polling every 5 seconds
-    intervalRef.current = setInterval(fetchAttendance, 5000);
+    // Adaptive polling function
+    const poll = () => {
+      fetchAttendance();
+      // Schedule next poll with current interval
+      intervalRef.current = setTimeout(poll, pollIntervalRef.current);
+    };
+    
+    // Start polling
+    intervalRef.current = setTimeout(poll, pollIntervalRef.current);
+
+    // Handle visibility change - pause polling when tab is hidden
+    const handleVisibilityChange = () => {
+      isVisibleRef.current = document.visibilityState === 'visible';
+      
+      if (isVisibleRef.current) {
+        // Tab became visible - fetch immediately and restart polling
+        fetchAttendance();
+        if (!intervalRef.current) {
+          intervalRef.current = setTimeout(poll, pollIntervalRef.current);
+        }
+      } else {
+        // Tab hidden - clear polling
+        if (intervalRef.current) {
+          clearTimeout(intervalRef.current);
+          intervalRef.current = null;
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearTimeout(intervalRef.current);
       }
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [eventTeamId, fetchAttendance]);
 

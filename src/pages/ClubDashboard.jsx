@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { PageLoader, ErrorMessage, CardSkeleton, Skeleton } from '../components/LoadingStates';
+import { ErrorMessage, CardSkeleton, Skeleton } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
 

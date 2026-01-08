@@ -118,7 +118,7 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
               <h2 id="feedback-modal-title" className="text-lg font-semibold text-gray-900">Send Feedback</h2>
               <button 
                 onClick={handleClose}
-                className="text-gray-400 hover:text-gray-600 p-1"
+                className="text-gray-400 hover:text-gray-600 p-2 -m-2"
                 aria-label="Close feedback modal"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">

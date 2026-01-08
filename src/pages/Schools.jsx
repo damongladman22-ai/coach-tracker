@@ -126,7 +126,6 @@ export default function Schools({ session }) {
     }
     
     setSchools(allSchools);
-    console.log('Loaded schools:', allSchools.length);
     setLoading(false);
   }
 
