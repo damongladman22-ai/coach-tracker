@@ -441,6 +441,30 @@ export default function ParentSummary() {
     });
   };
 
+  // Space-tolerant school name matching
+  // Handles cases like "Las" matching "La Salle"
+  const matchesSchoolSearch = useCallback((schoolName, searchTerm) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase().trim();
+    const name = schoolName.toLowerCase();
+    const nameNoSpaces = name.replace(/\s+/g, '');
+    const termNoSpaces = term.replace(/\s+/g, '');
+    
+    // Direct substring match
+    if (name.includes(term)) return true;
+    // Space-collapsed match (handles "LaSalle" matching "La Salle")
+    if (nameNoSpaces.includes(termNoSpaces)) return true;
+    // Character sequence match (handles "Las" matching "La Salle")
+    // Check if all characters appear in order
+    let nameIdx = 0;
+    for (const char of termNoSpaces) {
+      const foundIdx = name.indexOf(char, nameIdx);
+      if (foundIdx === -1) return false;
+      nameIdx = foundIdx + 1;
+    }
+    return true;
+  }, []);
+
   // Get attendance for a specific game
   const getGameAttendance = useCallback((gameId) => {
     return attendance.filter(a => a.game_id === gameId);
@@ -752,7 +776,7 @@ export default function ParentSummary() {
                 {(() => {
                   const allSchools = getAttendanceBySchool();
                   const matchCount = allSchools.filter(({ school }) => 
-                    school.school.toLowerCase().includes(searchTerm.toLowerCase())
+                    matchesSchoolSearch(school.school, searchTerm)
                   ).length;
                   return `${matchCount} of ${allSchools.length} school${allSchools.length !== 1 ? 's' : ''} match "${searchTerm}"`;
                 })()}
@@ -789,7 +813,7 @@ export default function ParentSummary() {
               const allSchoolAttendance = getGameAttendanceBySchool(game.id);
               const schoolAttendance = searchTerm
                 ? allSchoolAttendance.filter(({ school }) =>
-                    school.school.toLowerCase().includes(searchTerm.toLowerCase())
+                    matchesSchoolSearch(school.school, searchTerm)
                   )
                 : allSchoolAttendance;
               
@@ -842,7 +866,7 @@ export default function ParentSummary() {
               const allSchools = getAttendanceBySchool();
               const filteredSchools = searchTerm 
                 ? allSchools.filter(({ school }) => 
-                    school.school.toLowerCase().includes(searchTerm.toLowerCase())
+                    matchesSchoolSearch(school.school, searchTerm)
                   )
                 : allSchools;
               

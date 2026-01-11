@@ -66,6 +66,7 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
   // Fuzzy match scoring
   const getMatchScore = useCallback((school, searchTerms) => {
     const name = school.school.toLowerCase();
+    const nameNoSpaces = name.replace(/\s+/g, '');
     const city = (school.city || '').toLowerCase();
     const state = (school.state || '').toLowerCase();
     const conference = (school.conference || '').toLowerCase();
@@ -73,6 +74,8 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
     let score = 0;
     
     for (const term of searchTerms) {
+      const termNoSpaces = term.replace(/\s+/g, '');
+      
       // Exact match in name gets highest score
       if (name === term) score += 100;
       // Starts with term
@@ -81,8 +84,12 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
       else if (name.split(' ').some(word => word.startsWith(term))) score += 30;
       // Contains term
       else if (name.includes(term)) score += 20;
+      // Space-collapsed match (handles "LaSalle" or "Las" matching "La Salle")
+      else if (nameNoSpaces.includes(termNoSpaces)) score += 18;
+      // Character sequence match (handles "Las" matching "La Salle" via L-a-s order)
+      else if (matchesCharSequence(name, termNoSpaces)) score += 15;
       // State match
-      else if (state === term || state.startsWith(term)) score += 15;
+      else if (state === term || state.startsWith(term)) score += 12;
       // City match
       else if (city.includes(term)) score += 10;
       // Conference match
@@ -93,6 +100,19 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
     
     return score;
   }, []);
+
+  // Check if characters appear in sequence (with possible gaps)
+  // "las" matches "la salle" because l-a-s appear in that order
+  const matchesCharSequence = (str, term) => {
+    if (term.length < 2) return false;
+    let strIdx = 0;
+    for (const char of term) {
+      const foundIdx = str.indexOf(char, strIdx);
+      if (foundIdx === -1) return false;
+      strIdx = foundIdx + 1;
+    }
+    return true;
+  };
 
   // Simple fuzzy matching (allows 1-2 character differences)
   const fuzzyMatch = (str, term) => {

@@ -64,6 +64,7 @@ export default function GameAttendance() {
   }
 
   // Debounced school search - waits 300ms after typing stops
+  // Uses multiple search strategies for better fuzzy matching
   const searchSchools = useCallback((term) => {
     // Clear previous timeout
     if (searchTimeoutRef.current) {
@@ -80,13 +81,55 @@ export default function GameAttendance() {
     
     // Debounce: wait 300ms before searching
     searchTimeoutRef.current = setTimeout(async () => {
+      const normalizedTerm = term.toLowerCase().trim()
+      
+      // Strategy 1: Direct pattern match (handles normal cases)
+      // Strategy 2: Character sequence pattern (handles "Las" matching "La Salle")
+      //   - Converts "las" to "%l%a%s%" which matches "La Salle"
+      const charSequencePattern = '%' + normalizedTerm.split('').join('%') + '%'
+      
+      // Query with OR condition for both patterns
       const { data } = await supabase
         .from('schools')
         .select('id, school, city, state, division')
-        .ilike('school', `%${term}%`)
-        .limit(15)
+        .or(`school.ilike.%${normalizedTerm}%,school.ilike.${charSequencePattern}`)
+        .limit(30)
       
-      setSchools(data || [])
+      if (data && data.length > 0) {
+        // Rank results: exact substring matches score higher than character sequence matches
+        const ranked = data.map(school => {
+          const schoolLower = school.school.toLowerCase()
+          const schoolNoSpaces = schoolLower.replace(/\s+/g, '')
+          let score = 0
+          
+          // Exact match with input (highest priority)
+          if (schoolLower === normalizedTerm) score = 100
+          // School name starts with the search term
+          else if (schoolLower.startsWith(normalizedTerm)) score = 80
+          // Any word in school name starts with search term  
+          else if (schoolLower.split(' ').some(word => word.startsWith(normalizedTerm))) score = 60
+          // Search term found as substring
+          else if (schoolLower.includes(normalizedTerm)) score = 50
+          // Space-collapsed match (handles "LaSalle" matching "las")
+          else if (schoolNoSpaces.includes(normalizedTerm.replace(/\s+/g, ''))) score = 40
+          // Character sequence match (handles "Las" matching "La Salle")
+          else score = 20
+          
+          return { ...school, score }
+        })
+        
+        // Sort by score descending, then alphabetically
+        ranked.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score
+          return a.school.localeCompare(b.school)
+        })
+        
+        // Return top 15 results
+        setSchools(ranked.slice(0, 15))
+      } else {
+        setSchools([])
+      }
+      
       setSearching(false)
     }, 300)
   }, [])
