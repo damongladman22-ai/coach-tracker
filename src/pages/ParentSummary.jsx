@@ -442,27 +442,22 @@ export default function ParentSummary() {
   };
 
   // Space-tolerant school name matching
-  // Handles cases like "Las" matching "La Salle"
+  // Handles "LaSalle" or "lasalle" matching "La Salle"
   const matchesSchoolSearch = useCallback((schoolName, searchTerm) => {
     if (!searchTerm) return true;
     const term = searchTerm.toLowerCase().trim();
     const name = schoolName.toLowerCase();
-    const nameNoSpaces = name.replace(/\s+/g, '');
-    const termNoSpaces = term.replace(/\s+/g, '');
     
     // Direct substring match
     if (name.includes(term)) return true;
-    // Space-collapsed match (handles "LaSalle" matching "La Salle")
+    
+    // Space-collapsed match: remove spaces from both and check
+    // This handles "lasalle" matching "la salle" or "LaSalle" matching "La Salle"
+    const nameNoSpaces = name.replace(/\s+/g, '');
+    const termNoSpaces = term.replace(/\s+/g, '');
     if (nameNoSpaces.includes(termNoSpaces)) return true;
-    // Character sequence match (handles "Las" matching "La Salle")
-    // Check if all characters appear in order
-    let nameIdx = 0;
-    for (const char of termNoSpaces) {
-      const foundIdx = name.indexOf(char, nameIdx);
-      if (foundIdx === -1) return false;
-      nameIdx = foundIdx + 1;
-    }
-    return true;
+    
+    return false;
   }, []);
 
   // Get attendance for a specific game

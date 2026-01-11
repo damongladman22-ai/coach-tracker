@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FeedbackButton from '../components/FeedbackButton'
@@ -11,17 +11,14 @@ export default function GameAttendance() {
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [schools, setSchools] = useState([])
+  const [allSchools, setAllSchools] = useState([]) // All schools loaded once
+  const [schoolsLoading, setSchoolsLoading] = useState(false)
   const [selectedSchool, setSelectedSchool] = useState(null)
   const [coaches, setCoaches] = useState([])
   const [selectedCoaches, setSelectedCoaches] = useState([])
   const [showAddCoachForm, setShowAddCoachForm] = useState(false)
   const [newCoach, setNewCoach] = useState({ first_name: '', last_name: '' })
   const [saving, setSaving] = useState(false)
-  const [searching, setSearching] = useState(false)
-  
-  // Debounce ref for school search
-  const searchTimeoutRef = useRef(null)
 
   useEffect(() => {
     fetchGameData()
@@ -63,90 +60,82 @@ export default function GameAttendance() {
     setAttendance(attendanceData || [])
   }
 
-  // Debounced school search - waits 300ms after typing stops
-  // Uses multiple search strategies for better fuzzy matching
-  const searchSchools = useCallback((term) => {
-    // Clear previous timeout
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current)
-    }
+  // Load all schools when modal opens (one-time load for client-side search)
+  const loadAllSchools = async () => {
+    if (allSchools.length > 0) return // Already loaded
     
-    if (term.length < 2) {
-      setSchools([])
-      setSearching(false)
-      return
-    }
-
-    setSearching(true)
-    
-    // Debounce: wait 300ms before searching
-    searchTimeoutRef.current = setTimeout(async () => {
-      const normalizedTerm = term.toLowerCase().trim()
+    setSchoolsLoading(true)
+    try {
+      let schools = []
+      let from = 0
+      const batchSize = 1000
       
-      // Strategy 1: Direct pattern match (handles normal cases)
-      // Strategy 2: Character sequence pattern (handles "Las" matching "La Salle")
-      //   - Converts "las" to "%l%a%s%" which matches "La Salle"
-      const charSequencePattern = '%' + normalizedTerm.split('').join('%') + '%'
-      
-      // Query with OR condition for both patterns
-      const { data } = await supabase
-        .from('schools')
-        .select('id, school, city, state, division')
-        .or(`school.ilike.%${normalizedTerm}%,school.ilike.${charSequencePattern}`)
-        .limit(30)
-      
-      if (data && data.length > 0) {
-        // Rank results: exact substring matches score higher than character sequence matches
-        const ranked = data.map(school => {
-          const schoolLower = school.school.toLowerCase()
-          const schoolNoSpaces = schoolLower.replace(/\s+/g, '')
-          let score = 0
-          
-          // Exact match with input (highest priority)
-          if (schoolLower === normalizedTerm) score = 100
-          // School name starts with the search term
-          else if (schoolLower.startsWith(normalizedTerm)) score = 80
-          // Any word in school name starts with search term  
-          else if (schoolLower.split(' ').some(word => word.startsWith(normalizedTerm))) score = 60
-          // Search term found as substring
-          else if (schoolLower.includes(normalizedTerm)) score = 50
-          // Space-collapsed match (handles "LaSalle" matching "las")
-          else if (schoolNoSpaces.includes(normalizedTerm.replace(/\s+/g, ''))) score = 40
-          // Character sequence match (handles "Las" matching "La Salle")
-          else score = 20
-          
-          return { ...school, score }
-        })
+      while (true) {
+        const { data, error } = await supabase
+          .from('schools')
+          .select('id, school, city, state, division')
+          .order('school')
+          .range(from, from + batchSize - 1)
         
-        // Sort by score descending, then alphabetically
-        ranked.sort((a, b) => {
-          if (b.score !== a.score) return b.score - a.score
-          return a.school.localeCompare(b.school)
-        })
+        if (error) throw error
+        if (!data || data.length === 0) break
         
-        // Return top 15 results
-        setSchools(ranked.slice(0, 15))
-      } else {
-        setSchools([])
+        schools = [...schools, ...data]
+        if (data.length < batchSize) break
+        from += batchSize
       }
       
-      setSearching(false)
-    }, 300)
+      setAllSchools(schools)
+    } catch (err) {
+      console.error('Error loading schools:', err)
+    } finally {
+      setSchoolsLoading(false)
+    }
+  }
+
+  // Fuzzy matching score for a school against search term
+  const getMatchScore = useCallback((school, term) => {
+    const name = school.school.toLowerCase()
+    const nameNoSpaces = name.replace(/\s+/g, '')
+    const termLower = term.toLowerCase()
+    const termNoSpaces = termLower.replace(/\s+/g, '')
+    
+    // Exact match
+    if (name === termLower) return 100
+    // Starts with term
+    if (name.startsWith(termLower)) return 90
+    // Word starts with term (e.g., "State" matches "Ohio State")
+    if (name.split(' ').some(word => word.startsWith(termLower))) return 80
+    // Contains term as substring
+    if (name.includes(termLower)) return 70
+    // Space-collapsed match: "lasalle" matches "la salle"
+    if (nameNoSpaces.includes(termNoSpaces)) return 60
+    // Space-collapsed starts with: "las" matches start of "lasalle" (from "la salle")
+    if (nameNoSpaces.startsWith(termNoSpaces)) return 55
+    // City or state match
+    const city = (school.city || '').toLowerCase()
+    const state = (school.state || '').toLowerCase()
+    if (city.includes(termLower) || state.startsWith(termLower)) return 30
+    
+    return 0
   }, [])
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current)
-      }
-    }
-  }, [])
+  // Client-side filtered schools based on search term
+  const filteredSchools = useMemo(() => {
+    if (!searchTerm || searchTerm.length < 2) return []
+    
+    const term = searchTerm.trim()
+    
+    return allSchools
+      .map(school => ({ ...school, score: getMatchScore(school, term) }))
+      .filter(school => school.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20)
+  }, [allSchools, searchTerm, getMatchScore])
 
   const selectSchool = async (school) => {
     setSelectedSchool(school)
     setSearchTerm(school.school)
-    setSchools([])
     
     // Fetch coaches for this school
     const { data } = await supabase
@@ -228,7 +217,6 @@ export default function GameAttendance() {
     setShowAddModal(false)
     setSearchTerm('')
     setSelectedSchool(null)
-    setSchools([])
     setCoaches([])
     setSelectedCoaches([])
     setShowAddCoachForm(false)
@@ -292,7 +280,10 @@ export default function GameAttendance() {
       {/* Add Button */}
       <div className="p-4">
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => {
+            setShowAddModal(true)
+            loadAllSchools()
+          }}
           className="w-full bg-green-600 text-white py-4 rounded-lg text-lg font-semibold hover:bg-green-700 active:bg-green-800"
         >
           + Add College Coaches
@@ -379,25 +370,22 @@ export default function GameAttendance() {
                     <input
                       type="text"
                       value={searchTerm}
-                      onChange={(e) => {
-                        setSearchTerm(e.target.value)
-                        searchSchools(e.target.value)
-                      }}
+                      onChange={(e) => setSearchTerm(e.target.value)}
                       className="w-full px-4 py-3 border border-gray-300 rounded-lg text-lg pr-10"
                       placeholder="Type college name..."
                       autoFocus
                       aria-label="Search for college"
                     />
-                    {searching && (
+                    {schoolsLoading && (
                       <div className="absolute right-3 top-1/2 -translate-y-1/2">
                         <div className="animate-spin h-5 w-5 border-2 border-blue-600 border-t-transparent rounded-full"></div>
                       </div>
                     )}
                   </div>
                   
-                  {schools.length > 0 && (
+                  {filteredSchools.length > 0 && (
                     <div className="space-y-2" role="listbox" aria-label="Search results">
-                      {schools.map((school) => (
+                      {filteredSchools.map((school) => (
                         <button
                           key={school.id}
                           onClick={() => selectSchool(school)}
@@ -415,7 +403,7 @@ export default function GameAttendance() {
                     </div>
                   )}
 
-                  {searchTerm.length >= 2 && schools.length === 0 && (
+                  {searchTerm.length >= 2 && filteredSchools.length === 0 && !schoolsLoading && (
                     <p className="text-center text-gray-500 py-4">
                       No schools found matching "{searchTerm}"
                     </p>
