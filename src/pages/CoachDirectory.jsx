@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { isValidEmail } from '../lib/validation';
@@ -158,6 +158,24 @@ export default function CoachDirectory() {
     loadData();
   }, []);
 
+  // Space-tolerant matching for school names
+  // Handles "LaSalle" or "lasalle" matching "La Salle"
+  const matchesSearch = useCallback((text, searchTerm) => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase().trim();
+    const str = text.toLowerCase();
+    
+    // Direct substring match
+    if (str.includes(term)) return true;
+    
+    // Space-collapsed match
+    const strNoSpaces = str.replace(/\s+/g, '');
+    const termNoSpaces = term.replace(/\s+/g, '');
+    if (strNoSpaces.includes(termNoSpaces)) return true;
+    
+    return false;
+  }, []);
+
   // Filter coaches based on search and filters
   const filteredCoaches = useMemo(() => {
     return coaches.filter(coach => {
@@ -166,11 +184,10 @@ export default function CoachDirectory() {
       
       // Search query (coach name or school name)
       if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const coachName = `${coach.first_name} ${coach.last_name}`.toLowerCase();
-        const schoolName = school.school.toLowerCase();
+        const coachName = `${coach.first_name} ${coach.last_name}`;
+        const schoolName = school.school;
         
-        if (!coachName.includes(query) && !schoolName.includes(query)) {
+        if (!matchesSearch(coachName, searchQuery) && !matchesSearch(schoolName, searchQuery)) {
           return false;
         }
       }
@@ -197,7 +214,7 @@ export default function CoachDirectory() {
       
       return true;
     });
-  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail]);
+  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, matchesSearch]);
 
   // Group by school for display
   const groupedBySchool = useMemo(() => {
