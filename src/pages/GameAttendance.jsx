@@ -25,8 +25,8 @@ export default function GameAttendance() {
   }, [gameId])
 
   const fetchGameData = async () => {
-    // Fetch game and attendance in parallel
-    const [gameResult, attendanceResult] = await Promise.all([
+    // Fetch game, attendance, and unlock setting in parallel
+    const [gameResult, attendanceResult, settingResult] = await Promise.all([
       supabase
         .from('games')
         .select('*')
@@ -35,15 +35,37 @@ export default function GameAttendance() {
       supabase
         .from('attendance')
         .select('*, coaches(*, schools(*))')
-        .eq('game_id', gameId)
+        .eq('game_id', gameId),
+      supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'game_unlock_minutes')
+        .single()
     ])
     
     const gameData = gameResult.data
+    const unlockMinutes = parseInt(settingResult.data?.value, 10) || 30
     
     // If game is closed, redirect to summary
     if (gameData?.is_closed) {
       navigate(`/e/${eventSlug}/${teamSlug}/summary`, { replace: true })
       return
+    }
+    
+    // If game has a time and is not yet unlocked, redirect to team page
+    if (gameData?.game_time && gameData?.timezone) {
+      const now = new Date()
+      const gameDateTime = new Date(`${gameData.game_date}T${gameData.game_time}`)
+      
+      // Get current time in game's timezone
+      const nowInTz = new Date(now.toLocaleString('en-US', { timeZone: gameData.timezone }))
+      const gameTimeInTz = new Date(gameDateTime.toLocaleString('en-US', { timeZone: gameData.timezone }))
+      const unlockTime = new Date(gameTimeInTz.getTime() - unlockMinutes * 60000)
+      
+      if (nowInTz < unlockTime) {
+        navigate(`/e/${eventSlug}/${teamSlug}`, { replace: true })
+        return
+      }
     }
     
     setGame(gameData)

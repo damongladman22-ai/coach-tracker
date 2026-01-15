@@ -3,6 +3,17 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 
+// Common US timezones for dropdown
+const TIMEZONES = [
+  { value: 'America/New_York', label: 'Eastern (ET)' },
+  { value: 'America/Chicago', label: 'Central (CT)' },
+  { value: 'America/Denver', label: 'Mountain (MT)' },
+  { value: 'America/Phoenix', label: 'Arizona (MST)' },
+  { value: 'America/Los_Angeles', label: 'Pacific (PT)' },
+  { value: 'America/Anchorage', label: 'Alaska (AKT)' },
+  { value: 'Pacific/Honolulu', label: 'Hawaii (HT)' },
+]
+
 export default function EventDetail({ session }) {
   const { eventId } = useParams()
   const [event, setEvent] = useState(null)
@@ -13,7 +24,12 @@ export default function EventDetail({ session }) {
   const [selectedTeam, setSelectedTeam] = useState('')
   const [showGameForm, setShowGameForm] = useState(null)
   const [editingGame, setEditingGame] = useState(null)
-  const [gameFormData, setGameFormData] = useState({ game_date: '', opponent: '' })
+  const [gameFormData, setGameFormData] = useState({ 
+    game_date: '', 
+    opponent: '',
+    game_time: '',
+    timezone: 'America/New_York'
+  })
   const [exporting, setExporting] = useState(null)
   const [copiedLink, setCopiedLink] = useState(null)
 
@@ -107,12 +123,14 @@ export default function EventDetail({ session }) {
       .insert([{ 
         event_team_id: eventTeamId,
         game_date: gameFormData.game_date,
-        opponent: gameFormData.opponent
+        opponent: gameFormData.opponent,
+        game_time: gameFormData.game_time || null,
+        timezone: gameFormData.game_time ? gameFormData.timezone : null
       }])
     
     if (!error) {
       setShowGameForm(null)
-      setGameFormData({ game_date: '', opponent: '' })
+      setGameFormData({ game_date: '', opponent: '', game_time: '', timezone: 'America/New_York' })
       fetchData()
     }
   }
@@ -122,7 +140,9 @@ export default function EventDetail({ session }) {
       .from('games')
       .update({ 
         game_date: gameFormData.game_date,
-        opponent: gameFormData.opponent
+        opponent: gameFormData.opponent,
+        game_time: gameFormData.game_time || null,
+        timezone: gameFormData.game_time ? gameFormData.timezone : null
       })
       .eq('id', editingGame.id)
     
@@ -136,7 +156,12 @@ export default function EventDetail({ session }) {
 
   const handleEditGame = (game, eventTeamId) => {
     setEditingGame(game)
-    setGameFormData({ game_date: game.game_date, opponent: game.opponent })
+    setGameFormData({ 
+      game_date: game.game_date, 
+      opponent: game.opponent,
+      game_time: game.game_time || '',
+      timezone: game.timezone || 'America/New_York'
+    })
     setShowGameForm(eventTeamId)
   }
 
@@ -208,6 +233,29 @@ export default function EventDetail({ session }) {
       month: 'numeric',
       day: 'numeric'
     })
+  }
+
+  // Format time for display (e.g., "2:30 PM")
+  const formatTime = (timeStr) => {
+    if (!timeStr) return ''
+    const [hours, minutes] = timeStr.split(':').map(Number)
+    const ampm = hours >= 12 ? 'PM' : 'AM'
+    const hour12 = hours % 12 || 12
+    return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`
+  }
+
+  // Get timezone abbreviation (e.g., "ET", "CT")
+  const getTimezoneAbbr = (timezone) => {
+    const abbrevs = {
+      'America/New_York': 'ET',
+      'America/Chicago': 'CT',
+      'America/Denver': 'MT',
+      'America/Phoenix': 'MST',
+      'America/Los_Angeles': 'PT',
+      'America/Anchorage': 'AKT',
+      'Pacific/Honolulu': 'HT',
+    }
+    return abbrevs[timezone] || ''
   }
 
   const exportToCSV = async (eventTeam) => {
@@ -435,7 +483,7 @@ export default function EventDetail({ session }) {
                   <button
                     onClick={() => {
                       setEditingGame(null)
-                      setGameFormData({ game_date: '', opponent: '' })
+                      setGameFormData({ game_date: '', opponent: '', game_time: '', timezone: 'America/New_York' })
                       setShowGameForm(eventTeam.id)
                     }}
                     className="text-blue-600 hover:text-blue-800 text-sm"
@@ -449,7 +497,7 @@ export default function EventDetail({ session }) {
                     <h4 className="font-medium mb-3">{editingGame ? 'Edit Game' : 'Add Game'}</h4>
                     <div className="grid grid-cols-2 gap-4 mb-3">
                       <div>
-                        <label className="block text-sm text-gray-600 mb-1">Date</label>
+                        <label className="block text-sm text-gray-600 mb-1">Date *</label>
                         <input
                           type="date"
                           value={gameFormData.game_date}
@@ -458,7 +506,7 @@ export default function EventDetail({ session }) {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm text-gray-600 mb-1">Opponent</label>
+                        <label className="block text-sm text-gray-600 mb-1">Opponent *</label>
                         <input
                           type="text"
                           value={gameFormData.opponent}
@@ -466,6 +514,31 @@ export default function EventDetail({ session }) {
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                           placeholder="e.g., ABC Soccer Club"
                         />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 mb-3">
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">Time (optional)</label>
+                        <input
+                          type="time"
+                          value={gameFormData.game_time}
+                          onChange={(e) => setGameFormData({ ...gameFormData, game_time: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                        />
+                        <p className="text-xs text-gray-400 mt-1">If set, tracker locks until near game time</p>
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">Timezone</label>
+                        <select
+                          value={gameFormData.timezone}
+                          onChange={(e) => setGameFormData({ ...gameFormData, timezone: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          disabled={!gameFormData.game_time}
+                        >
+                          {TIMEZONES.map(tz => (
+                            <option key={tz.value} value={tz.value}>{tz.label}</option>
+                          ))}
+                        </select>
                       </div>
                     </div>
                     <div className="flex space-x-2">
@@ -479,7 +552,7 @@ export default function EventDetail({ session }) {
                         onClick={() => {
                           setShowGameForm(null)
                           setEditingGame(null)
-                          setGameFormData({ game_date: '', opponent: '' })
+                          setGameFormData({ game_date: '', opponent: '', game_time: '', timezone: 'America/New_York' })
                         }}
                         className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-300"
                       >
@@ -501,6 +574,11 @@ export default function EventDetail({ session }) {
                           )}
                           <span className={game.is_closed ? 'text-gray-500' : ''}>
                             <span className="font-medium">{formatDate(game.game_date)}</span>
+                            {game.game_time && (
+                              <span className="text-gray-500 text-sm ml-1">
+                                @ {formatTime(game.game_time)} {getTimezoneAbbr(game.timezone)}
+                              </span>
+                            )}
                             <span className="text-gray-600"> vs {game.opponent}</span>
                           </span>
                           {game.is_closed && (

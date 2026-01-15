@@ -29,6 +29,8 @@ export default function TeamGames() {
   const [games, setGames] = useState([]);
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(null);
+  const [unlockMinutes, setUnlockMinutes] = useState(30);
+  const [currentTime, setCurrentTime] = useState(new Date());
   
   // Polling-based attendance hook (auto-refreshes every 5 seconds)
   const { 
@@ -36,12 +38,31 @@ export default function TeamGames() {
     lastUpdate
   } = useRealtimeAttendance(eventTeam?.id);
 
+  // Update current time every minute for lock/unlock checks
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
   // Load page data
   useEffect(() => {
     async function loadPageData() {
       try {
         setPageLoading(true);
         setPageError(null);
+
+        // Load unlock minutes setting
+        const { data: settingsData } = await supabase
+          .from('app_settings')
+          .select('value')
+          .eq('key', 'game_unlock_minutes')
+          .single();
+        
+        if (settingsData?.value) {
+          setUnlockMinutes(parseInt(settingsData.value, 10) || 30);
+        }
 
         // Get event team by slugs
         const { data: eventTeamData, error: eventTeamError } = await supabase
@@ -115,6 +136,81 @@ export default function TeamGames() {
     const gameAttendance = attendance.filter(a => a.game_id === gameId);
     const schoolIds = new Set(gameAttendance.map(a => a.coaches?.school_id).filter(Boolean));
     return schoolIds.size;
+  };
+
+  // Check if a game is unlocked (available for parents to log coaches)
+  const isGameUnlocked = (game) => {
+    // If game is closed by admin, it's not accessible
+    if (game.is_closed) return false;
+    
+    // If no time is set, game is always open
+    if (!game.game_time || !game.timezone) return true;
+    
+    // Calculate unlock time (game time - unlock minutes)
+    const [hours, minutes] = game.game_time.split(':').map(Number);
+    const gameDateTime = new Date(`${game.game_date}T${game.game_time}`);
+    
+    // Create date in the game's timezone
+    const gameTimeInTz = new Date(gameDateTime.toLocaleString('en-US', { timeZone: game.timezone }));
+    const unlockTime = new Date(gameTimeInTz.getTime() - unlockMinutes * 60000);
+    
+    // Get current time in game's timezone for comparison
+    const nowInTz = new Date(currentTime.toLocaleString('en-US', { timeZone: game.timezone }));
+    
+    return nowInTz >= unlockTime;
+  };
+
+  // Get the unlock time for display
+  const getUnlockTime = (game) => {
+    if (!game.game_time || !game.timezone) return null;
+    
+    const [hours, minutes] = game.game_time.split(':').map(Number);
+    
+    // Calculate unlock time
+    let unlockHours = hours;
+    let unlockMinutesVal = minutes - unlockMinutes;
+    
+    if (unlockMinutesVal < 0) {
+      unlockMinutesVal += 60;
+      unlockHours -= 1;
+      if (unlockHours < 0) unlockHours += 24;
+    }
+    
+    const ampm = unlockHours >= 12 ? 'PM' : 'AM';
+    const hour12 = unlockHours % 12 || 12;
+    
+    // Get timezone abbreviation
+    const tzAbbrevs = {
+      'America/New_York': 'ET',
+      'America/Chicago': 'CT',
+      'America/Denver': 'MT',
+      'America/Phoenix': 'MST',
+      'America/Los_Angeles': 'PT',
+      'America/Anchorage': 'AKT',
+      'Pacific/Honolulu': 'HT',
+    };
+    const tzAbbr = tzAbbrevs[game.timezone] || '';
+    
+    return `${hour12}:${unlockMinutesVal.toString().padStart(2, '0')} ${ampm} ${tzAbbr}`;
+  };
+
+  // Format game time for display
+  const formatGameTime = (game) => {
+    if (!game.game_time) return '';
+    const [hours, minutes] = game.game_time.split(':').map(Number);
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    const hour12 = hours % 12 || 12;
+    const tzAbbrevs = {
+      'America/New_York': 'ET',
+      'America/Chicago': 'CT',
+      'America/Denver': 'MT',
+      'America/Phoenix': 'MST',
+      'America/Los_Angeles': 'PT',
+      'America/Anchorage': 'AKT',
+      'Pacific/Honolulu': 'HT',
+    };
+    const tzAbbr = tzAbbrevs[game.timezone] || '';
+    return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm} ${tzAbbr}`;
   };
 
   // Loading state - show skeleton with page structure
@@ -222,6 +318,8 @@ export default function TeamGames() {
               const coachCount = getGameAttendanceCount(game.id);
               const schoolCount = getGameSchoolCount(game.id);
               const isClosed = game.is_closed;
+              const isUnlocked = isGameUnlocked(game);
+              const isLocked = !isClosed && !isUnlocked && game.game_time;
               
               return (
                 <div key={game.id}>
@@ -236,6 +334,7 @@ export default function TeamGames() {
                           <div className="min-w-0">
                             <p className="text-sm text-gray-500">
                               <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)}
+                              {game.game_time && <span className="ml-1">@ {formatGameTime(game)}</span>}
                               <span className="ml-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Closed</span>
                             </p>
                             <p className="font-semibold text-lg text-gray-700 truncate">vs {game.opponent}</p>
@@ -254,6 +353,33 @@ export default function TeamGames() {
                         </div>
                       )}
                     </div>
+                  ) : isLocked ? (
+                    // Locked game - not yet time to log coaches
+                    <div className="bg-white rounded-lg border shadow-sm p-4 opacity-90">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="flex items-start gap-2 min-w-0 flex-1">
+                          <svg className="h-5 w-5 text-amber-500 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          <div className="min-w-0">
+                            <p className="text-sm text-gray-500">
+                              <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)} @ {formatGameTime(game)}
+                            </p>
+                            <p className="font-semibold text-lg text-gray-700 truncate">vs {game.opponent}</p>
+                          </div>
+                        </div>
+                        <div className="bg-amber-100 text-amber-800 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0 text-center">
+                          <div className="text-xs text-amber-600">Opens at</div>
+                          <div>{getUnlockTime(game)}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 pt-3 border-t text-sm text-amber-600">
+                        <svg className="h-4 w-4 inline mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Logging opens {unlockMinutes} minutes before game time
+                      </div>
+                    </div>
                   ) : (
                     // Open game - clickable link to game page
                     <Link
@@ -264,6 +390,7 @@ export default function TeamGames() {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm text-gray-500">
                             <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)}
+                            {game.game_time && <span className="ml-1">@ {formatGameTime(game)}</span>}
                           </p>
                           <p className="font-semibold text-lg truncate">vs {game.opponent}</p>
                         </div>

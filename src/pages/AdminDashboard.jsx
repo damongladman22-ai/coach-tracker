@@ -7,7 +7,8 @@ export default function AdminDashboard({ session }) {
   const [copied, setCopied] = useState(false)
   const [settings, setSettings] = useState({
     summary_email_enabled: true,
-    directory_email_enabled: true
+    directory_email_enabled: true,
+    game_unlock_minutes: 30
   })
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsToast, setSettingsToast] = useState({ show: false, message: '' })
@@ -22,7 +23,12 @@ export default function AdminDashboard({ session }) {
       if (data && data.length > 0) {
         const settingsObj = {}
         data.forEach(row => {
-          settingsObj[row.key] = row.value === 'true'
+          // Handle boolean vs numeric values
+          if (row.key === 'game_unlock_minutes') {
+            settingsObj[row.key] = parseInt(row.value, 10) || 30
+          } else {
+            settingsObj[row.key] = row.value === 'true'
+          }
         })
         setSettings(prev => ({ ...prev, ...settingsObj }))
       }
@@ -233,6 +239,46 @@ export default function AdminDashboard({ session }) {
               {settingsToast.message}
             </div>
           )}
+        </div>
+
+        {/* Game Unlock Settings Card */}
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="p-2 bg-green-100 rounded-lg">
+              <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-800">Game Unlock</h2>
+          </div>
+          <p className="text-gray-600 text-sm mb-4">Control when parents can start logging coaches before game time.</p>
+          
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium text-gray-700">Minutes before game time</label>
+              <div className="flex items-center gap-2 mt-1">
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  value={settings.game_unlock_minutes}
+                  onChange={(e) => {
+                    const value = Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 0))
+                    setSettings(prev => ({ ...prev, game_unlock_minutes: value }))
+                  }}
+                  onBlur={(e) => {
+                    const value = Math.max(0, Math.min(120, parseInt(e.target.value, 10) || 30))
+                    updateSetting('game_unlock_minutes', value)
+                  }}
+                  className="w-20 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+                <span className="text-sm text-gray-500">minutes</span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">
+                Games with a time set will unlock {settings.game_unlock_minutes} min before start. Games without a time are always open.
+              </p>
+            </div>
+          </div>
         </div>
 
         <Link
