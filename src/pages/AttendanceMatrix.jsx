@@ -146,11 +146,12 @@ export default function AttendanceMatrix({ session }) {
   const handleSchoolSelect = async (school) => {
     setSelectedSchool(school)
     if (school) {
-      // Fetch coaches for this school
+      // Fetch active coaches for this school
       const { data } = await supabase
         .from('coaches')
         .select('*')
         .eq('school_id', school.id)
+        .neq('is_active', false)
         .order('last_name')
       setSchoolCoaches(data || [])
     } else {

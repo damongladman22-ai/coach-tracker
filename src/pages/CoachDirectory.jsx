@@ -38,7 +38,9 @@ export default function CoachDirectory() {
   const [divisionFilter, setDivisionFilter] = useState('');
   const [conferenceFilter, setConferenceFilter] = useState('');
   const [showOnlyWithEmail, setShowOnlyWithEmail] = useState(false);
+  const [showInactive, setShowInactive] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
+  const [togglingActive, setTogglingActive] = useState(null); // coach id whose active state is being toggled
   
   // Debounce timer ref
   const searchTimerRef = useRef(null);
@@ -104,7 +106,7 @@ export default function CoachDirectory() {
           const { data, error } = await supabase
             .from('coaches')
             .select(`
-              id, first_name, last_name, email, phone, title,
+              id, first_name, last_name, email, phone, title, is_active,
               schools (id, school, city, state, division, conference)
             `)
             .order('last_name')
@@ -211,10 +213,17 @@ export default function CoachDirectory() {
       if (showOnlyWithEmail && !coach.email) {
         return false;
       }
+
+      // Active filter - hide inactive by default
+      // Treat undefined/null is_active as active for back-compat (pre-migration coaches)
+      const isActive = coach.is_active !== false;
+      if (!showInactive && !isActive) {
+        return false;
+      }
       
       return true;
     });
-  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, matchesSearch]);
+  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, matchesSearch]);
 
   // Group by school for display
   const groupedBySchool = useMemo(() => {
@@ -250,7 +259,7 @@ export default function CoachDirectory() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail]);
+  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -266,12 +275,13 @@ export default function CoachDirectory() {
     setDivisionFilter('');
     setConferenceFilter('');
     setShowOnlyWithEmail(false);
+    setShowInactive(false);
   };
 
   // Export filtered coaches to CSV
   const exportToCSV = () => {
     // Build CSV header
-    const headers = ['School', 'City', 'State', 'Division', 'Conference', 'First Name', 'Last Name', 'Title', 'Email', 'Phone'];
+    const headers = ['School', 'City', 'State', 'Division', 'Conference', 'First Name', 'Last Name', 'Title', 'Email', 'Phone', 'Active'];
     
     // Build CSV rows from filtered coaches
     const rows = filteredCoaches.map(coach => {
@@ -286,7 +296,8 @@ export default function CoachDirectory() {
         coach.last_name || '',
         coach.title || '',
         coach.email || '',
-        coach.phone || ''
+        coach.phone || '',
+        coach.is_active === false ? 'No' : 'Yes'
       ];
     });
     
@@ -451,7 +462,7 @@ export default function CoachDirectory() {
   };
 
   const deleteCoach = async (coach) => {
-    const confirmMessage = `Delete ${coach.first_name} ${coach.last_name}?\n\nThis will also remove any attendance records for this coach.`;
+    const confirmMessage = `Delete ${coach.first_name} ${coach.last_name}?\n\nThis will also remove any attendance records for this coach.\n\nTip: If this coach moved schools, click "Mark Inactive" instead — that preserves their attendance history.`;
     if (!confirm(confirmMessage)) return;
 
     setDeleting(coach.id);
@@ -479,6 +490,49 @@ export default function CoachDirectory() {
       setToast({ show: true, message: 'Error deleting: ' + err.message, type: 'error' });
     } finally {
       setDeleting(null);
+    }
+  };
+
+  // Toggle a coach's active status (anyone can do this in the directory)
+  const toggleCoachActive = async (coach) => {
+    const isCurrentlyActive = coach.is_active !== false;
+    const nextActive = !isCurrentlyActive;
+
+    if (isCurrentlyActive) {
+      // Marking inactive - confirm so it's not an accident
+      const ok = confirm(
+        `Mark ${coach.first_name} ${coach.last_name} as no longer at ${coach.schools?.school || 'this school'}?\n\nTheir attendance history will be preserved. You can undo this later by viewing inactive coaches.`
+      );
+      if (!ok) return;
+    }
+
+    setTogglingActive(coach.id);
+
+    try {
+      const { error } = await supabase
+        .from('coaches')
+        .update({ is_active: nextActive })
+        .eq('id', coach.id);
+
+      if (error) throw error;
+
+      // Update local state
+      setCoaches(prev => prev.map(c =>
+        c.id === coach.id ? { ...c, is_active: nextActive } : c
+      ));
+
+      setToast({
+        show: true,
+        message: nextActive
+          ? `${coach.first_name} ${coach.last_name} marked active`
+          : `${coach.first_name} ${coach.last_name} marked inactive (history preserved)`,
+        type: 'success'
+      });
+    } catch (err) {
+      console.error('Error toggling coach status:', err);
+      setToast({ show: true, message: 'Error updating: ' + err.message, type: 'error' });
+    } finally {
+      setTogglingActive(null);
     }
   };
 
@@ -557,9 +611,9 @@ export default function CoachDirectory() {
               <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
               </svg>
-              {(stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail) && (
+              {(stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive) && (
                 <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                  {[stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail].filter(Boolean).length}
+                  {[stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive].filter(Boolean).length}
                 </span>
               )}
             </button>
@@ -619,9 +673,9 @@ export default function CoachDirectory() {
                 </select>
               </div>
               
-              {/* Email filter + Clear */}
-              <div className="flex flex-col justify-end">
-                <label className="flex items-center gap-2 cursor-pointer py-3">
+              {/* Email filter + Show Inactive + Clear */}
+              <div className="flex flex-col justify-end gap-1">
+                <label className="flex items-center gap-2 cursor-pointer py-2 min-h-[44px]">
                   <input
                     type="checkbox"
                     checked={showOnlyWithEmail}
@@ -630,11 +684,20 @@ export default function CoachDirectory() {
                   />
                   <span className="text-sm text-gray-600">Only with email</span>
                 </label>
+                <label className="flex items-center gap-2 cursor-pointer py-2 min-h-[44px]">
+                  <input
+                    type="checkbox"
+                    checked={showInactive}
+                    onChange={e => setShowInactive(e.target.checked)}
+                    className="w-5 h-5 rounded text-blue-600"
+                  />
+                  <span className="text-sm text-gray-600">Show inactive coaches</span>
+                </label>
               </div>
             </div>
             
             {/* Clear filters */}
-            {(searchInput || searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail) && (
+            {(searchInput || searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive) && (
               <div className="mt-4 pt-4 border-t">
                 <button
                   onClick={clearFilters}
@@ -719,15 +782,25 @@ export default function CoachDirectory() {
                 
                 {/* Coaches List */}
                 <div className="divide-y divide-gray-100">
-                  {schoolCoaches.map(coach => (
-                    <div key={coach.id} className="px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
+                  {schoolCoaches.map(coach => {
+                    const isActive = coach.is_active !== false;
+                    return (
+                    <div
+                      key={coach.id}
+                      className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 ${!isActive ? 'bg-gray-50' : ''}`}
+                    >
                       <div className="flex-grow">
-                        <span className="font-medium">
+                        <span className={`font-medium ${!isActive ? 'text-gray-500 line-through decoration-gray-400' : ''}`}>
                           {coach.first_name} {coach.last_name}
                         </span>
                         {coach.title && (
-                          <span className="text-gray-500 text-sm ml-2">
+                          <span className={`text-sm ml-2 ${!isActive ? 'text-gray-400' : 'text-gray-500'}`}>
                             ({coach.title})
+                          </span>
+                        )}
+                        {!isActive && (
+                          <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+                            Inactive
                           </span>
                         )}
                       </div>
@@ -737,7 +810,7 @@ export default function CoachDirectory() {
                           emailLinksEnabled ? (
                             <a
                               href={`mailto:${coach.email}`}
-                              className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800"
+                              className={`inline-flex items-center gap-1 ${isActive ? 'text-blue-600 hover:text-blue-800' : 'text-gray-400 hover:text-gray-600'}`}
                             >
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -746,7 +819,7 @@ export default function CoachDirectory() {
                               <span className="sm:hidden">Email</span>
                             </a>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-gray-600">
+                            <span className={`inline-flex items-center gap-1 ${isActive ? 'text-gray-600' : 'text-gray-400'}`}>
                               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                               </svg>
@@ -758,7 +831,7 @@ export default function CoachDirectory() {
                         {coach.phone && (
                           <a
                             href={`tel:${coach.phone}`}
-                            className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-800"
+                            className={`inline-flex items-center gap-1 ${isActive ? 'text-gray-600 hover:text-gray-800' : 'text-gray-400 hover:text-gray-500'}`}
                           >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -781,10 +854,38 @@ export default function CoachDirectory() {
                           <span className="text-xs">Edit</span>
                         </button>
                         <button
+                          onClick={() => toggleCoachActive(coach)}
+                          disabled={togglingActive === coach.id}
+                          className={`inline-flex items-center gap-1 p-2 -m-1 rounded-lg ${
+                            isActive
+                              ? 'text-gray-400 hover:text-amber-600 hover:bg-amber-50'
+                              : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                          }`}
+                          title={isActive ? 'Mark coach as no longer at this school (preserves history)' : 'Mark coach as active again'}
+                        >
+                          {togglingActive === coach.id ? (
+                            <span className="text-xs">...</span>
+                          ) : isActive ? (
+                            <>
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                              </svg>
+                              <span className="text-xs">Mark Inactive</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                              </svg>
+                              <span className="text-xs">Mark Active</span>
+                            </>
+                          )}
+                        </button>
+                        <button
                           onClick={() => deleteCoach(coach)}
                           disabled={deleting === coach.id}
                           className="inline-flex items-center gap-1 text-gray-400 hover:text-red-600 p-2 -m-1 rounded-lg hover:bg-red-50"
-                          title="Delete coach"
+                          title="Delete coach (use Mark Inactive if they moved schools)"
                         >
                           {deleting === coach.id ? (
                             <span className="text-xs">...</span>
@@ -799,7 +900,8 @@ export default function CoachDirectory() {
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

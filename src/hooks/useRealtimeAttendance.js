@@ -232,6 +232,7 @@ export function useRealtimeCoaches(schoolId) {
         .from('coaches')
         .select('*')
         .eq('school_id', schoolId)
+        .neq('is_active', false)
         .order('last_name');
 
       if (error) throw error;

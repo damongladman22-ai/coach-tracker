@@ -292,6 +292,12 @@ export default function DedupCoaches({ session }) {
         fieldsToMerge.first_name = deleteCoach.first_name
         mergedFields.push('first name')
       }
+      // Active status: if keeper is inactive but duplicate is active, keeper becomes active
+      // (active state always wins on merge)
+      if (keepCoach.is_active === false && deleteCoach.is_active !== false) {
+        fieldsToMerge.is_active = true
+        mergedFields.push('active status')
+      }
       
       // Update keeper with merged fields if any
       if (Object.keys(fieldsToMerge).length > 0) {
@@ -494,8 +500,15 @@ export default function DedupCoaches({ session }) {
                   <div className={`p-3 rounded-lg border-2 ${
                     isSelected ? 'border-blue-300' : 'border-gray-200'
                   }`}>
-                    <div className="font-medium text-lg">
-                      {coach1.first_name} {coach1.last_name}
+                    <div className="font-medium text-lg flex items-center gap-2 flex-wrap">
+                      <span className={coach1.is_active === false ? 'text-gray-500 line-through decoration-gray-400' : ''}>
+                        {coach1.first_name} {coach1.last_name}
+                      </span>
+                      {coach1.is_active === false && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                          Inactive
+                        </span>
+                      )}
                     </div>
                     {coach1.title && (
                       <div className="text-sm text-gray-600">{coach1.title}</div>
@@ -517,8 +530,15 @@ export default function DedupCoaches({ session }) {
                   <div className={`p-3 rounded-lg border-2 ${
                     isSelected ? 'border-blue-300' : 'border-gray-200'
                   }`}>
-                    <div className="font-medium text-lg">
-                      {coach2.first_name} {coach2.last_name}
+                    <div className="font-medium text-lg flex items-center gap-2 flex-wrap">
+                      <span className={coach2.is_active === false ? 'text-gray-500 line-through decoration-gray-400' : ''}>
+                        {coach2.first_name} {coach2.last_name}
+                      </span>
+                      {coach2.is_active === false && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                          Inactive
+                        </span>
+                      )}
                     </div>
                     {coach2.title && (
                       <div className="text-sm text-gray-600">{coach2.title}</div>

@@ -65,6 +65,8 @@ export default function Schools({ session }) {
   const [expandedSchool, setExpandedSchool] = useState(null)
   const [showCoachForm, setShowCoachForm] = useState(null)
   const [coachFormData, setCoachFormData] = useState({ first_name: '', last_name: '', email: '', phone: '', title: '' })
+  const [togglingActive, setTogglingActive] = useState(null) // coach id being toggled
+  const [showInactiveCoaches, setShowInactiveCoaches] = useState(true) // default ON for admin view
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
@@ -265,7 +267,7 @@ export default function Schools({ session }) {
   }
 
   const deleteCoach = async (coachId, schoolId) => {
-    if (!confirm('Delete this coach?')) return
+    if (!confirm('Delete this coach?\n\nThis will also delete any attendance records.\n\nTip: If the coach moved schools, click "Mark Inactive" instead — that preserves attendance history.')) return
 
     const { error } = await supabase
       .from('coaches')
@@ -280,6 +282,40 @@ export default function Schools({ session }) {
         .eq('school_id', schoolId)
         .order('last_name')
       setCoaches(prev => ({ ...prev, [schoolId]: data || [] }))
+    }
+  }
+
+  const toggleCoachActive = async (coach, schoolId) => {
+    const isCurrentlyActive = coach.is_active !== false
+    const nextActive = !isCurrentlyActive
+
+    if (isCurrentlyActive) {
+      const ok = confirm(
+        `Mark ${coach.first_name} ${coach.last_name} as no longer at this school?\n\nTheir attendance history will be preserved. You can undo this later.`
+      )
+      if (!ok) return
+    }
+
+    setTogglingActive(coach.id)
+    try {
+      const { error } = await supabase
+        .from('coaches')
+        .update({ is_active: nextActive })
+        .eq('id', coach.id)
+
+      if (error) throw error
+
+      // Update local state - keep the coach in the list, just toggle the flag
+      setCoaches(prev => ({
+        ...prev,
+        [schoolId]: (prev[schoolId] || []).map(c =>
+          c.id === coach.id ? { ...c, is_active: nextActive } : c
+        )
+      }))
+    } catch (err) {
+      alert('Error updating: ' + err.message)
+    } finally {
+      setTogglingActive(null)
     }
   }
 
@@ -670,14 +706,45 @@ export default function Schools({ session }) {
                   )}
 
                   {coaches[school.id]?.length > 0 ? (
-                    <div className="space-y-2">
-                      {coaches[school.id].map((coach) => (
-                        <div key={coach.id} className="flex justify-between items-start py-2 border-b border-gray-100 last:border-0">
+                    <>
+                      {/* Filter toggle - only show if there are inactive coaches */}
+                      {coaches[school.id].some(c => c.is_active === false) && (
+                        <label className="flex items-center gap-2 mb-2 text-xs text-gray-600 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={showInactiveCoaches}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              setShowInactiveCoaches(e.target.checked)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded"
+                          />
+                          Show inactive coaches
+                        </label>
+                      )}
+                      <div className="space-y-2">
+                        {coaches[school.id]
+                          .filter(coach => showInactiveCoaches || coach.is_active !== false)
+                          .map((coach) => {
+                            const isActive = coach.is_active !== false
+                            return (
+                          <div
+                            key={coach.id}
+                            className={`flex justify-between items-start py-2 border-b border-gray-100 last:border-0 ${!isActive ? 'opacity-60' : ''}`}
+                          >
                           <div>
                             <div className="text-sm font-medium">
-                              {coach.first_name} {coach.last_name}
+                              <span className={!isActive ? 'line-through decoration-gray-400 text-gray-500' : ''}>
+                                {coach.first_name} {coach.last_name}
+                              </span>
                               {coach.title && (
                                 <span className="text-gray-500 font-normal ml-1">({coach.title})</span>
+                              )}
+                              {!isActive && (
+                                <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-gray-200 text-gray-700">
+                                  Inactive
+                                </span>
                               )}
                             </div>
                             <div className="text-xs text-gray-500 flex flex-wrap gap-2 mt-0.5">
@@ -701,18 +768,39 @@ export default function Schools({ session }) {
                               )}
                             </div>
                           </div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              deleteCoach(coach.id, school.id)
-                            }}
-                            className="text-red-600 hover:text-red-800 text-xs"
-                          >
-                            Delete
-                          </button>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                toggleCoachActive(coach, school.id)
+                              }}
+                              disabled={togglingActive === coach.id}
+                              className={`text-xs px-2 py-1 rounded ${
+                                isActive
+                                  ? 'text-amber-700 hover:bg-amber-50'
+                                  : 'text-green-700 hover:bg-green-50'
+                              } disabled:opacity-50`}
+                              title={isActive ? 'Mark as no longer at this school (preserves attendance history)' : 'Mark as active at this school'}
+                            >
+                              {togglingActive === coach.id
+                                ? '...'
+                                : isActive ? 'Mark Inactive' : 'Mark Active'}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteCoach(coach.id, school.id)
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                            )
+                          })}
+                      </div>
+                    </>
                   ) : (
                     <p className="text-gray-500 text-sm">No coaches added yet.</p>
                   )}

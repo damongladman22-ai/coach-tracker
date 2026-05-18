@@ -620,31 +620,58 @@ export default function ImportCoaches({ session }) {
         // ADD MODE: Original import behavior
         const toImport = toProcess.filter(row => row.matchedSchool);
         
-        // Get existing coaches to avoid duplicates
+        // Get existing coaches including active status
         const { data: existingCoachesData } = await supabase
           .from('coaches')
-          .select('first_name, last_name, school_id');
+          .select('id, first_name, last_name, school_id, is_active');
         
-        const existingSet = new Set(
-          (existingCoachesData || []).map(c => 
-            `${c.school_id}|${c.first_name}|${c.last_name}`.toLowerCase()
-          )
-        );
-        
-        // Filter out duplicates
-        const newCoaches = toImport.filter(row => {
-          const key = `${row.matchedSchool.id}|${row.firstName}|${row.lastName}`.toLowerCase();
-          return !existingSet.has(key);
+        // Build lookup map: key -> existing coach record
+        const existingMap = new Map();
+        (existingCoachesData || []).forEach(c => {
+          const key = `${c.school_id}|${c.first_name}|${c.last_name}`.toLowerCase();
+          existingMap.set(key, c);
         });
         
-        const duplicates = toImport.length - newCoaches.length;
+        // Classify each row: new coach to insert, inactive match to reactivate, or active match (skip)
+        const newCoaches = [];
+        const toReactivate = [];
+        let activeDupes = 0;
         
-        if (newCoaches.length === 0) {
+        toImport.forEach(row => {
+          const key = `${row.matchedSchool.id}|${row.firstName}|${row.lastName}`.toLowerCase();
+          const existing = existingMap.get(key);
+          if (existing) {
+            if (existing.is_active === false) {
+              toReactivate.push(existing.id);
+            } else {
+              activeDupes++;
+            }
+          } else {
+            newCoaches.push(row);
+          }
+        });
+        
+        const duplicates = activeDupes; // rows skipped because already active
+        
+        // Reactivate any inactive matches
+        let reactivated = 0;
+        if (toReactivate.length > 0) {
+          const { error: reactivateError } = await supabase
+            .from('coaches')
+            .update({ is_active: true })
+            .in('id', toReactivate);
+          
+          if (reactivateError) throw reactivateError;
+          reactivated = toReactivate.length;
+        }
+        
+        if (newCoaches.length === 0 && reactivated === 0) {
           setImportResult({
             success: true,
             imported: 0,
             duplicates,
-            message: 'All coaches already exist in the database'
+            reactivated: 0,
+            message: 'All coaches already exist in the database and are active'
           });
           setImporting(false);
           return;
@@ -672,11 +699,16 @@ export default function ImportCoaches({ session }) {
           totalImported += data.length;
         }
         
+        const parts = [];
+        if (totalImported > 0) parts.push(`imported ${totalImported} new coach${totalImported !== 1 ? 'es' : ''}`);
+        if (reactivated > 0) parts.push(`reactivated ${reactivated} inactive coach${reactivated !== 1 ? 'es' : ''}`);
+        
         setImportResult({
           success: true,
           imported: totalImported,
           duplicates,
-          message: `Successfully imported ${totalImported} coach${totalImported !== 1 ? 'es' : ''}`
+          reactivated,
+          message: `Successfully ${parts.join(', ')}`
         });
       }
       
@@ -1384,7 +1416,12 @@ export default function ImportCoaches({ session }) {
                 </p>
                 {importResult.duplicates > 0 && (
                   <p className="text-yellow-700 mt-1">
-                    {importResult.duplicates} duplicate(s) skipped (already in database)
+                    {importResult.duplicates} duplicate(s) skipped (already active in database)
+                  </p>
+                )}
+                {importResult.reactivated > 0 && (
+                  <p className="text-blue-700 mt-1">
+                    {importResult.reactivated} coach{importResult.reactivated !== 1 ? 'es' : ''} reactivated (they were marked inactive but appeared in the import)
                   </p>
                 )}
                 

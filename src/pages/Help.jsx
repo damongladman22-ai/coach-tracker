@@ -140,6 +140,20 @@ You can still view the attendance and access the Summary page - you just can't a
 • **Report a bug** - Something not working right?
 
 Your feedback goes directly to the club admins.`
+    },
+    {
+      id: 'p11',
+      question: 'A coach moved to a different school - what should I do?',
+      answer: `Coaches change schools all the time, especially after each college season. In the Coach Directory:
+
+1. Find the coach at their **old** school
+2. Click the **"Mark Inactive"** button on their row
+3. Confirm — their attendance history is preserved
+4. If you know their new school, scroll to that school and use **"Add Coach"** to create a new record there
+
+**Why not just delete them?** Deleting removes their attendance history from past events. Marking inactive keeps the record so you can still see who attended your games last season — even if that coach is now somewhere else.
+
+If you marked someone inactive by accident, check **"Show inactive coaches"** in the directory filters and click **"Mark Active"** to bring them back.`
     }
   ]
 
@@ -321,6 +335,30 @@ The Feedback page shows:
 • "Delete" to remove feedback you've addressed
 
 Parents and players see a blue "Feedback" button in the bottom corner of every page.`
+    },
+    {
+      id: 'a13',
+      question: 'A coach moved schools - how do I handle that without losing attendance history?',
+      answer: `Coaches frequently change programs, especially after each college season. **Don't delete them** — that wipes their attendance history. Instead:
+
+**Mark them inactive at the old school:**
+1. Go to Schools & Coaches (or the Coach Directory)
+2. Expand the old school
+3. Click **"Mark Inactive"** next to the coach
+4. Their attendance history is preserved, but they're hidden from the search dropdowns when parents/players log new games
+
+**Create a new record at the new school:**
+1. Find or add the new school
+2. Click **"+ Add Coach"** and enter their details
+3. They'll appear as an active coach at the new school going forward
+
+**Why two records?** Because last season they really were at the old school. Keeping the old record intact means your summary for that old event still correctly shows "Jane Smith - Ohio State attended" rather than retroactively rewriting history.
+
+**Bulk re-imports automatically reactivate:** When you re-import the CollegeSport.us file (or any source), any coach who was marked inactive but appears in the fresh import is automatically reactivated. The import result will tell you how many were reactivated.
+
+**To see all inactive coaches:** In Schools & Coaches, the "Show inactive coaches" toggle appears whenever a school has any. In the Coach Directory, use the filter checkbox.
+
+Anyone (parents and players too) can mark coaches inactive in the Coach Directory — same crowd-sourcing model as adding/editing coaches.`
     }
   ]
 

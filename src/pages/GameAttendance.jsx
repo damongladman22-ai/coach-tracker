@@ -159,11 +159,12 @@ export default function GameAttendance() {
     setSelectedSchool(school)
     setSearchTerm(school.school)
     
-    // Fetch coaches for this school
+    // Fetch active coaches for this school (inactive coaches won't show as options)
     const { data } = await supabase
       .from('coaches')
       .select('*')
       .eq('school_id', school.id)
+      .neq('is_active', false)
       .order('last_name')
     
     setCoaches(data || [])
