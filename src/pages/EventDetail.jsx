@@ -400,7 +400,7 @@ export default function EventDetail({ session }) {
         </div>
 
         {showGameForm && (
-          <form onSubmit={handleSubmitGame} className="space-y-4">
+          <form onSubmit={handleSubmitGame} className="space-y-4" noValidate>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Team *</label>
