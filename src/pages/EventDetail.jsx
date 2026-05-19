@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import { getCurrentClubId } from '../lib/club'
+import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
 
-// Common US timezones for dropdown
 const TIMEZONES = [
   { value: 'America/New_York', label: 'Eastern (ET)' },
   { value: 'America/Chicago', label: 'Central (CT)' },
@@ -17,202 +18,216 @@ const TIMEZONES = [
 export default function EventDetail({ session }) {
   const { eventId } = useParams()
   const [event, setEvent] = useState(null)
-  const [eventTeams, setEventTeams] = useState([])
+  const [teamsAtEvent, setTeamsAtEvent] = useState([]) // [{ team, games: [] }]
   const [availableTeams, setAvailableTeams] = useState([])
-  const [games, setGames] = useState({})
+  const [gameTypes, setGameTypes] = useState([])
+  const [defaultGameTypeId, setDefaultGameTypeId] = useState(null)
+  const [clubId, setClubId] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [selectedTeam, setSelectedTeam] = useState('')
-  const [showGameForm, setShowGameForm] = useState(null)
+
+  // "Add game" form state
+  const [showGameForm, setShowGameForm] = useState(false)
   const [editingGame, setEditingGame] = useState(null)
-  const [gameFormData, setGameFormData] = useState({ 
-    game_date: '', 
+  const [gameFormData, setGameFormData] = useState({
+    team_id: '',
+    game_date: '',
     opponent: '',
     game_time: '',
-    timezone: 'America/New_York'
+    timezone: 'America/New_York',
+    game_type_id: '',
+    is_home: false,
+    location: '',
   })
+
   const [exporting, setExporting] = useState(null)
   const [copiedLink, setCopiedLink] = useState(null)
 
   useEffect(() => {
-    fetchData()
+    initialize()
   }, [eventId])
 
-  const fetchData = async () => {
-    // Fetch event
+  const initialize = async () => {
+    const [cid, types, defaultTypeId] = await Promise.all([
+      getCurrentClubId(),
+      getGameTypes(),
+      getDefaultGameTypeId(),
+    ])
+    setClubId(cid)
+    setGameTypes(types)
+    setDefaultGameTypeId(defaultTypeId)
+    setGameFormData((prev) => ({ ...prev, game_type_id: String(defaultTypeId || '') }))
+    fetchData(cid)
+  }
+
+  const fetchData = async (currentClubId) => {
+    setLoading(true)
+    const cid = currentClubId || clubId
+    if (!cid) {
+      setLoading(false)
+      return
+    }
+
+    // Fetch event with season
     const { data: eventData } = await supabase
       .from('events')
-      .select('*')
+      .select('*, seasons(id, name, slug)')
       .eq('id', eventId)
       .single()
-    
     setEvent(eventData)
 
-    // Fetch event teams with club team details
-    const { data: eventTeamsData } = await supabase
-      .from('event_teams')
-      .select('*, club_teams(*)')
-      .eq('event_id', eventId)
-    
-    setEventTeams(eventTeamsData || [])
-
-    // Fetch all club teams for dropdown
-    const { data: allTeams } = await supabase
-      .from('club_teams')
-      .select('*')
-      .order('team_name')
-    
-    setAvailableTeams(allTeams || [])
-
-    // Fetch games for each event team
-    if (eventTeamsData?.length > 0) {
-      const gamesByTeam = {}
-      for (const et of eventTeamsData) {
-        const { data: gamesData } = await supabase
-          .from('games')
-          .select('*')
-          .eq('event_team_id', et.id)
-          .order('game_date')
-        gamesByTeam[et.id] = gamesData || []
-      }
-      setGames(gamesByTeam)
+    if (!eventData) {
+      setLoading(false)
+      return
     }
+
+    // Fetch all games at this event WITH their teams
+    const { data: gamesData } = await supabase
+      .from('games')
+      .select(`
+        *,
+        teams (
+          id, name, slug, gender, age_group_id, program_id,
+          age_groups (name, sort_order),
+          programs (name)
+        )
+      `)
+      .eq('event_id', eventId)
+      .order('game_date')
+
+    // Group games by team
+    const teamMap = new Map()
+    ;(gamesData || []).forEach((game) => {
+      if (!game.teams) return
+      const teamId = game.teams.id
+      if (!teamMap.has(teamId)) {
+        teamMap.set(teamId, { team: game.teams, games: [] })
+      }
+      teamMap.get(teamId).games.push(game)
+    })
+
+    const teamsList = Array.from(teamMap.values()).sort((a, b) =>
+      a.team.name.localeCompare(b.team.name)
+    )
+    setTeamsAtEvent(teamsList)
+
+    // Fetch all teams in this event's season (for "add game" dropdown)
+    const { data: allTeams } = await supabase
+      .from('teams')
+      .select('*, age_groups(name, sort_order), programs(name)')
+      .eq('club_id', cid)
+      .eq('season_id', eventData.season_id)
+      .order('name')
+    setAvailableTeams(allTeams || [])
 
     setLoading(false)
   }
 
-  const generateSlug = (name) => {
-    return name.toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '')
-  }
-
-  const addTeamToEvent = async () => {
-    if (!selectedTeam) return
-
-    const team = availableTeams.find(t => t.id === selectedTeam)
-    const slug = generateSlug(team.team_name)
-
-    const { error } = await supabase
-      .from('event_teams')
-      .insert([{ 
-        event_id: eventId, 
-        club_team_id: selectedTeam,
-        slug 
-      }])
-    
-    if (!error) {
-      setSelectedTeam('')
-      fetchData()
-    }
-  }
-
-  const removeTeamFromEvent = async (eventTeamId) => {
-    if (!confirm('Remove this team from the event? This will also delete all games and attendance records.')) return
-
-    const { error } = await supabase
-      .from('event_teams')
-      .delete()
-      .eq('id', eventTeamId)
-    
-    if (!error) fetchData()
-  }
-
-  const addGame = async (eventTeamId) => {
-    const { error } = await supabase
-      .from('games')
-      .insert([{ 
-        event_team_id: eventTeamId,
-        game_date: gameFormData.game_date,
-        opponent: gameFormData.opponent,
-        game_time: gameFormData.game_time || null,
-        timezone: gameFormData.game_time ? gameFormData.timezone : null
-      }])
-    
-    if (!error) {
-      setShowGameForm(null)
-      setGameFormData({ game_date: '', opponent: '', game_time: '', timezone: 'America/New_York' })
-      fetchData()
-    }
-  }
-
-  const updateGame = async () => {
-    const { error } = await supabase
-      .from('games')
-      .update({ 
-        game_date: gameFormData.game_date,
-        opponent: gameFormData.opponent,
-        game_time: gameFormData.game_time || null,
-        timezone: gameFormData.game_time ? gameFormData.timezone : null
-      })
-      .eq('id', editingGame.id)
-    
-    if (!error) {
-      setEditingGame(null)
-      setShowGameForm(null)
-      setGameFormData({ game_date: '', opponent: '' })
-      fetchData()
-    }
-  }
-
-  const handleEditGame = (game, eventTeamId) => {
-    setEditingGame(game)
-    setGameFormData({ 
-      game_date: game.game_date, 
-      opponent: game.opponent,
-      game_time: game.game_time || '',
-      timezone: game.timezone || 'America/New_York'
+  const resetGameForm = () => {
+    setEditingGame(null)
+    setShowGameForm(false)
+    setGameFormData({
+      team_id: '',
+      game_date: '',
+      opponent: '',
+      game_time: '',
+      timezone: 'America/New_York',
+      game_type_id: String(defaultGameTypeId || ''),
+      is_home: false,
+      location: '',
     })
-    setShowGameForm(eventTeamId)
   }
 
-  const deleteGame = async (gameId) => {
-    if (!confirm('Delete this game? This will also delete all attendance records.')) return
+  const handleSubmitGame = async (e) => {
+    e.preventDefault()
+    if (!gameFormData.team_id || !gameFormData.game_date) {
+      alert('Team and date are required.')
+      return
+    }
 
-    const { error } = await supabase
-      .from('games')
-      .delete()
-      .eq('id', gameId)
-    
+    const payload = {
+      team_id: parseInt(gameFormData.team_id, 10),
+      event_id: parseInt(eventId, 10),
+      game_date: gameFormData.game_date,
+      opponent: gameFormData.opponent,
+      game_time: gameFormData.game_time || null,
+      timezone: gameFormData.game_time ? gameFormData.timezone : null,
+      game_type_id: gameFormData.game_type_id
+        ? parseInt(gameFormData.game_type_id, 10)
+        : defaultGameTypeId,
+      is_home: gameFormData.is_home,
+      location: gameFormData.location || null,
+      last_modified_by: session?.user?.id || null,
+    }
+
+    if (editingGame) {
+      const { error } = await supabase
+        .from('games')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', editingGame.id)
+      if (error) {
+        alert('Could not update game: ' + error.message)
+        return
+      }
+    } else {
+      const { error } = await supabase.from('games').insert([payload])
+      if (error) {
+        alert('Could not create game: ' + error.message)
+        return
+      }
+    }
+
+    resetGameForm()
+    fetchData()
+  }
+
+  const handleEditGame = (game) => {
+    setEditingGame(game)
+    setGameFormData({
+      team_id: String(game.team_id),
+      game_date: game.game_date,
+      opponent: game.opponent || '',
+      game_time: game.game_time || '',
+      timezone: game.timezone || 'America/New_York',
+      game_type_id: String(game.game_type_id || defaultGameTypeId || ''),
+      is_home: !!game.is_home,
+      location: game.location || '',
+    })
+    setShowGameForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const handleDeleteGame = async (gameId) => {
+    if (!confirm('Delete this game? This will also delete all attendance records for it.')) return
+    const { error } = await supabase.from('games').delete().eq('id', gameId)
     if (!error) fetchData()
   }
 
-  const toggleGameClosed = async (game, eventTeamId) => {
+  const toggleGameClosed = async (game) => {
     const newStatus = !game.is_closed
     const { error } = await supabase
       .from('games')
-      .update({ is_closed: newStatus })
+      .update({
+        is_closed: newStatus,
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', game.id)
-    
-    if (!error) {
-      // Update local state
-      setGames(prev => ({
-        ...prev,
-        [eventTeamId]: prev[eventTeamId].map(g => 
-          g.id === game.id ? { ...g, is_closed: newStatus } : g
-        )
-      }))
-    }
+    if (!error) fetchData()
   }
 
-  const getShareableLink = (eventTeam) => {
+  const getShareableLink = (team) => {
     const baseUrl = window.location.origin
-    return `${baseUrl}/e/${event.slug}/${eventTeam.slug}`
+    return `${baseUrl}/e/${event.slug}/${team.slug}`
   }
 
-  const getSummaryLink = (eventTeam) => {
+  const getSummaryLink = (team) => {
     const baseUrl = window.location.origin
-    return `${baseUrl}/e/${event.slug}/${eventTeam.slug}/summary`
+    return `${baseUrl}/e/${event.slug}/${team.slug}/summary`
   }
 
-  const copyLink = (eventTeam) => {
-    navigator.clipboard.writeText(getShareableLink(eventTeam))
-    setCopiedLink(`tracker-${eventTeam.id}`)
-    setTimeout(() => setCopiedLink(null), 2000)
-  }
-
-  const copySummaryLink = (eventTeam) => {
-    navigator.clipboard.writeText(getSummaryLink(eventTeam))
-    setCopiedLink(`summary-${eventTeam.id}`)
+  const copyLink = (team, kind) => {
+    const url = kind === 'tracker' ? getShareableLink(team) : getSummaryLink(team)
+    navigator.clipboard.writeText(url)
+    setCopiedLink(`${kind}-${team.id}`)
     setTimeout(() => setCopiedLink(null), 2000)
   }
 
@@ -222,20 +237,16 @@ export default function EventDetail({ session }) {
     return date.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
     })
   }
 
   const formatDateShort = (dateStr) => {
     const [year, month, day] = dateStr.split('-')
     const date = new Date(year, month - 1, day)
-    return date.toLocaleDateString('en-US', {
-      month: 'numeric',
-      day: 'numeric'
-    })
+    return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
   }
 
-  // Format time for display (e.g., "2:30 PM")
   const formatTime = (timeStr) => {
     if (!timeStr) return ''
     const [hours, minutes] = timeStr.split(':').map(Number)
@@ -244,7 +255,6 @@ export default function EventDetail({ session }) {
     return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`
   }
 
-  // Get timezone abbreviation (e.g., "ET", "CT")
   const getTimezoneAbbr = (timezone) => {
     const abbrevs = {
       'America/New_York': 'ET',
@@ -258,20 +268,16 @@ export default function EventDetail({ session }) {
     return abbrevs[timezone] || ''
   }
 
-  const exportToCSV = async (eventTeam) => {
-    setExporting(eventTeam.id)
-    
+  const exportToCSV = async (team, games) => {
+    setExporting(team.id)
     try {
-      // Get games for this team
-      const teamGames = games[eventTeam.id] || []
-      if (teamGames.length === 0) {
+      if (games.length === 0) {
         alert('No games to export')
         setExporting(null)
         return
       }
 
-      // Fetch all attendance with coach and school details
-      const gameIds = teamGames.map(g => g.id)
+      const gameIds = games.map((g) => g.id)
       const { data: attendanceData } = await supabase
         .from('attendance')
         .select('*, coaches(*, schools(*))')
@@ -283,9 +289,8 @@ export default function EventDetail({ session }) {
         return
       }
 
-      // Build pivot data: group by school, then by game
       const schoolData = {}
-      attendanceData.forEach(record => {
+      attendanceData.forEach((record) => {
         const school = record.coaches?.schools
         const coach = record.coaches
         if (!school || !coach) return
@@ -297,53 +302,45 @@ export default function EventDetail({ session }) {
             conference: school.conference || '',
             state: school.state || '',
             emails: new Set(),
-            games: {}
+            games: {},
           }
         }
+        if (coach.email) schoolData[school.id].emails.add(coach.email)
 
-        // Add coach email if present
-        if (coach.email) {
-          schoolData[school.id].emails.add(coach.email)
+        if (!schoolData[school.id].games[record.game_id]) {
+          schoolData[school.id].games[record.game_id] = []
         }
-
-        const gameId = record.game_id
-        if (!schoolData[school.id].games[gameId]) {
-          schoolData[school.id].games[gameId] = []
-        }
-        schoolData[school.id].games[gameId].push(`${coach.first_name} ${coach.last_name}`)
+        schoolData[school.id].games[record.game_id].push(
+          `${coach.first_name} ${coach.last_name}`
+        )
       })
 
-      // Create CSV header
-      const gameHeaders = teamGames.map(g => `${formatDateShort(g.game_date)} vs ${g.opponent}`)
+      const gameHeaders = games.map((g) => `${formatDateShort(g.game_date)} vs ${g.opponent}`)
       const headers = ['College', 'Division', 'Conference', 'State', 'Email(s)', ...gameHeaders]
 
-      // Create CSV rows
       const rows = Object.values(schoolData)
         .sort((a, b) => a.school.localeCompare(b.school))
-        .map(data => {
+        .map((data) => {
           const row = [
             `"${data.school}"`,
             `"${data.division}"`,
             `"${data.conference}"`,
             `"${data.state}"`,
-            `"${[...data.emails].join('; ')}"`
+            `"${[...data.emails].join('; ')}"`,
           ]
-          teamGames.forEach(game => {
+          games.forEach((game) => {
             const coaches = data.games[game.id] || []
             row.push(`"${coaches.join(', ')}"`)
           })
           return row.join(',')
         })
 
-      // Combine into CSV content
-      const csvContent = [headers.map(h => `"${h}"`).join(','), ...rows].join('\n')
-
-      // Download file
+      const csvContent = [headers.map((h) => `"${h}"`).join(','), ...rows].join('\n')
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `${event.event_name} - ${eventTeam.club_teams.team_name}.csv`
+      link.download = `${event.event_name} - ${team.name}.csv`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -352,12 +349,8 @@ export default function EventDetail({ session }) {
       console.error('Export error:', err)
       alert('Error exporting data')
     }
-    
     setExporting(null)
   }
-
-  const assignedTeamIds = eventTeams.map(et => et.club_team_id)
-  const unassignedTeams = availableTeams.filter(t => !assignedTeamIds.includes(t.id))
 
   if (loading) {
     return (
@@ -367,255 +360,336 @@ export default function EventDetail({ session }) {
     )
   }
 
+  if (!event) {
+    return (
+      <AdminLayout session={session} title="Event not found">
+        <Link to="/admin/events" className="text-blue-600 hover:text-blue-800">
+          ← Back to Events
+        </Link>
+      </AdminLayout>
+    )
+  }
+
   return (
-    <AdminLayout session={session} title={event?.event_name}>
+    <AdminLayout session={session} title={event.event_name}>
       <Link to="/admin/events" className="text-blue-600 hover:text-blue-800 mb-4 inline-block">
         ← Back to Events
       </Link>
 
-      {/* Add Team Section */}
+      {event.location && (
+        <p className="text-gray-600 mb-2">📍 {event.location}</p>
+      )}
+      {event.seasons?.name && (
+        <p className="text-xs text-gray-400 mb-4">Season: {event.seasons.name}</p>
+      )}
+
+      {/* Add/Edit Game Section */}
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-        <h2 className="text-lg font-semibold mb-4">Add Team to Event</h2>
-        <div className="flex space-x-3">
-          <select
-            value={selectedTeam}
-            onChange={(e) => setSelectedTeam(e.target.value)}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select a team...</option>
-            {unassignedTeams.map(team => (
-              <option key={team.id} value={team.id}>
-                {team.team_name} ({team.gender})
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={addTeamToEvent}
-            disabled={!selectedTeam}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:bg-gray-300"
-          >
-            Add Team
-          </button>
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-lg font-semibold">
+            {editingGame ? 'Edit Game' : 'Add Game'}
+          </h2>
+          {!showGameForm && (
+            <button
+              onClick={() => setShowGameForm(true)}
+              className="text-blue-600 hover:text-blue-800 text-sm"
+            >
+              + Add Game
+            </button>
+          )}
         </div>
-        {unassignedTeams.length === 0 && (
-          <p className="text-sm text-gray-500 mt-2">
-            All teams are already added to this event. 
-            <Link to="/admin/teams" className="text-blue-600 hover:underline ml-1">
-              Create a new team
-            </Link>
-          </p>
+
+        {showGameForm && (
+          <form onSubmit={handleSubmitGame} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Team *</label>
+                <select
+                  value={gameFormData.team_id}
+                  onChange={(e) =>
+                    setGameFormData({ ...gameFormData, team_id: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  required
+                >
+                  <option value="">Select a team...</option>
+                  {availableTeams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+                {availableTeams.length === 0 && (
+                  <p className="text-xs text-orange-600 mt-1">
+                    No teams exist for this event's season.{' '}
+                    <Link to="/admin/teams" className="underline">
+                      Create one
+                    </Link>{' '}
+                    first.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Game Type</label>
+                <select
+                  value={gameFormData.game_type_id}
+                  onChange={(e) =>
+                    setGameFormData({ ...gameFormData, game_type_id: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                >
+                  {gameTypes.map((gt) => (
+                    <option key={gt.id} value={gt.id}>
+                      {gt.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Date *</label>
+                <input
+                  type="date"
+                  value={gameFormData.game_date}
+                  onChange={(e) =>
+                    setGameFormData({ ...gameFormData, game_date: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Opponent</label>
+                <input
+                  type="text"
+                  value={gameFormData.opponent}
+                  onChange={(e) =>
+                    setGameFormData({ ...gameFormData, opponent: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="e.g., ABC Soccer Club"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Time (optional)</label>
+                <input
+                  type="time"
+                  value={gameFormData.game_time}
+                  onChange={(e) =>
+                    setGameFormData({ ...gameFormData, game_time: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  If set, tracker locks until near game time
+                </p>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Timezone</label>
+                <select
+                  value={gameFormData.timezone}
+                  onChange={(e) =>
+                    setGameFormData({ ...gameFormData, timezone: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  disabled={!gameFormData.game_time}
+                >
+                  {TIMEZONES.map((tz) => (
+                    <option key={tz.value} value={tz.value}>
+                      {tz.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-600 mb-1">Location</label>
+                <input
+                  type="text"
+                  value={gameFormData.location}
+                  onChange={(e) =>
+                    setGameFormData({ ...gameFormData, location: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  placeholder="e.g., Field 3, Stadium Complex"
+                />
+              </div>
+              <div className="flex items-center">
+                <label className="flex items-center gap-2 text-sm text-gray-600 mt-6">
+                  <input
+                    type="checkbox"
+                    checked={gameFormData.is_home}
+                    onChange={(e) =>
+                      setGameFormData({ ...gameFormData, is_home: e.target.checked })
+                    }
+                    className="h-4 w-4 text-blue-600 rounded"
+                  />
+                  Home game
+                </label>
+              </div>
+            </div>
+            <div className="flex space-x-2">
+              <button
+                type="submit"
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-700"
+              >
+                {editingGame ? 'Update Game' : 'Add Game'}
+              </button>
+              <button
+                type="button"
+                onClick={resetGameForm}
+                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm hover:bg-gray-300"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
         )}
       </div>
 
-      {/* Teams and Games */}
-      {eventTeams.length === 0 ? (
+      {/* Teams and their games */}
+      {teamsAtEvent.length === 0 ? (
         <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
-          No teams added to this event yet. Add a team above.
+          No games at this event yet. Add one above to get started.
         </div>
       ) : (
         <div className="space-y-6">
-          {eventTeams.map((eventTeam) => (
-            <div key={eventTeam.id} className="bg-white rounded-lg shadow-md p-6">
+          {teamsAtEvent.map(({ team, games }) => (
+            <div key={team.id} className="bg-white rounded-lg shadow-md p-6">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h3 className="text-xl font-semibold">{eventTeam.club_teams.team_name}</h3>
-                  <p className="text-gray-500">{eventTeam.club_teams.gender}</p>
+                  <h3 className="text-xl font-semibold">{team.name}</h3>
+                  <p className="text-gray-500 text-sm">{team.gender}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Link
-                    to={`/admin/events/${eventId}/matrix/${eventTeam.id}`}
+                    to={`/admin/events/${eventId}/matrix/${team.id}`}
                     className="bg-purple-100 text-purple-700 px-3 py-2 rounded text-sm hover:bg-purple-200"
                   >
                     Attendance Matrix
                   </Link>
                   <button
-                    onClick={() => exportToCSV(eventTeam)}
-                    disabled={exporting === eventTeam.id}
+                    onClick={() => exportToCSV(team, games)}
+                    disabled={exporting === team.id}
                     className="bg-blue-100 text-blue-700 px-3 py-2 rounded text-sm hover:bg-blue-200 disabled:bg-gray-100 disabled:text-gray-400"
                   >
-                    {exporting === eventTeam.id ? 'Exporting...' : 'Export CSV'}
+                    {exporting === team.id ? 'Exporting...' : 'Export CSV'}
                   </button>
                   <button
-                    onClick={() => copyLink(eventTeam)}
+                    onClick={() => copyLink(team, 'tracker')}
                     className={`px-3 py-2 rounded text-sm transition-colors ${
-                      copiedLink === `tracker-${eventTeam.id}`
+                      copiedLink === `tracker-${team.id}`
                         ? 'bg-green-500 text-white'
                         : 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200'
                     }`}
                   >
-                    {copiedLink === `tracker-${eventTeam.id}` ? '✓ Copied!' : 'Copy Tracker Link'}
+                    {copiedLink === `tracker-${team.id}`
+                      ? '✓ Copied!'
+                      : 'Copy Tracker Link'}
                   </button>
                   <button
-                    onClick={() => copySummaryLink(eventTeam)}
+                    onClick={() => copyLink(team, 'summary')}
                     className={`px-3 py-2 rounded text-sm transition-colors ${
-                      copiedLink === `summary-${eventTeam.id}`
+                      copiedLink === `summary-${team.id}`
                         ? 'bg-green-500 text-white'
                         : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                     }`}
                   >
-                    {copiedLink === `summary-${eventTeam.id}` ? '✓ Copied!' : 'Copy Summary Link'}
-                  </button>
-                  <button
-                    onClick={() => removeTeamFromEvent(eventTeam.id)}
-                    className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded"
-                  >
-                    Remove
+                    {copiedLink === `summary-${team.id}`
+                      ? '✓ Copied!'
+                      : 'Copy Summary Link'}
                   </button>
                 </div>
               </div>
 
-              {/* Shareable Links */}
               <div className="bg-gray-50 rounded p-3 mb-4 space-y-2">
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Tracker Link (for team group chat):</p>
-                  <code className="text-sm text-cyan-600 break-all">{getShareableLink(eventTeam)}</code>
+                  <p className="text-xs text-gray-500 mb-1">Tracker Link:</p>
+                  <code className="text-sm text-cyan-600 break-all">
+                    {getShareableLink(team)}
+                  </code>
                 </div>
                 <div>
-                  <p className="text-xs text-gray-500 mb-1">Summary Link (read-only view):</p>
-                  <code className="text-sm text-gray-600 break-all">{getSummaryLink(eventTeam)}</code>
+                  <p className="text-xs text-gray-500 mb-1">Summary Link:</p>
+                  <code className="text-sm text-gray-600 break-all">
+                    {getSummaryLink(team)}
+                  </code>
                 </div>
               </div>
 
-              {/* Games */}
               <div className="border-t pt-4">
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="font-medium">Games</h4>
-                  <button
-                    onClick={() => {
-                      setEditingGame(null)
-                      setGameFormData({ game_date: '', opponent: '', game_time: '', timezone: 'America/New_York' })
-                      setShowGameForm(eventTeam.id)
-                    }}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
-                  >
-                    + Add Game
-                  </button>
-                </div>
-
-                {showGameForm === eventTeam.id && (
-                  <div className="bg-gray-50 rounded p-4 mb-4">
-                    <h4 className="font-medium mb-3">{editingGame ? 'Edit Game' : 'Add Game'}</h4>
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">Date *</label>
-                        <input
-                          type="date"
-                          value={gameFormData.game_date}
-                          onChange={(e) => setGameFormData({ ...gameFormData, game_date: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">Opponent *</label>
-                        <input
-                          type="text"
-                          value={gameFormData.opponent}
-                          onChange={(e) => setGameFormData({ ...gameFormData, opponent: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                          placeholder="e.g., ABC Soccer Club"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 mb-3">
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">Time (optional)</label>
-                        <input
-                          type="time"
-                          value={gameFormData.game_time}
-                          onChange={(e) => setGameFormData({ ...gameFormData, game_time: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                        />
-                        <p className="text-xs text-gray-400 mt-1">If set, tracker locks until near game time</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-600 mb-1">Timezone</label>
-                        <select
-                          value={gameFormData.timezone}
-                          onChange={(e) => setGameFormData({ ...gameFormData, timezone: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                          disabled={!gameFormData.game_time}
-                        >
-                          {TIMEZONES.map(tz => (
-                            <option key={tz.value} value={tz.value}>{tz.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => editingGame ? updateGame() : addGame(eventTeam.id)}
-                        className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700"
-                      >
-                        {editingGame ? 'Update Game' : 'Add Game'}
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowGameForm(null)
-                          setEditingGame(null)
-                          setGameFormData({ game_date: '', opponent: '', game_time: '', timezone: 'America/New_York' })
-                        }}
-                        className="bg-gray-200 text-gray-700 px-3 py-1 rounded text-sm hover:bg-gray-300"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {games[eventTeam.id]?.length > 0 ? (
-                  <div className="space-y-2">
-                    {games[eventTeam.id].map((game) => (
-                      <div key={game.id} className={`flex justify-between items-center py-2 border-b ${game.is_closed ? 'bg-gray-50' : ''}`}>
-                        <span className="flex items-center gap-2">
-                          {game.is_closed && (
-                            <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                            </svg>
+                <h4 className="font-medium mb-3">Games</h4>
+                <div className="space-y-2">
+                  {games.map((game) => (
+                    <div
+                      key={game.id}
+                      className={`flex justify-between items-center py-2 border-b ${
+                        game.is_closed ? 'bg-gray-50' : ''
+                      }`}
+                    >
+                      <span className="flex items-center gap-2 flex-1 min-w-0">
+                        {game.is_closed && (
+                          <svg
+                            className="h-4 w-4 text-gray-500 flex-shrink-0"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                            />
+                          </svg>
+                        )}
+                        <span className={game.is_closed ? 'text-gray-500' : ''}>
+                          <span className="font-medium">{formatDate(game.game_date)}</span>
+                          {game.game_time && (
+                            <span className="text-gray-500 text-sm ml-1">
+                              @ {formatTime(game.game_time)}{' '}
+                              {getTimezoneAbbr(game.timezone)}
+                            </span>
                           )}
-                          <span className={game.is_closed ? 'text-gray-500' : ''}>
-                            <span className="font-medium">{formatDate(game.game_date)}</span>
-                            {game.game_time && (
-                              <span className="text-gray-500 text-sm ml-1">
-                                @ {formatTime(game.game_time)} {getTimezoneAbbr(game.timezone)}
-                              </span>
-                            )}
-                            <span className="text-gray-600"> vs {game.opponent}</span>
-                          </span>
-                          {game.is_closed && (
-                            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Closed</span>
-                          )}
+                          <span className="text-gray-600"> {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}</span>
                         </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => toggleGameClosed(game, eventTeam.id)}
-                            className={`text-sm px-3 py-2 rounded ${
-                              game.is_closed 
-                                ? 'text-green-600 hover:text-green-800 hover:bg-green-50' 
-                                : 'text-orange-600 hover:text-orange-800 hover:bg-orange-50'
-                            }`}
-                            title={game.is_closed ? 'Reopen game for parent/player editing' : 'Close game to lock parent/player editing'}
-                          >
-                            {game.is_closed ? 'Reopen' : 'Close'}
-                          </button>
-                          <button
-                            onClick={() => handleEditGame(game, eventTeam.id)}
-                            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 text-sm px-3 py-2 rounded"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => deleteGame(game.id)}
-                            className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded"
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        {game.is_closed && (
+                          <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+                            Closed
+                          </span>
+                        )}
+                      </span>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        <button
+                          onClick={() => toggleGameClosed(game)}
+                          className={`text-sm px-3 py-2 rounded ${
+                            game.is_closed
+                              ? 'text-green-600 hover:text-green-800 hover:bg-green-50'
+                              : 'text-orange-600 hover:text-orange-800 hover:bg-orange-50'
+                          }`}
+                        >
+                          {game.is_closed ? 'Reopen' : 'Close'}
+                        </button>
+                        <button
+                          onClick={() => handleEditGame(game)}
+                          className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 text-sm px-3 py-2 rounded"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDeleteGame(game.id)}
+                          className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded"
+                        >
+                          Delete
+                        </button>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-gray-500 text-sm">No games scheduled yet.</p>
-                )}
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           ))}

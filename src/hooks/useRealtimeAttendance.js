@@ -7,8 +7,11 @@ import { supabase } from '../lib/supabase';
  * - Adaptive polling: starts at 5s, slows to 10s if fetches are slow
  * - Visibility-aware: pauses when tab is hidden
  * - Free tier friendly - no realtime subscription needed
+ *
+ * Takes (teamId, eventId) - eventId is optional. If provided, scopes
+ * to games at that event. If null, scopes to all games for the team.
  */
-export function useRealtimeAttendance(eventTeamId) {
+export function useRealtimeAttendance(teamId, eventId = null) {
   const [attendance, setAttendance] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -19,7 +22,7 @@ export function useRealtimeAttendance(eventTeamId) {
 
   // Fetch attendance data with coach and school info
   const fetchAttendance = useCallback(async () => {
-    if (!eventTeamId) return;
+    if (!teamId) return;
     
     // Skip if tab is not visible
     if (!isVisibleRef.current) return;
@@ -27,11 +30,17 @@ export function useRealtimeAttendance(eventTeamId) {
     const startTime = Date.now();
 
     try {
-      // Get all game IDs for this event team
-      const { data: games, error: gamesError } = await supabase
+      // Get all game IDs for this team (optionally scoped to an event)
+      let gamesQuery = supabase
         .from('games')
         .select('id')
-        .eq('event_team_id', eventTeamId);
+        .eq('team_id', teamId);
+
+      if (eventId) {
+        gamesQuery = gamesQuery.eq('event_id', eventId);
+      }
+
+      const { data: games, error: gamesError } = await gamesQuery;
 
       if (gamesError) throw gamesError;
       
@@ -77,52 +86,44 @@ export function useRealtimeAttendance(eventTeamId) {
       // Adaptive polling: if fetch took > 2 seconds, slow down polling
       const fetchTime = Date.now() - startTime;
       if (fetchTime > 2000 && pollIntervalRef.current < 10000) {
-        pollIntervalRef.current = 10000; // Slow to 10 seconds
+        pollIntervalRef.current = 10000;
       } else if (fetchTime < 1000 && pollIntervalRef.current > 5000) {
-        pollIntervalRef.current = 5000; // Speed back up to 5 seconds
+        pollIntervalRef.current = 5000;
       }
     } catch (err) {
       console.error('Error fetching attendance:', err);
       setError(err.message);
-      // On error, slow down polling
       pollIntervalRef.current = 10000;
     } finally {
       setLoading(false);
     }
-  }, [eventTeamId]);
+  }, [teamId, eventId]);
 
   // Initial fetch and adaptive polling setup
   useEffect(() => {
-    if (!eventTeamId) {
+    if (!teamId) {
       setLoading(false);
       return;
     }
 
-    // Initial fetch
     fetchAttendance();
 
-    // Adaptive polling function
     const poll = () => {
       fetchAttendance();
-      // Schedule next poll with current interval
       intervalRef.current = setTimeout(poll, pollIntervalRef.current);
     };
     
-    // Start polling
     intervalRef.current = setTimeout(poll, pollIntervalRef.current);
 
-    // Handle visibility change - pause polling when tab is hidden
     const handleVisibilityChange = () => {
       isVisibleRef.current = document.visibilityState === 'visible';
       
       if (isVisibleRef.current) {
-        // Tab became visible - fetch immediately and restart polling
         fetchAttendance();
         if (!intervalRef.current) {
           intervalRef.current = setTimeout(poll, pollIntervalRef.current);
         }
       } else {
-        // Tab hidden - clear polling
         if (intervalRef.current) {
           clearTimeout(intervalRef.current);
           intervalRef.current = null;
@@ -138,9 +139,8 @@ export function useRealtimeAttendance(eventTeamId) {
       }
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [eventTeamId, fetchAttendance]);
+  }, [teamId, eventId, fetchAttendance]);
 
-  // Add attendance (optimistic update)
   const addAttendance = useCallback(async (gameId, coachId) => {
     try {
       const { data, error } = await supabase
@@ -169,7 +169,6 @@ export function useRealtimeAttendance(eventTeamId) {
 
       if (error) throw error;
 
-      // Optimistic update
       setAttendance(prev => [...prev, data]);
       return { success: true, data };
     } catch (err) {
@@ -178,10 +177,8 @@ export function useRealtimeAttendance(eventTeamId) {
     }
   }, []);
 
-  // Remove attendance (optimistic update)
   const removeAttendance = useCallback(async (attendanceId) => {
     try {
-      // Optimistic update - remove immediately
       setAttendance(prev => prev.filter(a => a.id !== attendanceId));
 
       const { error } = await supabase
@@ -194,7 +191,6 @@ export function useRealtimeAttendance(eventTeamId) {
       return { success: true };
     } catch (err) {
       console.error('Error removing attendance:', err);
-      // Refetch to restore state if delete failed
       fetchAttendance();
       return { success: false, error: err.message };
     }
@@ -213,7 +209,6 @@ export function useRealtimeAttendance(eventTeamId) {
 
 /**
  * Hook for fetching coaches for a specific school
- * With polling to catch newly added coaches
  */
 export function useRealtimeCoaches(schoolId) {
   const [coaches, setCoaches] = useState([]);

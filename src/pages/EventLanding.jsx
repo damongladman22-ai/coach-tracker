@@ -38,32 +38,49 @@ export default function EventLanding() {
       if (eventError) throw new Error('Event not found');
       setEvent(eventData);
 
-      // Fetch all teams for this event
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('event_teams')
-        .select('*, club_teams(*)')
-        .eq('event_id', eventData.id)
-        .order('club_teams(team_name)');
+      // Fetch all games at this event with team info, derive teams from games
+      const { data: gamesData, error: gamesError } = await supabase
+        .from('games')
+        .select(`
+          id,
+          is_closed,
+          team_id,
+          teams (id, name, slug, gender)
+        `)
+        .eq('event_id', eventData.id);
 
-      if (teamsError) throw teamsError;
-      setEventTeams(teamsData || []);
+      if (gamesError) throw gamesError;
+
+      // Group games by team to build event_teams-shaped data
+      const teamMap = new Map();
+      (gamesData || []).forEach((g) => {
+        if (!g.teams) return;
+        if (!teamMap.has(g.team_id)) {
+          teamMap.set(g.team_id, {
+            id: g.team_id,
+            slug: g.teams.slug,
+            club_teams: { team_name: g.teams.name, gender: g.teams.gender },
+            games: [],
+          });
+        }
+        teamMap.get(g.team_id).games.push(g);
+      });
+
+      const teamsData = Array.from(teamMap.values()).sort((a, b) =>
+        a.club_teams.team_name.localeCompare(b.club_teams.team_name)
+      );
+      setEventTeams(teamsData);
 
       // Fetch attendance stats for each team
       if (teamsData && teamsData.length > 0) {
         const stats = {};
-        
-        for (const et of teamsData) {
-          // Get games for this event team
-          const { data: gamesData } = await supabase
-            .from('games')
-            .select('id, is_closed')
-            .eq('event_team_id', et.id);
 
-          if (gamesData && gamesData.length > 0) {
-            const gameIds = gamesData.map(g => g.id);
-            const hasOpenGames = gamesData.some(g => !g.is_closed);
-            
-            // Get attendance for these games
+        for (const et of teamsData) {
+          const teamGames = et.games;
+          if (teamGames.length > 0) {
+            const gameIds = teamGames.map((g) => g.id);
+            const hasOpenGames = teamGames.some((g) => !g.is_closed);
+
             const { data: attendanceData } = await supabase
               .from('attendance')
               .select('coach_id, coaches(school_id)')
@@ -71,23 +88,28 @@ export default function EventLanding() {
 
             const uniqueSchools = new Set();
             const uniqueCoaches = new Set();
-            
-            (attendanceData || []).forEach(a => {
+
+            (attendanceData || []).forEach((a) => {
               if (a.coaches?.school_id) uniqueSchools.add(a.coaches.school_id);
               if (a.coach_id) uniqueCoaches.add(a.coach_id);
             });
 
             stats[et.id] = {
-              games: gamesData.length,
+              games: teamGames.length,
               schools: uniqueSchools.size,
               coaches: uniqueCoaches.size,
-              hasOpenGames: hasOpenGames
+              hasOpenGames: hasOpenGames,
             };
           } else {
-            stats[et.id] = { games: 0, schools: 0, coaches: 0, hasOpenGames: false };
+            stats[et.id] = {
+              games: 0,
+              schools: 0,
+              coaches: 0,
+              hasOpenGames: false,
+            };
           }
         }
-        
+
         setAttendanceStats(stats);
       }
 

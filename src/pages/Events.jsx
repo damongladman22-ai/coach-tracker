@@ -2,94 +2,150 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import { getCurrentClubId } from '../lib/club'
+import { listSeasons, getActiveSeasonId } from '../lib/season'
 
 export default function Events({ session }) {
   const [events, setEvents] = useState([])
+  const [seasons, setSeasons] = useState([])
+  const [selectedSeasonId, setSelectedSeasonId] = useState(null)
+  const [clubId, setClubId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editingEvent, setEditingEvent] = useState(null)
-  const [formData, setFormData] = useState({ 
-    event_name: '', 
-    start_date: '', 
-    end_date: '' 
+  const [formData, setFormData] = useState({
+    event_name: '',
+    start_date: '',
+    end_date: '',
+    location: '',
+    season_id: '',
   })
 
   useEffect(() => {
-    fetchEvents()
+    initialize()
   }, [])
 
+  useEffect(() => {
+    if (clubId) fetchEvents()
+  }, [clubId, selectedSeasonId])
+
+  const initialize = async () => {
+    const [cid, seasonsList, activeSeasonId] = await Promise.all([
+      getCurrentClubId(),
+      listSeasons(),
+      getActiveSeasonId(),
+    ])
+    setClubId(cid)
+    setSeasons(seasonsList)
+    setSelectedSeasonId(activeSeasonId)
+  }
+
   const fetchEvents = async () => {
-    const { data, error } = await supabase
+    setLoading(true)
+    let query = supabase
       .from('events')
-      .select('*')
+      .select('*, seasons(name, slug)')
+      .eq('club_id', clubId)
       .order('start_date', { ascending: false })
-    
+
+    if (selectedSeasonId) {
+      query = query.eq('season_id', selectedSeasonId)
+    }
+
+    const { data, error } = await query
     if (!error) setEvents(data || [])
     setLoading(false)
   }
 
-  const generateSlug = (name) => {
-    return name.toLowerCase()
+  const generateSlug = (name) =>
+    name
+      .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '')
+
+  const resetForm = () => {
+    setFormData({
+      event_name: '',
+      start_date: '',
+      end_date: '',
+      location: '',
+      season_id: selectedSeasonId || '',
+    })
+    setEditingEvent(null)
+    setShowForm(false)
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    
+
+    if (!clubId) {
+      alert('Club not set. Please contact admin.')
+      return
+    }
+
     const slug = generateSlug(formData.event_name)
-    const dataToSave = { ...formData, slug }
-    
+    const seasonId = formData.season_id
+      ? parseInt(formData.season_id, 10)
+      : selectedSeasonId
+
+    if (!seasonId) {
+      alert('Season is required. Please select one.')
+      return
+    }
+
+    const payload = {
+      event_name: formData.event_name,
+      start_date: formData.start_date,
+      end_date: formData.end_date,
+      location: formData.location || null,
+      slug,
+      club_id: clubId,
+      season_id: seasonId,
+    }
+
     if (editingEvent) {
       const { error } = await supabase
         .from('events')
-        .update(dataToSave)
+        .update(payload)
         .eq('id', editingEvent.id)
-      
-      if (!error) {
-        setEditingEvent(null)
-        setShowForm(false)
-        setFormData({ event_name: '', start_date: '', end_date: '' })
-        fetchEvents()
+      if (error) {
+        alert('Could not update event: ' + error.message)
+        return
       }
     } else {
-      const { error } = await supabase
-        .from('events')
-        .insert([dataToSave])
-      
-      if (!error) {
-        setShowForm(false)
-        setFormData({ event_name: '', start_date: '', end_date: '' })
-        fetchEvents()
+      const { error } = await supabase.from('events').insert([payload])
+      if (error) {
+        alert('Could not create event: ' + error.message)
+        return
       }
     }
+
+    resetForm()
+    fetchEvents()
   }
 
   const handleEdit = (event) => {
     setEditingEvent(event)
-    setFormData({ 
-      event_name: event.event_name, 
-      start_date: event.start_date, 
-      end_date: event.end_date 
+    setFormData({
+      event_name: event.event_name,
+      start_date: event.start_date,
+      end_date: event.end_date,
+      location: event.location || '',
+      season_id: String(event.season_id || ''),
     })
     setShowForm(true)
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('Are you sure you want to delete this event? This will also delete all associated games and attendance records.')) return
-    
-    const { error } = await supabase
-      .from('events')
-      .delete()
-      .eq('id', id)
-    
-    if (!error) fetchEvents()
-  }
+    if (
+      !confirm(
+        'Delete this event? This will also delete all associated games and attendance records.'
+      )
+    )
+      return
 
-  const handleCancel = () => {
-    setShowForm(false)
-    setEditingEvent(null)
-    setFormData({ event_name: '', start_date: '', end_date: '' })
+    const { error } = await supabase.from('events').delete().eq('id', id)
+    if (!error) fetchEvents()
   }
 
   const formatDate = (dateStr) => {
@@ -98,15 +154,38 @@ export default function Events({ session }) {
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
     })
   }
 
   return (
     <AdminLayout session={session} title="Events">
-      <div className="mb-6">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-gray-700">Season:</label>
+          <select
+            value={selectedSeasonId || ''}
+            onChange={(e) =>
+              setSelectedSeasonId(
+                e.target.value ? parseInt(e.target.value, 10) : null
+              )
+            }
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All seasons</option>
+            {seasons.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+                {s.is_active ? ' (active)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
         <button
-          onClick={() => setShowForm(true)}
+          onClick={() => {
+            resetForm()
+            setShowForm(true)
+          }}
           className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
         >
           + Add Event
@@ -121,38 +200,80 @@ export default function Events({ session }) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Event Name
+                Event Name *
               </label>
               <input
                 type="text"
                 value={formData.event_name}
-                onChange={(e) => setFormData({ ...formData, event_name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, event_name: e.target.value })
+                }
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="e.g., Summer Showcase 2025"
+                placeholder="e.g., Summer Showcase 2026"
                 required
               />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Season *
+                </label>
+                <select
+                  value={formData.season_id || selectedSeasonId || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, season_id: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                >
+                  <option value="">Select...</option>
+                  {seasons.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location
+                </label>
+                <input
+                  type="text"
+                  value={formData.location}
+                  onChange={(e) =>
+                    setFormData({ ...formData, location: e.target.value })
+                  }
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g., Las Vegas, NV"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date
+                  Start Date *
                 </label>
                 <input
                   type="date"
                   value={formData.start_date}
-                  onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, start_date: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date
+                  End Date *
                 </label>
                 <input
                   type="date"
                   value={formData.end_date}
-                  onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, end_date: e.target.value })
+                  }
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
@@ -167,7 +288,7 @@ export default function Events({ session }) {
               </button>
               <button
                 type="button"
-                onClick={handleCancel}
+                onClick={resetForm}
                 className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300"
               >
                 Cancel
@@ -189,7 +310,7 @@ export default function Events({ session }) {
             <div key={event.id} className="bg-white rounded-lg shadow-md p-6">
               <div className="flex justify-between items-start">
                 <div>
-                  <Link 
+                  <Link
                     to={`/admin/events/${event.id}`}
                     className="text-xl font-semibold text-blue-600 hover:text-blue-800"
                   >
@@ -198,6 +319,16 @@ export default function Events({ session }) {
                   <p className="text-gray-600 mt-1">
                     {formatDate(event.start_date)} - {formatDate(event.end_date)}
                   </p>
+                  {event.location && (
+                    <p className="text-gray-500 text-sm mt-1">
+                      📍 {event.location}
+                    </p>
+                  )}
+                  {event.seasons?.name && (
+                    <p className="text-xs text-gray-400 mt-1">
+                      Season: {event.seasons.name}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-1">
                   <Link

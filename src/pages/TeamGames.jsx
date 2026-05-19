@@ -36,7 +36,7 @@ export default function TeamGames() {
   const { 
     attendance, 
     lastUpdate
-  } = useRealtimeAttendance(eventTeam?.id);
+  } = useRealtimeAttendance(eventTeam?.id, eventTeam?.events?.id);
 
   // Update current time every minute for lock/unlock checks
   useEffect(() => {
@@ -64,37 +64,44 @@ export default function TeamGames() {
           setUnlockMinutes(parseInt(settingsData.value, 10) || 30);
         }
 
-        // Get event team by slugs
-        const { data: eventTeamData, error: eventTeamError } = await supabase
-          .from('event_teams')
-          .select(`
-            id,
-            slug,
-            events!inner (
-              id,
-              event_name,
-              slug,
-              start_date,
-              end_date
-            ),
-            club_teams!inner (
-              id,
-              team_name,
-              gender
-            )
-          `)
-          .eq('events.slug', eventSlug)
-          .eq('slug', teamSlug)
+        // Get event by slug
+        const { data: eventData, error: eventError } = await supabase
+          .from('events')
+          .select('id, event_name, slug, start_date, end_date, season_id')
+          .eq('slug', eventSlug)
           .single();
 
-        if (eventTeamError) throw new Error('Team not found');
+        if (eventError || !eventData) throw new Error('Event not found');
+
+        // Get team by slug in that event's season
+        const { data: teamData, error: teamError } = await supabase
+          .from('teams')
+          .select('id, name, slug, gender')
+          .eq('slug', teamSlug)
+          .eq('season_id', eventData.season_id)
+          .single();
+
+        if (teamError || !teamData) throw new Error('Team not found');
+
+        // Build a backward-compatible shape so the rest of the rendering code works
+        const eventTeamData = {
+          id: teamData.id,
+          slug: teamData.slug,
+          events: eventData,
+          club_teams: {
+            id: teamData.id,
+            team_name: teamData.name,
+            gender: teamData.gender,
+          },
+        };
         setEventTeam(eventTeamData);
 
-        // Get games for this event team
+        // Get games for this team at this event
         const { data: gamesData, error: gamesError } = await supabase
           .from('games')
           .select('*')
-          .eq('event_team_id', eventTeamData.id)
+          .eq('team_id', teamData.id)
+          .eq('event_id', eventData.id)
           .order('game_date');
 
         if (gamesError) throw gamesError;

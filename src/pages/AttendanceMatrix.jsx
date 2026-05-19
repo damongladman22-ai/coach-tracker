@@ -5,7 +5,7 @@ import AdminLayout from '../components/AdminLayout'
 import { SchoolSearch } from '../components/SchoolSearch'
 
 export default function AttendanceMatrix({ session }) {
-  const { eventId, eventTeamId } = useParams()
+  const { eventId, teamId } = useParams()
   const [event, setEvent] = useState(null)
   const [eventTeam, setEventTeam] = useState(null)
   const [games, setGames] = useState([])
@@ -22,7 +22,7 @@ export default function AttendanceMatrix({ session }) {
 
   useEffect(() => {
     fetchData()
-  }, [eventId, eventTeamId])
+  }, [eventId, teamId])
 
   const showToast = (message, type = 'success') => {
     setToast({ message, type })
@@ -39,19 +39,25 @@ export default function AttendanceMatrix({ session }) {
         .single()
       setEvent(eventData)
 
-      // Fetch event team with club team info
-      const { data: eventTeamData } = await supabase
-        .from('event_teams')
-        .select('*, club_teams(*)')
-        .eq('id', eventTeamId)
+      // Fetch team
+      const { data: teamData } = await supabase
+        .from('teams')
+        .select('*')
+        .eq('id', teamId)
         .single()
-      setEventTeam(eventTeamData)
+      // Build backward-compatible shape
+      setEventTeam(teamData ? {
+        id: teamData.id,
+        slug: teamData.slug,
+        club_teams: { team_name: teamData.name, gender: teamData.gender },
+      } : null)
 
-      // Fetch games for this event team
+      // Fetch games for this team at this event
       const { data: gamesData } = await supabase
         .from('games')
         .select('*')
-        .eq('event_team_id', eventTeamId)
+        .eq('team_id', teamId)
+        .eq('event_id', eventId)
         .order('game_date')
       setGames(gamesData || [])
 

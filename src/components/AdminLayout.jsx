@@ -14,6 +14,7 @@ export default function AdminLayout({ session, title, children }) {
 
   const navLinks = [
     { to: '/admin', label: 'Dashboard' },
+    { to: '/admin/seasons', label: 'Seasons' },
     { to: '/admin/teams', label: 'Teams' },
     { to: '/admin/events', label: 'Events' },
     { to: '/admin/schools', label: 'Schools' },
@@ -36,6 +37,9 @@ export default function AdminLayout({ session, title, children }) {
             </Link>
             {/* Desktop Nav */}
             <nav className="hidden md:flex space-x-4">
+              <Link to="/admin/seasons" className="text-gray-300 hover:text-white transition-colors">
+                Seasons
+              </Link>
               <Link to="/admin/teams" className="text-gray-300 hover:text-white transition-colors">
                 Teams
               </Link>

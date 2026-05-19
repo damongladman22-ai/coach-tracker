@@ -34,42 +34,48 @@ export default function ClubDashboard() {
       if (eventsError) throw eventsError;
       setEvents(eventsData || []);
 
-      // Fetch all event teams with club team details
-      const { data: eventTeamsData, error: teamsError } = await supabase
-        .from('event_teams')
-        .select('*, club_teams(*), events(slug)')
-        .order('club_teams(team_name)');
+      // Fetch all games at any event, with their team info, to derive
+      // which teams are at which events (replaces v1 event_teams query)
+      const { data: gamesData, error: gamesError } = await supabase
+        .from('games')
+        .select(`
+          id,
+          is_closed,
+          event_id,
+          team_id,
+          teams (id, name, slug, gender)
+        `)
+        .not('event_id', 'is', null);
 
-      if (teamsError) throw teamsError;
+      if (gamesError) throw gamesError;
 
-      // Fetch games to check if any are open for each event team
-      const eventTeamIds = (eventTeamsData || []).map(et => et.id);
-      let gamesData = [];
-      if (eventTeamIds.length > 0) {
-        const { data } = await supabase
-          .from('games')
-          .select('id, event_team_id, is_closed')
-          .in('event_team_id', eventTeamIds);
-        gamesData = data || [];
-      }
-
-      // Create a map of event_team_id -> hasOpenGames
-      const openGamesMap = {};
-      eventTeamIds.forEach(id => {
-        const teamGames = gamesData.filter(g => g.event_team_id === id);
-        openGamesMap[id] = teamGames.some(g => !g.is_closed);
+      // Build map: event_id -> [{ id (team_id), slug, club_teams shape, hasOpenGames }]
+      const byEvent = {};
+      const teamsByEvent = {}; // event_id -> Map<team_id, { team, anyOpen }>
+      (gamesData || []).forEach((g) => {
+        if (!g.teams) return;
+        if (!teamsByEvent[g.event_id]) teamsByEvent[g.event_id] = new Map();
+        const entry = teamsByEvent[g.event_id].get(g.team_id) || {
+          team: g.teams,
+          anyOpen: false,
+        };
+        if (!g.is_closed) entry.anyOpen = true;
+        teamsByEvent[g.event_id].set(g.team_id, entry);
       });
 
-      // Group by event and attach hasOpenGames
-      const byEvent = {};
-      (eventTeamsData || []).forEach(et => {
-        if (!byEvent[et.event_id]) {
-          byEvent[et.event_id] = [];
-        }
-        byEvent[et.event_id].push({
-          ...et,
-          hasOpenGames: openGamesMap[et.id] || false
-        });
+      Object.entries(teamsByEvent).forEach(([eventId, teamMap]) => {
+        byEvent[eventId] = Array.from(teamMap.values())
+          .map(({ team, anyOpen }) => ({
+            id: team.id,
+            slug: team.slug,
+            hasOpenGames: anyOpen,
+            club_teams: { team_name: team.name, gender: team.gender },
+          }))
+          .sort((a, b) =>
+            (a.club_teams?.team_name || '').localeCompare(
+              b.club_teams?.team_name || ''
+            )
+          );
       });
       setEventTeams(byEvent);
 

@@ -17,7 +17,8 @@ import Help from './pages/Help'
 const AdminLogin = lazy(() => import('./pages/AdminLogin'))
 const AdminSetup = lazy(() => import('./pages/AdminSetup'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
-const ClubTeams = lazy(() => import('./pages/ClubTeams'))
+const Teams = lazy(() => import('./pages/Teams'))
+const Seasons = lazy(() => import('./pages/Seasons'))
 const Events = lazy(() => import('./pages/Events'))
 const EventDetail = lazy(() => import('./pages/EventDetail'))
 const Schools = lazy(() => import('./pages/Schools'))
@@ -58,21 +59,22 @@ function App() {
       <BrowserRouter>
         <Suspense fallback={<PageLoader message="Loading..." />}>
           <Routes>
-            {/* Admin Routes - Lazy loaded */}
+            {/* Admin Routes */}
             <Route path="/admin" element={session ? <AdminDashboard session={session} /> : <AdminLogin />} />
             <Route path="/admin/setup" element={<AdminSetup />} />
-            <Route path="/admin/teams" element={session ? <ClubTeams session={session} /> : <AdminLogin />} />
+            <Route path="/admin/teams" element={session ? <Teams session={session} /> : <AdminLogin />} />
+            <Route path="/admin/seasons" element={session ? <Seasons session={session} /> : <AdminLogin />} />
             <Route path="/admin/events" element={session ? <Events session={session} /> : <AdminLogin />} />
             <Route path="/admin/events/:eventId" element={session ? <EventDetail session={session} /> : <AdminLogin />} />
             <Route path="/admin/schools" element={session ? <Schools session={session} /> : <AdminLogin />} />
             <Route path="/admin/import" element={session ? <ImportCoaches session={session} /> : <AdminLogin />} />
-            <Route path="/admin/events/:eventId/matrix/:eventTeamId" element={session ? <AttendanceMatrix session={session} /> : <AdminLogin />} />
+            <Route path="/admin/events/:eventId/matrix/:teamId" element={session ? <AttendanceMatrix session={session} /> : <AdminLogin />} />
             <Route path="/admin/dedup" element={session ? <DedupCoaches session={session} /> : <AdminLogin />} />
             <Route path="/admin/dedup-schools" element={session ? <DedupSchools session={session} /> : <AdminLogin />} />
             <Route path="/admin/admins" element={session ? <ManageAdmins session={session} /> : <AdminLogin />} />
             <Route path="/admin/feedback" element={session ? <Feedback session={session} /> : <AdminLogin />} />
           
-            {/* Parent Routes (no auth required) - Loaded immediately */}
+            {/* Parent Routes (no auth required) */}
             <Route path="/home" element={<ClubDashboard />} />
             <Route path="/directory" element={<CoachDirectory />} />
             <Route path="/help" element={<Help />} />
