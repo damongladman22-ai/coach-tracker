@@ -77,7 +77,7 @@ export default function Teams({ session }) {
       `)
       .eq('club_id', clubId)
       .eq('season_id', selectedSeasonId)
-      .order('age_groups(sort_order)', { foreignTable: 'age_groups' })
+      .order('name')
 
     if (!error) setTeams(data || [])
     setLoading(false)
