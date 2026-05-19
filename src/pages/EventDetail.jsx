@@ -30,7 +30,7 @@ export default function EventDetail({ session }) {
   const [editingGame, setEditingGame] = useState(null)
   const [gameFormData, setGameFormData] = useState({
     team_id: '',
-    game_date: '',
+    game_date: new Date().toISOString().slice(0, 10),
     opponent: '',
     game_time: '',
     timezone: 'America/New_York',
@@ -125,9 +125,10 @@ export default function EventDetail({ session }) {
   const resetGameForm = () => {
     setEditingGame(null)
     setShowGameForm(false)
+    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
     setGameFormData({
       team_id: '',
-      game_date: '',
+      game_date: today,
       opponent: '',
       game_time: '',
       timezone: 'America/New_York',
