@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import SortableTable from '../components/SortableTable'
 import { getCurrentClubId } from '../lib/club'
 import { clearLookupCaches } from '../lib/lookups'
 
 /**
- * Programs admin page. Lookup CRUD: name, sort_order, active.
+ * Programs admin page. Lookup CRUD: name, active. Order managed via drag.
  * Scoped to the current club.
  */
 export default function AgeGroups({ session }) {
@@ -14,11 +15,7 @@ export default function AgeGroups({ session }) {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState(null)
-  const [formData, setFormData] = useState({
-    name: '',
-    sort_order: 0,
-    active: true,
-  })
+  const [formData, setFormData] = useState({ name: '', active: true })
 
   useEffect(() => {
     initialize()
@@ -43,7 +40,7 @@ export default function AgeGroups({ session }) {
   }
 
   const resetForm = () => {
-    setFormData({ name: '', sort_order: items.length, active: true })
+    setFormData({ name: '', active: true })
     setEditing(null)
     setShowForm(false)
   }
@@ -51,10 +48,12 @@ export default function AgeGroups({ session }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!clubId) return
+    const nextSortOrder =
+      items.length > 0 ? Math.max(...items.map((i) => i.sort_order)) + 1 : 0
     const payload = {
       club_id: clubId,
       name: formData.name,
-      sort_order: parseInt(formData.sort_order, 10) || 0,
+      sort_order: editing ? editing.sort_order : nextSortOrder,
       active: formData.active,
     }
     if (editing) {
@@ -80,11 +79,7 @@ export default function AgeGroups({ session }) {
 
   const handleEdit = (item) => {
     setEditing(item)
-    setFormData({
-      name: item.name,
-      sort_order: item.sort_order,
-      active: item.active,
-    })
+    setFormData({ name: item.name, active: item.active })
     setShowForm(true)
   }
 
@@ -115,18 +110,61 @@ export default function AgeGroups({ session }) {
     }
   }
 
+  const renderRow = (item) => (
+    <>
+      <td className="px-4 py-4 text-gray-900 font-medium">{item.name}</td>
+      <td className="px-4 py-4">
+        {item.active ? (
+          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
+            Active
+          </span>
+        ) : (
+          <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
+            Inactive
+          </span>
+        )}
+      </td>
+      <td className="px-4 py-4 text-right">
+        <div className="flex justify-end gap-1">
+          <button
+            onClick={() => toggleActive(item)}
+            className="text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 px-3 py-2 rounded-lg"
+          >
+            {item.active ? 'Mark Inactive' : 'Mark Active'}
+          </button>
+          <button
+            onClick={() => handleEdit(item)}
+            className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => handleDelete(item)}
+            className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-2 rounded-lg text-sm"
+          >
+            Delete
+          </button>
+        </div>
+      </td>
+    </>
+  )
+
   return (
     <AdminLayout session={session} title="Age Groups">
-      <div className="mb-6">
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <button
           onClick={() => {
             resetForm()
             setShowForm(true)
           }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 self-start"
         >
           + Add Age Group
         </button>
+        <p className="text-xs text-gray-500">
+          Drag rows by the grip handle (⋮⋮) to reorder. On phones, press and hold the
+          handle for a moment before dragging.
+        </p>
       </div>
 
       {showForm && (
@@ -147,22 +185,6 @@ export default function AgeGroups({ session }) {
                 placeholder="e.g., U10, U14, U16"
                 required
               />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">
-                Sort Order
-              </label>
-              <input
-                type="number"
-                value={formData.sort_order}
-                onChange={(e) =>
-                  setFormData({ ...formData, sort_order: e.target.value })
-                }
-                className="w-full sm:w-32 px-3 py-2 border border-gray-300 rounded-lg"
-              />
-              <p className="text-xs text-gray-400 mt-1">
-                Lower numbers appear first in dropdowns
-              </p>
             </div>
             <div>
               <label className="flex items-center gap-2 text-sm text-gray-700">
@@ -203,71 +225,13 @@ export default function AgeGroups({ session }) {
           No age groups yet.
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-md overflow-hidden">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                  Name
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-500 hidden sm:table-cell">
-                  Sort Order
-                </th>
-                <th className="px-6 py-3 text-left text-sm font-medium text-gray-500">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-right text-sm font-medium text-gray-500">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {items.map((item) => (
-                <tr key={item.id} className={!item.active ? 'opacity-60' : ''}>
-                  <td className="px-6 py-4 text-gray-900 font-medium">
-                    {item.name}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600 hidden sm:table-cell">
-                    {item.sort_order}
-                  </td>
-                  <td className="px-6 py-4">
-                    {item.active ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-green-100 text-green-700">
-                        Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                        Inactive
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-1">
-                      <button
-                        onClick={() => toggleActive(item)}
-                        className="text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-50 px-3 py-2 rounded-lg"
-                      >
-                        {item.active ? 'Mark Inactive' : 'Mark Active'}
-                      </button>
-                      <button
-                        onClick={() => handleEdit(item)}
-                        className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item)}
-                        className="text-red-600 hover:text-red-800 hover:bg-red-50 px-3 py-2 rounded-lg text-sm"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <SortableTable
+          items={items}
+          setItems={setItems}
+          tableName="age_groups"
+          headerCols={['Name', 'Status', '']}
+          renderRow={renderRow}
+        />
       )}
     </AdminLayout>
   )
