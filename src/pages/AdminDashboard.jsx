@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getPublicBaseUrl } from '../lib/publicUrl'
 import AdminLayout from '../components/AdminLayout'
 
 export default function AdminDashboard({ session }) {
@@ -58,7 +59,7 @@ export default function AdminDashboard({ session }) {
   }
 
   const getClubLink = () => {
-    return `${window.location.origin}/home`
+    return `${getPublicBaseUrl()}/home`
   }
 
   const copyClubLink = () => {

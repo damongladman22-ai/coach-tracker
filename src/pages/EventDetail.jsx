@@ -7,6 +7,7 @@ import TimePicker from '../components/TimePicker'
 import ScoreInput, { gameResult } from '../components/ScoreInput'
 import { getCurrentClubId } from '../lib/club'
 import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
+import { getPublicBaseUrl } from '../lib/publicUrl'
 
 const TIMEZONES = [
   { value: 'America/New_York', label: 'Eastern (ET)' },
@@ -240,12 +241,12 @@ export default function EventDetail({ session }) {
   }
 
   const getShareableLink = (team) => {
-    const baseUrl = window.location.origin
+    const baseUrl = getPublicBaseUrl()
     return `${baseUrl}/e/${event.slug}/${team.slug}`
   }
 
   const getSummaryLink = (team) => {
-    const baseUrl = window.location.origin
+    const baseUrl = getPublicBaseUrl()
     return `${baseUrl}/e/${event.slug}/${team.slug}/summary`
   }
 

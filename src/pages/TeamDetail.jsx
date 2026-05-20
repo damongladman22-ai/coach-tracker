@@ -7,6 +7,7 @@ import DateField from '../components/DateField'
 import ScoreInput, { gameResult } from '../components/ScoreInput'
 import { getCurrentClubId } from '../lib/club'
 import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
+import { getPublicBaseUrl } from '../lib/publicUrl'
 
 const TIMEZONES = [
   { value: 'America/New_York', label: 'Eastern (ET)' },
@@ -284,7 +285,7 @@ export default function TeamDetail({ session }) {
           <div className="flex flex-col gap-2">
             <button
               onClick={() => {
-                const url = `${window.location.origin}/t/${team.slug}`
+                const url = `${getPublicBaseUrl()}/t/${team.slug}`
                 navigator.clipboard.writeText(url)
                 alert('Public team link copied to clipboard:\n\n' + url)
               }}
