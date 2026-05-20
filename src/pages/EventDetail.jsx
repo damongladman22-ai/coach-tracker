@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import TimePicker from '../components/TimePicker'
+import ScoreInput, { gameResult } from '../components/ScoreInput'
 import { getCurrentClubId } from '../lib/club'
 import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
 
@@ -214,6 +215,28 @@ export default function EventDetail({ session }) {
       })
       .eq('id', game.id)
     if (!error) fetchData()
+  }
+
+  const handleSaveScore = async (gameId, ourScore, opponentScore) => {
+    const { error } = await supabase
+      .from('games')
+      .update({ our_score: ourScore, opponent_score: opponentScore })
+      .eq('id', gameId)
+    if (error) {
+      alert('Could not save score: ' + error.message)
+      return
+    }
+    // Local update so UI reflects immediately
+    setTeamsAtEvent((prev) =>
+      prev.map((te) => ({
+        ...te,
+        games: te.games.map((g) =>
+          g.id === gameId
+            ? { ...g, our_score: ourScore, opponent_score: opponentScore }
+            : g
+        ),
+      }))
+    )
   }
 
   const getShareableLink = (team) => {
@@ -657,13 +680,29 @@ export default function EventDetail({ session }) {
                           )}
                           <span className="text-gray-600"> {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}</span>
                         </span>
+                        {(() => {
+                          const r = gameResult(game)
+                          return r.label ? (
+                            <span
+                              className={`text-xs font-bold px-2 py-0.5 rounded ${r.color}`}
+                            >
+                              {r.label} {r.score}
+                            </span>
+                          ) : null
+                        })()}
                         {game.is_closed && (
                           <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
                             Closed
                           </span>
                         )}
                       </span>
-                      <div className="flex items-center gap-1 flex-shrink-0">
+                      <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+                        <ScoreInput
+                          ourScore={game.our_score}
+                          opponentScore={game.opponent_score}
+                          onSave={(o, p) => handleSaveScore(game.id, o, p)}
+                          compact
+                        />
                         <button
                           onClick={() => toggleGameClosed(game)}
                           className={`text-sm px-3 py-2 rounded ${

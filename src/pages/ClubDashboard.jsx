@@ -5,6 +5,7 @@ import { ErrorMessage } from '../components/LoadingStates'
 import OPLogo from '../components/OPLogo'
 import FeedbackButton from '../components/FeedbackButton'
 import { getActiveSeasonId, getActiveSeason } from '../lib/season'
+import { computeRecord } from '../components/ScoreInput'
 
 /**
  * Club Dashboard — team-first home page.
@@ -75,7 +76,7 @@ export default function ClubDashboard() {
         const teamIds = teamList.map((t) => t.id)
         const { data: games } = await supabase
           .from('games')
-          .select('id, team_id, event_id, is_closed')
+          .select('id, team_id, event_id, is_closed, our_score, opponent_score')
           .in('team_id', teamIds)
 
         const today = new Date()
@@ -92,11 +93,11 @@ export default function ClubDashboard() {
             .map((ev) => ev.id)
         )
 
-        const teamGameIds = new Map() // teamId -> [gameId]
+        const teamGames = new Map() // teamId -> [full game]
         const teamActiveFlag = new Map()
         ;(games || []).forEach((g) => {
-          if (!teamGameIds.has(g.team_id)) teamGameIds.set(g.team_id, [])
-          teamGameIds.get(g.team_id).push(g.id)
+          if (!teamGames.has(g.team_id)) teamGames.set(g.team_id, [])
+          teamGames.get(g.team_id).push(g)
           if (g.event_id && activeEventIds.has(g.event_id) && !g.is_closed) {
             teamActiveFlag.set(g.team_id, true)
           }
@@ -123,16 +124,19 @@ export default function ClubDashboard() {
 
         const stats = {}
         teamList.forEach((t) => {
-          const ids = teamGameIds.get(t.id) || []
+          const teamGamesList = teamGames.get(t.id) || []
+          const ids = teamGamesList.map((g) => g.id)
           const allSchools = new Set()
           ids.forEach((gid) => {
             const s = gameToSchools.get(gid)
             if (s) s.forEach((sid) => allSchools.add(sid))
           })
+          const record = computeRecord(teamGamesList)
           stats[t.id] = {
             games: ids.length,
             schools: allSchools.size,
             hasActiveEvent: !!teamActiveFlag.get(t.id),
+            record,
           }
         })
         setTeamStats(stats)
@@ -438,7 +442,12 @@ function TeamCard({ team, stats }) {
           </span>
         )}
       </div>
-      <div className="flex gap-3 mt-3 text-xs text-gray-600">
+      <div className="flex gap-3 mt-3 text-xs text-gray-600 items-center flex-wrap">
+        {stats?.record?.played > 0 && (
+          <span className="font-semibold text-gray-900 text-sm">
+            {stats.record.wins}–{stats.record.losses}–{stats.record.ties}
+          </span>
+        )}
         <span>
           <strong>{stats?.games ?? 0}</strong> game{stats?.games === 1 ? '' : 's'}
         </span>

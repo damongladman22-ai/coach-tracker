@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import TimePicker from '../components/TimePicker'
+import ScoreInput, { gameResult } from '../components/ScoreInput'
 import { getCurrentClubId } from '../lib/club'
 import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
 
@@ -186,6 +187,25 @@ export default function TeamDetail({ session }) {
       return
     const { error } = await supabase.from('games').delete().eq('id', gameId)
     if (!error) initialize()
+  }
+
+  const handleSaveScore = async (gameId, ourScore, opponentScore) => {
+    const { error } = await supabase
+      .from('games')
+      .update({ our_score: ourScore, opponent_score: opponentScore })
+      .eq('id', gameId)
+    if (error) {
+      alert('Could not save score: ' + error.message)
+      return
+    }
+    // Refresh in place so the badge/record update without losing form state
+    setGames((prev) =>
+      prev.map((g) =>
+        g.id === gameId
+          ? { ...g, our_score: ourScore, opponent_score: opponentScore }
+          : g
+      )
+    )
   }
 
   // Group games by event
@@ -472,6 +492,7 @@ export default function TeamDetail({ session }) {
                 games={eGames}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
+                onSaveScore={handleSaveScore}
                 formatDate={formatDate}
                 formatTime={formatTime}
               />
@@ -487,6 +508,7 @@ export default function TeamDetail({ session }) {
                 games={grouped.standalone}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
+                onSaveScore={handleSaveScore}
                 formatDate={formatDate}
                 formatTime={formatTime}
               />
@@ -498,47 +520,63 @@ export default function TeamDetail({ session }) {
   )
 }
 
-function GameList({ games, onEdit, onDelete, formatDate, formatTime }) {
+function GameList({ games, onEdit, onDelete, onSaveScore, formatDate, formatTime }) {
   return (
     <div className="divide-y divide-gray-100">
-      {games.map((g) => (
-        <div key={g.id} className="flex justify-between items-center py-2 gap-2">
-          <div className="flex-1 min-w-0 text-sm">
-            <span className="font-medium">{formatDate(g.game_date)}</span>
-            {g.game_time && (
-              <span className="text-gray-500 ml-1">
-                @ {formatTime(g.game_time)}
+      {games.map((g) => {
+        const result = gameResult(g)
+        return (
+          <div key={g.id} className="flex flex-wrap justify-between items-center py-2 gap-2">
+            <div className="flex-1 min-w-0 text-sm">
+              <span className="font-medium">{formatDate(g.game_date)}</span>
+              {g.game_time && (
+                <span className="text-gray-500 ml-1">
+                  @ {formatTime(g.game_time)}
+                </span>
+              )}
+              <span className="text-gray-600">
+                {' '}
+                {g.is_home ? 'vs' : '@'} {g.opponent || 'TBD'}
               </span>
-            )}
-            <span className="text-gray-600">
-              {' '}
-              {g.is_home ? 'vs' : '@'} {g.opponent || 'TBD'}
-            </span>
-            {g.game_types?.name && (
-              <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                {g.game_types.name}
-              </span>
-            )}
-            {g.location && (
-              <span className="text-gray-400 text-xs ml-2">📍 {g.location}</span>
-            )}
+              {result.label && (
+                <span
+                  className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${result.color}`}
+                >
+                  {result.label} {result.score}
+                </span>
+              )}
+              {g.game_types?.name && (
+                <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                  {g.game_types.name}
+                </span>
+              )}
+              {g.location && (
+                <span className="text-gray-400 text-xs ml-2">📍 {g.location}</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <ScoreInput
+                ourScore={g.our_score}
+                opponentScore={g.opponent_score}
+                onSave={(o, p) => onSaveScore(g.id, o, p)}
+                compact
+              />
+              <button
+                onClick={() => onEdit(g)}
+                className="text-blue-600 hover:bg-blue-50 px-3 py-1 rounded text-sm"
+              >
+                Edit
+              </button>
+              <button
+                onClick={() => onDelete(g.id)}
+                className="text-red-600 hover:bg-red-50 px-3 py-1 rounded text-sm"
+              >
+                Delete
+              </button>
+            </div>
           </div>
-          <div className="flex gap-1 flex-shrink-0">
-            <button
-              onClick={() => onEdit(g)}
-              className="text-blue-600 hover:bg-blue-50 px-3 py-1 rounded text-sm"
-            >
-              Edit
-            </button>
-            <button
-              onClick={() => onDelete(g.id)}
-              className="text-red-600 hover:bg-red-50 px-3 py-1 rounded text-sm"
-            >
-              Delete
-            </button>
-          </div>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

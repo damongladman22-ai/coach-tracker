@@ -9,6 +9,7 @@ import {
 } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
+import { gameResult } from '../components/ScoreInput';
 
 /**
  * SchoolCoachEmailCard - Displays coaches from a school with email functionality
@@ -836,6 +837,14 @@ export default function ParentSummary() {
                       <div>
                         <span className="font-semibold">{formatDate(game.game_date)}</span>
                         <span className="text-gray-600"> vs {game.opponent}</span>
+                        {(() => {
+                          const r = gameResult(game)
+                          return r.label ? (
+                            <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
+                              {r.label} {r.score}
+                            </span>
+                          ) : null
+                        })()}
                       </div>
                     </div>
                   </div>

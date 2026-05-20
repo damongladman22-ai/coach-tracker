@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getActiveSeasonId } from '../lib/season'
+import { computeRecord, gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
 
 /**
@@ -206,6 +207,40 @@ export default function PublicTeamPage() {
               </p>
             </div>
 
+            {/* Season record */}
+            {(() => {
+              const r = computeRecord(games)
+              if (r.played === 0) return null
+              return (
+                <div className="bg-white rounded-lg shadow-md p-5 mb-6">
+                  <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+                    Season Record
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-4">
+                    <div className="text-3xl font-bold text-gray-900">
+                      {r.wins}–{r.losses}–{r.ties}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {r.played} game{r.played === 1 ? '' : 's'} · {r.percent}%
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      Goals for{' '}
+                      <span className="font-semibold text-gray-900">{r.gf}</span>
+                      , against{' '}
+                      <span className="font-semibold text-gray-900">{r.ga}</span>
+                      {r.gd !== 0 && (
+                        <span className="text-gray-500">
+                          {' '}
+                          ({r.gd > 0 ? '+' : ''}
+                          {r.gd})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Stats */}
             <div className="grid grid-cols-3 gap-3 mb-6">
               <StatCard label="Games" value={stats.games} />
@@ -332,6 +367,7 @@ function StatCard({ label, value }) {
 }
 
 function EventScheduleCard({ event, games, teamSlug, formatDate, formatTime }) {
+  const hasOpenGames = games.some((g) => !g.is_closed)
   return (
     <div className="bg-white rounded-lg shadow-md p-5">
       <div className="flex justify-between items-start gap-3 mb-3">
@@ -347,12 +383,14 @@ function EventScheduleCard({ event, games, teamSlug, formatDate, formatTime }) {
           )}
         </div>
         <div className="flex flex-col gap-1 flex-shrink-0">
-          <Link
-            to={`/e/${event.slug}/${teamSlug}`}
-            className="text-sm bg-cyan-100 text-cyan-700 hover:bg-cyan-200 px-3 py-2 rounded-lg text-center"
-          >
-            Live Tracker
-          </Link>
+          {hasOpenGames && (
+            <Link
+              to={`/e/${event.slug}/${teamSlug}`}
+              className="text-sm bg-cyan-100 text-cyan-700 hover:bg-cyan-200 px-3 py-2 rounded-lg text-center"
+            >
+              Live Tracker
+            </Link>
+          )}
           <Link
             to={`/e/${event.slug}/${teamSlug}/summary`}
             className="text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-2 rounded-lg text-center"
@@ -362,28 +400,37 @@ function EventScheduleCard({ event, games, teamSlug, formatDate, formatTime }) {
         </div>
       </div>
       <div className="divide-y divide-gray-100">
-        {games.map((g) => (
-          <div key={g.id} className="py-2 text-sm flex flex-wrap items-center gap-2">
-            <span className="font-medium">{formatDate(g.game_date)}</span>
-            {g.game_time && (
-              <span className="text-gray-500">@ {formatTime(g.game_time)}</span>
-            )}
-            <span className="text-gray-600">
-              {g.is_home ? 'vs' : '@'} {g.opponent || 'TBD'}
-            </span>
-            {g.is_closed && (
-              <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
-                Closed
+        {games.map((g) => {
+          const r = gameResult(g)
+          return (
+            <div key={g.id} className="py-2 text-sm flex flex-wrap items-center gap-2">
+              <span className="font-medium">{formatDate(g.game_date)}</span>
+              {g.game_time && (
+                <span className="text-gray-500">@ {formatTime(g.game_time)}</span>
+              )}
+              <span className="text-gray-600">
+                {g.is_home ? 'vs' : '@'} {g.opponent || 'TBD'}
               </span>
-            )}
-          </div>
-        ))}
+              {r.label && (
+                <span className={`text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
+                  {r.label} {r.score}
+                </span>
+              )}
+              {g.is_closed && (
+                <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+                  Closed
+                </span>
+              )}
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
 
 function StandaloneGameRow({ game, formatDate, formatTime }) {
+  const r = gameResult(game)
   return (
     <div className="py-2 text-sm flex flex-wrap items-center gap-2">
       <span className="font-medium">{formatDate(game.game_date)}</span>
@@ -393,6 +440,11 @@ function StandaloneGameRow({ game, formatDate, formatTime }) {
       <span className="text-gray-600">
         {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
       </span>
+      {r.label && (
+        <span className={`text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
+          {r.label} {r.score}
+        </span>
+      )}
       {game.game_types?.name && (
         <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
           {game.game_types.name}

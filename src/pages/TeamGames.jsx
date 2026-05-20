@@ -12,6 +12,7 @@ import {
 } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
+import { gameResult } from '../components/ScoreInput';
 
 /**
  * Live Tracker - Team Games List
@@ -347,7 +348,17 @@ export default function TeamGames() {
                               {game.game_time && <span className="ml-1">@ {formatGameTime(game)}</span>}
                               <span className="ml-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Closed</span>
                             </p>
-                            <p className="font-semibold text-lg text-gray-700 truncate">vs {game.opponent}</p>
+                            <p className="font-semibold text-lg text-gray-700 truncate">
+                              vs {game.opponent}
+                              {(() => {
+                                const r = gameResult(game)
+                                return r.label ? (
+                                  <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
+                                    {r.label} {r.score}
+                                  </span>
+                                ) : null
+                              })()}
+                            </p>
                           </div>
                         </div>
                         <Link
@@ -402,7 +413,17 @@ export default function TeamGames() {
                             <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)}
                             {game.game_time && <span className="ml-1">@ {formatGameTime(game)}</span>}
                           </p>
-                          <p className="font-semibold text-lg truncate">vs {game.opponent}</p>
+                          <p className="font-semibold text-lg truncate">
+                            vs {game.opponent}
+                            {(() => {
+                              const r = gameResult(game)
+                              return r.label ? (
+                                <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
+                                  {r.label} {r.score}
+                                </span>
+                              ) : null
+                            })()}
+                          </p>
                         </div>
                         <div className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0">
                           + Add Coaches
