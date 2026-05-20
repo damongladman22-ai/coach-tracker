@@ -13,6 +13,8 @@ import {
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
 import { gameResult } from '../components/ScoreInput';
+import VideoBadge from '../components/VideoBadge';
+import GameVideosPanel from '../components/GameVideosPanel';
 
 /**
  * Live Tracker - Team Games List
@@ -28,6 +30,7 @@ export default function TeamGames() {
   // Page data
   const [eventTeam, setEventTeam] = useState(null);
   const [games, setGames] = useState([]);
+  const [videosByGame, setVideosByGame] = useState({});
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(null);
   const [unlockMinutes, setUnlockMinutes] = useState(30);
@@ -114,6 +117,25 @@ export default function TeamGames() {
         }
         
         setGames(gamesData || []);
+
+        // Videos for these games (only ready ones)
+        if (gamesData && gamesData.length > 0) {
+          const gameIds = gamesData.map((g) => g.id);
+          const { data: vidData } = await supabase
+            .from('videos')
+            .select(
+              'id, game_id, title, duration_seconds, file_size_bytes, mime_type, uploaded_at'
+            )
+            .in('game_id', gameIds)
+            .eq('upload_status', 'ready')
+            .order('uploaded_at', { ascending: false });
+          const byGame = {};
+          (vidData || []).forEach((v) => {
+            if (!byGame[v.game_id]) byGame[v.game_id] = [];
+            byGame[v.game_id].push(v);
+          });
+          setVideosByGame(byGame);
+        }
 
       } catch (err) {
         console.error('Error loading page data:', err);
@@ -331,9 +353,15 @@ export default function TeamGames() {
               const isClosed = game.is_closed;
               const isUnlocked = isGameUnlocked(game);
               const isLocked = !isClosed && !isUnlocked && game.game_time;
+              const gameVideos = videosByGame[game.id] || [];
               
               return (
-                <div key={game.id}>
+                <GameWithVideoBadge
+                  key={game.id}
+                  videos={gameVideos}
+                  game={game}
+                  teamName={eventTeam?.teams?.name}
+                >
                   {isClosed ? (
                     // Closed game - show as non-clickable card
                     <div className="bg-white rounded-lg border shadow-sm p-4 opacity-75">
@@ -441,7 +469,7 @@ export default function TeamGames() {
                       )}
                     </Link>
                   )}
-                </div>
+                </GameWithVideoBadge>
               );
             })}
           </div>
@@ -450,6 +478,37 @@ export default function TeamGames() {
 
       {/* Feedback Button */}
       <FeedbackButton />
+    </div>
+  );
+}
+
+/**
+ * GameWithVideoBadge — wraps an individual game card on the Live Tracker
+ * page. Below the card, shows a clickable VideoBadge (when videos exist)
+ * that toggles an inline GameVideosPanel.
+ *
+ * Existing closed/locked/open card content is passed as children, so the
+ * wrapper is non-invasive — it doesn't change the inner card UX.
+ */
+function GameWithVideoBadge({ children, videos, game, teamName }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div>
+      {children}
+      {videos && videos.length > 0 && (
+        <div className="mt-2 pl-1">
+          <VideoBadge
+            count={videos.length}
+            expanded={expanded}
+            onClick={() => setExpanded((e) => !e)}
+          />
+        </div>
+      )}
+      {expanded && videos && videos.length > 0 && (
+        <div className="mt-2 rounded-lg overflow-hidden border border-gray-200">
+          <GameVideosPanel videos={videos} game={game} teamName={teamName} />
+        </div>
+      )}
     </div>
   );
 }

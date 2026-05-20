@@ -5,10 +5,10 @@ import {
   uploadToStorage,
   markVideoReady,
   markVideoFailed,
-  getPlaybackUrl,
   deleteVideo,
   probeVideoDuration,
 } from '../lib/videoStorage'
+import VideoModal from './VideoModal'
 
 /**
  * VideoSection — admin UI to upload + manage videos for one game.
@@ -138,7 +138,7 @@ export default function VideoSection({ gameId }) {
         <div className="text-sm text-gray-500">Loading…</div>
       ) : videos.length === 0 ? (
         <p className="text-sm text-gray-500 italic">
-          No videos uploaded for this game yet. Max 3 GB per file.
+          No videos uploaded for this game yet. Max 4.5 GB per file.
         </p>
       ) : (
         <div className="divide-y divide-gray-100">
@@ -218,55 +218,3 @@ function VideoRow({ video, onPlay, onDelete }) {
   )
 }
 
-function VideoModal({ videoId, onClose }) {
-  const [url, setUrl] = useState(null)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let cancelled = false
-    getPlaybackUrl(videoId)
-      .then(({ url }) => {
-        if (!cancelled) setUrl(url)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err.message)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [videoId])
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-black rounded-lg max-w-5xl w-full"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center p-2">
-          <span className="text-white text-sm pl-2">Playing video</span>
-          <button
-            onClick={onClose}
-            className="text-white text-2xl leading-none px-3"
-          >
-            ×
-          </button>
-        </div>
-        {error ? (
-          <div className="p-6 text-white">Could not load: {error}</div>
-        ) : !url ? (
-          <div className="p-6 text-white">Loading…</div>
-        ) : (
-          <video
-            src={url}
-            controls
-            autoPlay
-            className="w-full max-h-[80vh] block"
-          />
-        )}
-      </div>
-    </div>
-  )
-}

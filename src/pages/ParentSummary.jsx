@@ -10,6 +10,8 @@ import {
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
 import { gameResult } from '../components/ScoreInput';
+import VideoBadge from '../components/VideoBadge';
+import GameVideosPanel from '../components/GameVideosPanel';
 
 /**
  * SchoolCoachEmailCard - Displays coaches from a school with email functionality
@@ -303,6 +305,7 @@ export default function ParentSummary() {
   const [eventTeam, setEventTeam] = useState(null);
   const [games, setGames] = useState([]);
   const [attendance, setAttendance] = useState([]);
+  const [videosByGame, setVideosByGame] = useState({});
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(null);
   
@@ -414,6 +417,22 @@ export default function ParentSummary() {
 
           if (attendanceError) throw attendanceError;
           setAttendance(attendanceData || []);
+
+          // Videos for these games (only ready ones)
+          const { data: vidData } = await supabase
+            .from('videos')
+            .select(
+              'id, game_id, title, duration_seconds, file_size_bytes, mime_type, uploaded_at'
+            )
+            .in('game_id', gameIds)
+            .eq('upload_status', 'ready')
+            .order('uploaded_at', { ascending: false });
+          const byGame = {};
+          (vidData || []).forEach((v) => {
+            if (!byGame[v.game_id]) byGame[v.game_id] = [];
+            byGame[v.game_id].push(v);
+          });
+          setVideosByGame(byGame);
         }
 
       } catch (err) {
@@ -856,50 +875,24 @@ export default function ParentSummary() {
               // If searching and no matches for this game, still show the game header
               const hasMatches = schoolAttendance.length > 0;
               const hadOriginalData = allSchoolAttendance.length > 0;
+              const gameVideos = videosByGame[game.id] || [];
               
               return (
-                <div key={game.id} className="bg-white rounded-lg shadow-md overflow-hidden">
-                  <div className="bg-gray-50 px-4 py-3 border-b">
-                    <div className="flex items-center gap-3">
-                      <span className="bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded">
-                        Game {index + 1}
-                      </span>
-                      <div>
-                        <span className="font-semibold">{formatDate(game.game_date)}</span>
-                        <span className="text-gray-600"> vs {game.opponent}</span>
-                        {(() => {
-                          const r = gameResult(game)
-                          return r.label ? (
-                            <span className={`ml-2 text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
-                              {r.label} {r.score}
-                            </span>
-                          ) : null
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    {!hadOriginalData ? (
-                      <p className="text-gray-500 text-sm italic">No coaches logged</p>
-                    ) : !hasMatches ? (
-                      <p className="text-gray-400 text-sm italic">No matching schools</p>
-                    ) : (
-                      <div className="space-y-4">
-                        {schoolAttendance.map(({ school, coaches }) => (
-                          <SchoolCoachEmailCard
-                            key={school.id}
-                            school={school}
-                            coaches={coaches}
-                            eventName={eventTeam?.events?.event_name || 'Event'}
-                            onEmailSaved={handleEmailSaved}
-                            showToast={showToast}
-                            emailEnabled={emailEnabled}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <GameCardWithVideos
+                  key={game.id}
+                  game={game}
+                  index={index}
+                  formatDate={formatDate}
+                  videos={gameVideos}
+                  teamName={eventTeam?.teams?.name}
+                  hadOriginalData={hadOriginalData}
+                  hasMatches={hasMatches}
+                  schoolAttendance={schoolAttendance}
+                  eventName={eventTeam?.events?.event_name || 'Event'}
+                  onEmailSaved={handleEmailSaved}
+                  showToast={showToast}
+                  emailEnabled={emailEnabled}
+                />
               );
             })}
           </div>
@@ -1005,6 +998,82 @@ export default function ParentSummary() {
 
       {/* Feedback Button */}
       <FeedbackButton />
+    </div>
+  );
+}
+
+/**
+ * GameCardWithVideos — wrapper for a single game's row in the Summary's
+ * game-centric view. Renders the existing header + school attendance,
+ * plus a VideoBadge in the header and an inline GameVideosPanel when
+ * the badge is toggled.
+ */
+function GameCardWithVideos({
+  game,
+  index,
+  formatDate,
+  videos,
+  teamName,
+  hadOriginalData,
+  hasMatches,
+  schoolAttendance,
+  eventName,
+  onEmailSaved,
+  showToast,
+  emailEnabled,
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const r = gameResult(game);
+
+  return (
+    <div className="bg-white rounded-lg shadow-md overflow-hidden">
+      <div className="bg-gray-50 px-4 py-3 border-b">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="bg-blue-100 text-blue-800 text-sm font-medium px-2.5 py-0.5 rounded">
+            Game {index + 1}
+          </span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold">{formatDate(game.game_date)}</span>
+            <span className="text-gray-600"> vs {game.opponent}</span>
+            {r.label ? (
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded ${r.color}`}
+              >
+                {r.label} {r.score}
+              </span>
+            ) : null}
+            <VideoBadge
+              count={videos.length}
+              expanded={expanded}
+              onClick={() => setExpanded((e) => !e)}
+            />
+          </div>
+        </div>
+      </div>
+      {expanded && videos.length > 0 && (
+        <GameVideosPanel videos={videos} game={game} teamName={teamName} />
+      )}
+      <div className="p-4">
+        {!hadOriginalData ? (
+          <p className="text-gray-500 text-sm italic">No coaches logged</p>
+        ) : !hasMatches ? (
+          <p className="text-gray-400 text-sm italic">No matching schools</p>
+        ) : (
+          <div className="space-y-4">
+            {schoolAttendance.map(({ school, coaches }) => (
+              <SchoolCoachEmailCard
+                key={school.id}
+                school={school}
+                coaches={coaches}
+                eventName={eventName}
+                onEmailSaved={onEmailSaved}
+                showToast={showToast}
+                emailEnabled={emailEnabled}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

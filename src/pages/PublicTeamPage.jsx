@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase'
 import { getActiveSeasonId } from '../lib/season'
 import { computeRecord, gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
+import VideoBadge from '../components/VideoBadge'
+import GameVideosPanel from '../components/GameVideosPanel'
 
 /**
  * Public Team Page at /t/:teamSlug
@@ -23,6 +25,7 @@ export default function PublicTeamPage() {
   const [team, setTeam] = useState(null)
   const [games, setGames] = useState([])
   const [attendance, setAttendance] = useState([])
+  const [videosByGame, setVideosByGame] = useState({})
 
   useEffect(() => {
     load()
@@ -77,8 +80,25 @@ export default function PublicTeamPage() {
         )
         .in('game_id', gameIds)
       setAttendance(attData || [])
+
+      // Videos for those games (only ready ones)
+      const { data: vidData } = await supabase
+        .from('videos')
+        .select(
+          'id, game_id, title, duration_seconds, file_size_bytes, mime_type, uploaded_at'
+        )
+        .in('game_id', gameIds)
+        .eq('upload_status', 'ready')
+        .order('uploaded_at', { ascending: false })
+      const byGame = {}
+      ;(vidData || []).forEach((v) => {
+        if (!byGame[v.game_id]) byGame[v.game_id] = []
+        byGame[v.game_id].push(v)
+      })
+      setVideosByGame(byGame)
     } else {
       setAttendance([])
+      setVideosByGame({})
     }
 
     setLoading(false)
@@ -267,9 +287,11 @@ export default function PublicTeamPage() {
                           key={g.id}
                           game={g}
                           teamSlug={teamSlug}
+                          teamName={team?.name}
                           isPast={false}
                           formatDate={formatDate}
                           formatTime={formatTime}
+                          videos={videosByGame[g.id] || []}
                         />
                       ))}
                     </div>
@@ -290,9 +312,11 @@ export default function PublicTeamPage() {
                           key={g.id}
                           game={g}
                           teamSlug={teamSlug}
+                          teamName={team?.name}
                           isPast={true}
                           formatDate={formatDate}
                           formatTime={formatTime}
+                          videos={videosByGame[g.id] || []}
                         />
                       ))}
                     </div>
@@ -400,7 +424,16 @@ function RecordStat({ value, label }) {
  *  - Result badge for past games with score recorded
  *  - Action button: Live Tracker (open game in an event), or Summary (closed/past)
  */
-function GameCard({ game, teamSlug, isPast, formatDate, formatTime }) {
+function GameCard({
+  game,
+  teamSlug,
+  teamName,
+  isPast,
+  formatDate,
+  formatTime,
+  videos = [],
+}) {
+  const [videosExpanded, setVideosExpanded] = useState(false)
   const r = gameResult(game)
   const eventSlug = game.events?.slug
   const eventName = game.events?.event_name
@@ -435,50 +468,60 @@ function GameCard({ game, teamSlug, isPast, formatDate, formatTime }) {
   }
 
   return (
-    <div className="p-4 flex items-center justify-between gap-3">
-      <div className="min-w-0 flex-1">
-        {/* Line 1: Date + result/closed badges */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-gray-900 text-sm">
-            {formatDate(game.game_date)}
-          </span>
-          {r.label && (
-            <span
-              className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
-            >
-              {r.label} {r.score}
+    <div>
+      <div className="p-4 flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          {/* Line 1: Date + result/closed badges + video badge */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-semibold text-gray-900 text-sm">
+              {formatDate(game.game_date)}
             </span>
-          )}
-          {isClosed && !r.label && (
-            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
-              Closed
-            </span>
-          )}
-        </div>
-        {/* Line 2: time + vs/at opponent */}
-        <div className="text-sm text-gray-700 mt-0.5">
-          {game.game_time && <>{formatTime(game.game_time)} · </>}
-          {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
-        </div>
-        {/* Line 3: event context (or game type for standalone) */}
-        <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
-          {eventName ? (
-            <span className="truncate">
-              <span className="text-gray-400">at</span> {eventName}
-            </span>
-          ) : (
-            game.game_types?.name && (
-              <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                {game.game_types.name}
+            {r.label && (
+              <span
+                className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
+              >
+                {r.label} {r.score}
               </span>
-            )
-          )}
-          {game.location && (
-            <span className="text-gray-400">📍 {game.location}</span>
-          )}
+            )}
+            {isClosed && !r.label && (
+              <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+                Closed
+              </span>
+            )}
+            <VideoBadge
+              count={videos.length}
+              expanded={videosExpanded}
+              onClick={() => setVideosExpanded((e) => !e)}
+            />
+          </div>
+          {/* Line 2: time + vs/at opponent */}
+          <div className="text-sm text-gray-700 mt-0.5">
+            {game.game_time && <>{formatTime(game.game_time)} · </>}
+            {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
+          </div>
+          {/* Line 3: event context (or game type for standalone) */}
+          <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+            {eventName ? (
+              <span className="truncate">
+                <span className="text-gray-400">at</span> {eventName}
+              </span>
+            ) : (
+              game.game_types?.name && (
+                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                  {game.game_types.name}
+                </span>
+              )
+            )}
+            {game.location && (
+              <span className="text-gray-400">📍 {game.location}</span>
+            )}
+          </div>
         </div>
+        {action && <div className="flex-shrink-0">{action}</div>}
       </div>
-      {action && <div className="flex-shrink-0">{action}</div>}
+      {videosExpanded && videos.length > 0 && (
+        <GameVideosPanel videos={videos} game={game} teamName={teamName} />
+      )}
     </div>
   )
 }

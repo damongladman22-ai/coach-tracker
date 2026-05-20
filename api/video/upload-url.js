@@ -44,10 +44,10 @@ export default async function handler(req, res) {
   if (!mimeType.startsWith('video/')) {
     return res.status(400).json({ error: 'Only video files are allowed' })
   }
-  const MAX_BYTES = 3 * 1024 * 1024 * 1024 // 3 GB
+  const MAX_BYTES = 4.5 * 1024 * 1024 * 1024 // 4.5 GB (R2 single-PUT limit is ~5 GB)
   if (sizeBytes && sizeBytes > MAX_BYTES) {
     return res.status(400).json({
-      error: `File too large. Max 3 GB; this is ${(sizeBytes / 1e9).toFixed(2)} GB.`,
+      error: `File too large. Max 4.5 GB; this is ${(sizeBytes / 1e9).toFixed(2)} GB. Larger files need the multipart upload (coming soon).`,
     })
   }
 

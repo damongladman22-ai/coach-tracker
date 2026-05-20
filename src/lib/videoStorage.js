@@ -97,6 +97,40 @@ export async function getPlaybackUrl(videoId) {
   return res.json()
 }
 
+export async function getDownloadUrl(videoId, filename) {
+  const res = await fetch('/api/video/download-url', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoId, filename }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Download URL request failed (${res.status})`)
+  }
+  return res.json()
+}
+
+/**
+ * Build a human-friendly download filename from game context.
+ * Example: "2026-05-15-u16-girls-ecnl-vs-fc-united"
+ */
+export function buildVideoFilename(game, teamName) {
+  const parts = []
+  if (game?.game_date) parts.push(game.game_date) // already YYYY-MM-DD
+  if (teamName) parts.push(slugify(teamName))
+  const homeAway = game?.is_home ? 'vs' : 'at'
+  if (game?.opponent) parts.push(`${homeAway}-${slugify(game.opponent)}`)
+  return parts.join('-') || 'game-video'
+}
+
+function slugify(s) {
+  return String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+}
+
 export async function deleteVideo(videoId) {
   // For MVP we just delete the DB row. The R2 file stays orphaned but
   // takes negligible space; a future cleanup job can sweep them.
