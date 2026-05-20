@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { read, utils } from 'xlsx'
+import { read, utils, writeFile } from 'xlsx'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import { getCurrentClubId } from '../lib/club'
@@ -84,6 +84,39 @@ export default function ImportGames({ session }) {
   }
 
   // --- Step 1: Upload ---
+
+  const downloadTemplate = () => {
+    const headers = [
+      'Team',
+      'Date',
+      'Time',
+      'Opponent',
+      'Home/Away',
+      'Location',
+      'Event',
+      'Game Type',
+      'Our Score',
+      'Opp Score',
+    ]
+    const example = [
+      'U16 Girls ECNL',
+      '2026-03-15',
+      '2:00 PM',
+      'Example FC',
+      'Home',
+      'OP Main Field',
+      'Spring Showcase 2026',
+      'Showcase',
+      '',
+      '',
+    ]
+    const ws = utils.aoa_to_sheet([headers, example])
+    // Reasonable column widths
+    ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length + 2, 14) }))
+    const wb = utils.book_new()
+    utils.book_append_sheet(wb, ws, 'Games')
+    writeFile(wb, 'op-soccer-games-template.xlsx')
+  }
 
   const handleFile = async (e) => {
     const file = e.target.files[0]
@@ -405,6 +438,25 @@ export default function ImportGames({ session }) {
             Opp Score. Column names are auto-detected; you can re-map in the
             next step.
           </p>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 flex items-start gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-blue-900">
+                Need a template?
+              </div>
+              <p className="text-xs text-blue-800 mt-0.5">
+                Download a starter Excel file with the right column headers and
+                one example row.
+              </p>
+            </div>
+            <button
+              onClick={downloadTemplate}
+              className="bg-white border border-blue-300 text-blue-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-100"
+            >
+              Download Template
+            </button>
+          </div>
+
           <input
             type="file"
             accept=".xlsx,.xls,.csv"
