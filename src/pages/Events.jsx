@@ -152,15 +152,51 @@ export default function Events({ session }) {
   }
 
   const handleDelete = async (id) => {
-    if (
-      !confirm(
-        'Delete this event? This will also delete all associated games and attendance records.'
-      )
-    )
-      return
+    // Count what's about to be deleted so the confirm message is honest
+    const { data: gamesAtEvent } = await supabase
+      .from('games')
+      .select('id')
+      .eq('event_id', id)
+    const gameIds = (gamesAtEvent || []).map((g) => g.id)
+    let attCount = 0
+    if (gameIds.length > 0) {
+      const { count } = await supabase
+        .from('attendance')
+        .select('*', { count: 'exact', head: true })
+        .in('game_id', gameIds)
+      attCount = count || 0
+    }
 
+    const msg =
+      gameIds.length === 0
+        ? 'Delete this event?'
+        : `Delete this event? It has ${gameIds.length} game${
+            gameIds.length === 1 ? '' : 's'
+          } and ${attCount} attendance record${
+            attCount === 1 ? '' : 's'
+          }. All will be deleted.`
+
+    if (!confirm(msg)) return
+
+    // Delete games for this event (attendance cascades via FK)
+    if (gameIds.length > 0) {
+      const { error: gErr } = await supabase
+        .from('games')
+        .delete()
+        .eq('event_id', id)
+      if (gErr) {
+        alert('Could not delete games: ' + gErr.message)
+        return
+      }
+    }
+
+    // Then delete the event itself
     const { error } = await supabase.from('events').delete().eq('id', id)
-    if (!error) fetchEvents()
+    if (error) {
+      alert('Could not delete event: ' + error.message)
+      return
+    }
+    fetchEvents()
   }
 
   const formatDate = (dateStr) => {

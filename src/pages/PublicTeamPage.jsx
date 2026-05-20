@@ -84,6 +84,12 @@ export default function PublicTeamPage() {
     setLoading(false)
   }
 
+  // Date helper used by the schedule split
+  const parseGameDate = (s) => {
+    const [y, m, d] = s.split('-')
+    return new Date(y, m - 1, d)
+  }
+
   // Stats
   const stats = (() => {
     const games_count = games.length
@@ -100,24 +106,24 @@ export default function PublicTeamPage() {
     }
   })()
 
-  // Group games
-  const grouped = (() => {
-    const byEvent = new Map()
-    const standalone = []
+  // Split games into upcoming and past
+  const { upcoming, past } = (() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const up = []
+    const p = []
     games.forEach((g) => {
-      if (g.event_id && g.events) {
-        if (!byEvent.has(g.event_id)) {
-          byEvent.set(g.event_id, { event: g.events, games: [] })
-        }
-        byEvent.get(g.event_id).games.push(g)
+      const d = parseGameDate(g.game_date)
+      // Past = before today, or today-but-closed (already played + locked)
+      if (d < today || (d.getTime() === today.getTime() && g.is_closed)) {
+        p.push(g)
       } else {
-        standalone.push(g)
+        up.push(g)
       }
     })
-    const eventGroups = Array.from(byEvent.values()).sort(
-      (a, b) => new Date(a.event.start_date) - new Date(b.event.start_date)
-    )
-    return { eventGroups, standalone }
+    up.sort((a, b) => parseGameDate(a.game_date) - parseGameDate(b.game_date))
+    p.sort((a, b) => parseGameDate(b.game_date) - parseGameDate(a.game_date))
+    return { upcoming: up, past: p }
   })()
 
   // Top colleges by attendance count
@@ -240,36 +246,51 @@ export default function PublicTeamPage() {
             </div>
 
             {/* Schedule */}
-            <h2 className="text-xl font-semibold text-gray-800 mb-3">
-              Season Schedule
-            </h2>
             {games.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500">
+              <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500 mb-8">
                 No games scheduled yet.
               </div>
             ) : (
-              <div className="space-y-5 mb-8">
-                {grouped.eventGroups.map(({ event, games: eGames }) => (
-                  <EventScheduleCard
-                    key={event.id}
-                    event={event}
-                    games={eGames}
-                    teamSlug={teamSlug}
-                    formatDate={formatDate}
-                    formatTime={formatTime}
-                  />
-                ))}
-                {grouped.standalone.length > 0 && (
-                  <div className="bg-white rounded-lg shadow-md p-5">
-                    <h3 className="text-lg font-semibold mb-1">Other Games</h3>
-                    <p className="text-xs text-gray-500 mb-3">
-                      League fixtures and friendlies not tied to a showcase event
-                    </p>
-                    <div className="divide-y divide-gray-100">
-                      {grouped.standalone.map((g) => (
-                        <StandaloneGameRow
+              <div className="mb-8 space-y-6">
+                {upcoming.length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                      Upcoming
+                      <span className="text-sm font-normal text-gray-500">
+                        ({upcoming.length})
+                      </span>
+                    </h2>
+                    <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100">
+                      {upcoming.map((g) => (
+                        <GameCard
                           key={g.id}
                           game={g}
+                          teamSlug={teamSlug}
+                          isPast={false}
+                          formatDate={formatDate}
+                          formatTime={formatTime}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {past.length > 0 && (
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      <span className="h-2 w-2 rounded-full bg-gray-400"></span>
+                      Past Results
+                      <span className="text-sm font-normal text-gray-500">
+                        ({past.length})
+                      </span>
+                    </h2>
+                    <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100">
+                      {past.map((g) => (
+                        <GameCard
+                          key={g.id}
+                          game={g}
+                          teamSlug={teamSlug}
+                          isPast={true}
                           formatDate={formatDate}
                           formatTime={formatTime}
                         />
@@ -372,84 +393,55 @@ function RecordStat({ value, label }) {
   )
 }
 
-function EventScheduleCard({ event, games, teamSlug, formatDate, formatTime }) {
-  const hasOpenGames = games.some((g) => !g.is_closed)
-  return (
-    <div className="bg-white rounded-lg shadow-md p-5">
-      <div className="flex justify-between items-start gap-3 mb-3">
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900">
-            {event.event_name}
-          </h3>
-          <p className="text-xs text-gray-500">
-            {formatDate(event.start_date)} – {formatDate(event.end_date)}
-          </p>
-          {event.location && (
-            <p className="text-xs text-gray-500">📍 {event.location}</p>
-          )}
-        </div>
-        <div className="flex flex-col gap-1.5 flex-shrink-0">
-          {hasOpenGames && (
-            <Link
-              to={`/e/${event.slug}/${teamSlug}`}
-              className="text-sm font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-4 py-2.5 rounded-lg text-center min-w-[110px]"
-            >
-              Live Tracker
-            </Link>
-          )}
-          <Link
-            to={`/e/${event.slug}/${teamSlug}/summary`}
-            className="text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-4 py-2.5 rounded-lg text-center min-w-[110px]"
-          >
-            Summary
-          </Link>
-        </div>
-      </div>
-      <div className="divide-y divide-gray-100">
-        {games.map((g) => {
-          const r = gameResult(g)
-          return (
-            <div key={g.id} className="py-2.5 text-sm">
-              <div className="flex justify-between items-center gap-2">
-                <span className="font-medium text-gray-900">
-                  {formatDate(g.game_date)}
-                </span>
-                <div className="flex gap-1.5 flex-shrink-0">
-                  {r.label && (
-                    <span
-                      className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
-                    >
-                      {r.label} {r.score}
-                    </span>
-                  )}
-                  {g.is_closed && (
-                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
-                      Closed
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="text-xs text-gray-600 mt-0.5">
-                {g.game_time && <>{formatTime(g.game_time)} · </>}
-                {g.is_home ? 'vs' : '@'} {g.opponent || 'TBD'}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-function StandaloneGameRow({ game, formatDate, formatTime }) {
+/**
+ * Unified game card. Renders one game with:
+ *  - Date + time, vs/at opponent
+ *  - Event context (when game belongs to one) or game-type badge (when standalone)
+ *  - Result badge for past games with score recorded
+ *  - Action button: Live Tracker (open game in an event), or Summary (closed/past)
+ */
+function GameCard({ game, teamSlug, isPast, formatDate, formatTime }) {
   const r = gameResult(game)
+  const eventSlug = game.events?.slug
+  const eventName = game.events?.event_name
+  const isClosed = game.is_closed
+  const inEvent = !!eventSlug
+
+  // Action button:
+  // - Past or closed game with attendance: Summary
+  // - Upcoming open game in an event: Live Tracker
+  // - Anything else (standalone game): no button (not trackable yet)
+  let action = null
+  if (inEvent) {
+    if (isPast || isClosed) {
+      action = (
+        <Link
+          to={`/e/${eventSlug}/${teamSlug}/summary`}
+          className="text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-4 py-2.5 rounded-lg text-center min-w-[110px] block"
+        >
+          Summary
+        </Link>
+      )
+    } else {
+      action = (
+        <Link
+          to={`/e/${eventSlug}/${teamSlug}`}
+          className="text-sm font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-4 py-2.5 rounded-lg text-center min-w-[110px] block"
+        >
+          Live Tracker
+        </Link>
+      )
+    }
+  }
+
   return (
-    <div className="py-2.5 text-sm">
-      <div className="flex justify-between items-center gap-2">
-        <span className="font-medium text-gray-900">
-          {formatDate(game.game_date)}
-        </span>
-        <div className="flex gap-1.5 flex-shrink-0 flex-wrap justify-end">
+    <div className="p-4 flex items-center justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        {/* Line 1: Date + result/closed badges */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-gray-900 text-sm">
+            {formatDate(game.game_date)}
+          </span>
           {r.label && (
             <span
               className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
@@ -457,20 +449,36 @@ function StandaloneGameRow({ game, formatDate, formatTime }) {
               {r.label} {r.score}
             </span>
           )}
-          {game.game_types?.name && (
-            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-              {game.game_types.name}
+          {isClosed && !r.label && (
+            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+              Closed
             </span>
           )}
         </div>
+        {/* Line 2: time + vs/at opponent */}
+        <div className="text-sm text-gray-700 mt-0.5">
+          {game.game_time && <>{formatTime(game.game_time)} · </>}
+          {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
+        </div>
+        {/* Line 3: event context (or game type for standalone) */}
+        <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+          {eventName ? (
+            <span className="truncate">
+              <span className="text-gray-400">at</span> {eventName}
+            </span>
+          ) : (
+            game.game_types?.name && (
+              <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                {game.game_types.name}
+              </span>
+            )
+          )}
+          {game.location && (
+            <span className="text-gray-400">📍 {game.location}</span>
+          )}
+        </div>
       </div>
-      <div className="text-xs text-gray-600 mt-0.5">
-        {game.game_time && <>{formatTime(game.game_time)} · </>}
-        {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
-        {game.location && (
-          <span className="text-gray-400"> · 📍 {game.location}</span>
-        )}
-      </div>
+      {action && <div className="flex-shrink-0">{action}</div>}
     </div>
   )
 }
