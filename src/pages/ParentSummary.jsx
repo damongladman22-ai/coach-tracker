@@ -646,44 +646,74 @@ export default function ParentSummary() {
       <div className="op-header shadow-lg">
         <div className="op-gradient-border"></div>
         <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-2">
             <div className="flex-1 min-w-0">
               {/* Breadcrumb navigation */}
-              <div className="flex items-center gap-2 text-sm text-gray-400 mb-2 flex-wrap">
-                <Link to="/home" className="flex items-center gap-1.5 hover:text-cyan-300 transition-colors">
+              <div className="flex items-center gap-2 text-sm text-gray-400 mb-3 flex-wrap">
+                <Link
+                  to="/home"
+                  className="flex items-center gap-1.5 hover:text-cyan-300 transition-colors"
+                >
                   <OPLogo className="h-5 w-auto" />
                   <span>Home</span>
                 </Link>
                 <span>›</span>
-                <Link to={`/e/${eventSlug}`} className="hover:text-cyan-300 transition-colors truncate">
-                  {eventTeam?.events?.event_name}
+                <Link
+                  to={`/t/${teamSlug}`}
+                  className="hover:text-cyan-300 transition-colors truncate"
+                >
+                  {eventTeam?.club_teams?.team_name}
                 </Link>
-                <span className="hidden sm:inline">›</span>
-                <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-cyan-300 transition-colors hidden sm:inline truncate">
+                <span>›</span>
+                <span className="text-gray-300 truncate">Event Summary</span>
+              </div>
+
+              {/* Event identity - primary */}
+              <h1 className="text-xl sm:text-2xl font-bold text-white">
+                {eventTeam?.events?.event_name}
+              </h1>
+              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm text-cyan-300 mt-1">
+                {eventTeam?.events?.start_date && (
+                  <span>
+                    📅 {formatDate(eventTeam.events.start_date)}
+                    {eventTeam.events.end_date &&
+                      eventTeam.events.end_date !== eventTeam.events.start_date &&
+                      ` – ${formatDate(eventTeam.events.end_date)}`}
+                  </span>
+                )}
+                {eventTeam?.events?.location && (
+                  <span>📍 {eventTeam.events.location}</span>
+                )}
+              </div>
+
+              {/* Team identity - secondary */}
+              <div className="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
+                Attendance Summary for{' '}
+                <Link
+                  to={`/t/${teamSlug}`}
+                  className="font-semibold text-white hover:text-cyan-300"
+                >
                   {eventTeam?.club_teams?.team_name}
                 </Link>
               </div>
-              <h1 className="text-xl sm:text-2xl font-bold text-white truncate">
-                <Link to={`/t/${teamSlug}`} className="hover:text-cyan-300">
-                  {eventTeam?.club_teams?.team_name}
-                </Link>
-                {' '}- Summary
-              </h1>
-              {eventTeam?.events?.start_date && (
-                <p className="text-sm text-cyan-300">
-                  {formatDate(eventTeam.events.start_date)}
-                  {eventTeam.events.end_date && eventTeam.events.end_date !== eventTeam.events.start_date && 
-                    ` - ${formatDate(eventTeam.events.end_date)}`}
-                </p>
-              )}
             </div>
             <Link
               to="/help?context=parent"
-              className="ml-2 bg-gray-700 text-gray-200 p-1.5 rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors flex-shrink-0"
+              className="bg-gray-700 text-gray-200 p-1.5 rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors flex-shrink-0"
               title="Help"
             >
-              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
               </svg>
             </Link>
           </div>

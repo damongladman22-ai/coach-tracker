@@ -419,7 +419,7 @@ function GameCard({ game, teamSlug, isPast, formatDate, formatTime }) {
           to={`/e/${eventSlug}/${teamSlug}/summary`}
           className="text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-4 py-2.5 rounded-lg text-center min-w-[110px] block"
         >
-          Summary
+          Event Summary
         </Link>
       )
     } else {
