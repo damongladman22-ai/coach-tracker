@@ -216,7 +216,7 @@ export default function PublicTeamPage() {
                   <div className="text-xs uppercase tracking-wide text-gray-500 mb-3">
                     Season Record
                   </div>
-                  <div className="flex items-center gap-5 flex-wrap">
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-x-2 gap-y-4 sm:gap-y-0">
                     <RecordStat value={r.played} label="GP" />
                     <RecordStat value={r.wins} label="W" />
                     <RecordStat value={r.losses} label="L" />
@@ -348,9 +348,11 @@ export default function PublicTeamPage() {
 
 function StatCard({ label, value }) {
   return (
-    <div className="bg-white rounded-lg shadow-md p-4 text-center">
-      <div className="text-3xl font-bold text-gray-900">{value}</div>
-      <div className="text-xs uppercase tracking-wide text-gray-500 mt-1">
+    <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 text-center">
+      <div className="text-2xl sm:text-3xl font-bold text-gray-900 tabular-nums">
+        {value}
+      </div>
+      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-gray-500 mt-1">
         {label}
       </div>
     </div>
@@ -360,10 +362,10 @@ function StatCard({ label, value }) {
 function RecordStat({ value, label }) {
   return (
     <div className="text-center">
-      <div className="text-xs uppercase tracking-wider text-gray-500">
+      <div className="text-[10px] sm:text-xs uppercase tracking-wider text-gray-500 font-medium">
         {label}
       </div>
-      <div className="text-3xl font-bold text-gray-900 leading-none mt-1">
+      <div className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none mt-1 tabular-nums">
         {value}
       </div>
     </div>
@@ -386,18 +388,18 @@ function EventScheduleCard({ event, games, teamSlug, formatDate, formatTime }) {
             <p className="text-xs text-gray-500">📍 {event.location}</p>
           )}
         </div>
-        <div className="flex flex-col gap-1 flex-shrink-0">
+        <div className="flex flex-col gap-1.5 flex-shrink-0">
           {hasOpenGames && (
             <Link
               to={`/e/${event.slug}/${teamSlug}`}
-              className="text-sm bg-cyan-100 text-cyan-700 hover:bg-cyan-200 px-3 py-2 rounded-lg text-center"
+              className="text-sm font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-4 py-2.5 rounded-lg text-center min-w-[110px]"
             >
               Live Tracker
             </Link>
           )}
           <Link
             to={`/e/${event.slug}/${teamSlug}/summary`}
-            className="text-sm bg-gray-100 text-gray-700 hover:bg-gray-200 px-3 py-2 rounded-lg text-center"
+            className="text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-4 py-2.5 rounded-lg text-center min-w-[110px]"
           >
             Summary
           </Link>
@@ -407,24 +409,30 @@ function EventScheduleCard({ event, games, teamSlug, formatDate, formatTime }) {
         {games.map((g) => {
           const r = gameResult(g)
           return (
-            <div key={g.id} className="py-2 text-sm flex flex-wrap items-center gap-2">
-              <span className="font-medium">{formatDate(g.game_date)}</span>
-              {g.game_time && (
-                <span className="text-gray-500">@ {formatTime(g.game_time)}</span>
-              )}
-              <span className="text-gray-600">
+            <div key={g.id} className="py-2.5 text-sm">
+              <div className="flex justify-between items-center gap-2">
+                <span className="font-medium text-gray-900">
+                  {formatDate(g.game_date)}
+                </span>
+                <div className="flex gap-1.5 flex-shrink-0">
+                  {r.label && (
+                    <span
+                      className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
+                    >
+                      {r.label} {r.score}
+                    </span>
+                  )}
+                  {g.is_closed && (
+                    <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+                      Closed
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="text-xs text-gray-600 mt-0.5">
+                {g.game_time && <>{formatTime(g.game_time)} · </>}
                 {g.is_home ? 'vs' : '@'} {g.opponent || 'TBD'}
-              </span>
-              {r.label && (
-                <span className={`text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
-                  {r.label} {r.score}
-                </span>
-              )}
-              {g.is_closed && (
-                <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
-                  Closed
-                </span>
-              )}
+              </div>
             </div>
           )
         })}
@@ -436,27 +444,33 @@ function EventScheduleCard({ event, games, teamSlug, formatDate, formatTime }) {
 function StandaloneGameRow({ game, formatDate, formatTime }) {
   const r = gameResult(game)
   return (
-    <div className="py-2 text-sm flex flex-wrap items-center gap-2">
-      <span className="font-medium">{formatDate(game.game_date)}</span>
-      {game.game_time && (
-        <span className="text-gray-500">@ {formatTime(game.game_time)}</span>
-      )}
-      <span className="text-gray-600">
+    <div className="py-2.5 text-sm">
+      <div className="flex justify-between items-center gap-2">
+        <span className="font-medium text-gray-900">
+          {formatDate(game.game_date)}
+        </span>
+        <div className="flex gap-1.5 flex-shrink-0 flex-wrap justify-end">
+          {r.label && (
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
+            >
+              {r.label} {r.score}
+            </span>
+          )}
+          {game.game_types?.name && (
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+              {game.game_types.name}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="text-xs text-gray-600 mt-0.5">
+        {game.game_time && <>{formatTime(game.game_time)} · </>}
         {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
-      </span>
-      {r.label && (
-        <span className={`text-xs font-bold px-2 py-0.5 rounded ${r.color}`}>
-          {r.label} {r.score}
-        </span>
-      )}
-      {game.game_types?.name && (
-        <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-          {game.game_types.name}
-        </span>
-      )}
-      {game.location && (
-        <span className="text-gray-400 text-xs">📍 {game.location}</span>
-      )}
+        {game.location && (
+          <span className="text-gray-400"> · 📍 {game.location}</span>
+        )}
+      </div>
     </div>
   )
 }
