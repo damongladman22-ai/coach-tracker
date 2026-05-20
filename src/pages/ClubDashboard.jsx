@@ -1,438 +1,509 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { supabase } from '../lib/supabase';
-import { ErrorMessage, CardSkeleton, Skeleton } from '../components/LoadingStates';
-import OPLogo from '../components/OPLogo';
-import FeedbackButton from '../components/FeedbackButton';
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { ErrorMessage } from '../components/LoadingStates'
+import OPLogo from '../components/OPLogo'
+import FeedbackButton from '../components/FeedbackButton'
+import { getActiveSeasonId, getActiveSeason } from '../lib/season'
 
 /**
- * Public Club Dashboard - Landing page for parents
- * 
- * Shows all events organized by status with quick links to teams
+ * Club Dashboard — team-first home page.
+ *
+ * The new mental model:
+ *  - Teams are the primary unit (each team is identity + season schedule)
+ *  - Events are a secondary view ("happening now", "upcoming")
+ *  - Past events tucked into an archive
+ *
+ * Filter/sort controls let the user pick how to organize the team list.
  */
 export default function ClubDashboard() {
-  const [events, setEvents] = useState([]);
-  const [eventTeams, setEventTeams] = useState({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [season, setSeason] = useState(null)
+  const [teams, setTeams] = useState([])
+  const [teamStats, setTeamStats] = useState({}) // teamId -> { games, schools, hasActiveEvent }
+  const [events, setEvents] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(null)
+
+  // Filter/sort state
+  const [groupBy, setGroupBy] = useState('age') // 'age' | 'program' | 'none'
+  const [filterProgram, setFilterProgram] = useState('all')
+  const [filterGender, setFilterGender] = useState('all')
+  const [showPast, setShowPast] = useState(false)
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    load()
+  }, [])
 
-  const fetchData = async () => {
+  const load = async () => {
     try {
-      setLoading(true);
-      setError(null);
+      setLoading(true)
+      setError(null)
 
-      // Fetch all events
-      const { data: eventsData, error: eventsError } = await supabase
+      const [activeSeason, activeSeasonId] = await Promise.all([
+        getActiveSeason(),
+        getActiveSeasonId(),
+      ])
+      setSeason(activeSeason)
+      if (!activeSeasonId) {
+        setError('No active season configured.')
+        setLoading(false)
+        return
+      }
+
+      // Teams in active season
+      const { data: teamsData, error: teamsErr } = await supabase
+        .from('teams')
+        .select(
+          '*, age_groups(id, name, sort_order), programs(id, name, sort_order)'
+        )
+        .eq('season_id', activeSeasonId)
+        .eq('active', true)
+      if (teamsErr) throw teamsErr
+      const teamList = (teamsData || []).sort((a, b) => a.name.localeCompare(b.name))
+      setTeams(teamList)
+
+      // Events in active season
+      const { data: eventsData } = await supabase
         .from('events')
         .select('*')
-        .order('start_date', { ascending: false });
+        .eq('season_id', activeSeasonId)
+        .order('start_date', { ascending: false })
+      setEvents(eventsData || [])
 
-      if (eventsError) throw eventsError;
-      setEvents(eventsData || []);
+      // Per-team aggregate stats (games count + schools count + active event flag)
+      if (teamList.length > 0) {
+        const teamIds = teamList.map((t) => t.id)
+        const { data: games } = await supabase
+          .from('games')
+          .select('id, team_id, event_id, is_closed')
+          .in('team_id', teamIds)
 
-      // Fetch all games at any event, with their team info, to derive
-      // which teams are at which events (replaces v1 event_teams query)
-      const { data: gamesData, error: gamesError } = await supabase
-        .from('games')
-        .select(`
-          id,
-          is_closed,
-          event_id,
-          team_id,
-          teams (id, name, slug, gender)
-        `)
-        .not('event_id', 'is', null);
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const activeEventIds = new Set(
+          (eventsData || [])
+            .filter((ev) => {
+              const start = parseDate(ev.start_date)
+              const end = ev.end_date ? parseDate(ev.end_date) : start
+              const endInc = new Date(end)
+              endInc.setDate(endInc.getDate() + 1)
+              return today >= start && today < endInc
+            })
+            .map((ev) => ev.id)
+        )
 
-      if (gamesError) throw gamesError;
+        const teamGameIds = new Map() // teamId -> [gameId]
+        const teamActiveFlag = new Map()
+        ;(games || []).forEach((g) => {
+          if (!teamGameIds.has(g.team_id)) teamGameIds.set(g.team_id, [])
+          teamGameIds.get(g.team_id).push(g.id)
+          if (g.event_id && activeEventIds.has(g.event_id) && !g.is_closed) {
+            teamActiveFlag.set(g.team_id, true)
+          }
+        })
 
-      // Build map: event_id -> [{ id (team_id), slug, club_teams shape, hasOpenGames }]
-      const byEvent = {};
-      const teamsByEvent = {}; // event_id -> Map<team_id, { team, anyOpen }>
-      (gamesData || []).forEach((g) => {
-        if (!g.teams) return;
-        if (!teamsByEvent[g.event_id]) teamsByEvent[g.event_id] = new Map();
-        const entry = teamsByEvent[g.event_id].get(g.team_id) || {
-          team: g.teams,
-          anyOpen: false,
-        };
-        if (!g.is_closed) entry.anyOpen = true;
-        teamsByEvent[g.event_id].set(g.team_id, entry);
-      });
+        const allGameIds = (games || []).map((g) => g.id)
+        let attRows = []
+        if (allGameIds.length > 0) {
+          const { data: att } = await supabase
+            .from('attendance')
+            .select('game_id, coaches(school_id)')
+            .in('game_id', allGameIds)
+          attRows = att || []
+        }
 
-      Object.entries(teamsByEvent).forEach(([eventId, teamMap]) => {
-        byEvent[eventId] = Array.from(teamMap.values())
-          .map(({ team, anyOpen }) => ({
-            id: team.id,
-            slug: team.slug,
-            hasOpenGames: anyOpen,
-            club_teams: { team_name: team.name, gender: team.gender },
-          }))
-          .sort((a, b) =>
-            (a.club_teams?.team_name || '').localeCompare(
-              b.club_teams?.team_name || ''
-            )
-          );
-      });
-      setEventTeams(byEvent);
+        // Build schools-per-team from attendance
+        const gameToSchools = new Map() // gameId -> Set<schoolId>
+        attRows.forEach((a) => {
+          const sid = a.coaches?.school_id
+          if (!sid) return
+          if (!gameToSchools.has(a.game_id)) gameToSchools.set(a.game_id, new Set())
+          gameToSchools.get(a.game_id).add(sid)
+        })
 
-    } catch (err) {
-      console.error('Error loading data:', err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Categorize events by status
-  const categorizeEvents = () => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    
-    const active = [];
-    const upcoming = [];
-    const past = [];
-
-    events.forEach(event => {
-      const startDate = parseDate(event.start_date);
-      const endDate = event.end_date ? parseDate(event.end_date) : startDate;
-      
-      // Add one day to end date to make it inclusive
-      const endDateInclusive = new Date(endDate);
-      endDateInclusive.setDate(endDateInclusive.getDate() + 1);
-
-      if (today >= startDate && today < endDateInclusive) {
-        active.push(event);
-      } else if (startDate > today) {
-        upcoming.push(event);
-      } else {
-        past.push(event);
+        const stats = {}
+        teamList.forEach((t) => {
+          const ids = teamGameIds.get(t.id) || []
+          const allSchools = new Set()
+          ids.forEach((gid) => {
+            const s = gameToSchools.get(gid)
+            if (s) s.forEach((sid) => allSchools.add(sid))
+          })
+          stats[t.id] = {
+            games: ids.length,
+            schools: allSchools.size,
+            hasActiveEvent: !!teamActiveFlag.get(t.id),
+          }
+        })
+        setTeamStats(stats)
       }
-    });
-
-    // Sort upcoming by date ascending
-    upcoming.sort((a, b) => parseDate(a.start_date) - parseDate(b.start_date));
-    
-    // Past is already sorted descending from the query
-
-    return { active, upcoming, past };
-  };
-
-  // Parse date without timezone issues
-  const parseDate = (dateStr) => {
-    if (!dateStr) return new Date();
-    const [year, month, day] = dateStr.split('-');
-    return new Date(year, month - 1, day);
-  };
-
-  // Format date for display
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '';
-    const [year, month, day] = dateStr.split('-');
-    return new Date(year, month - 1, day).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  };
-
-  const formatDateRange = (startDate, endDate) => {
-    if (!startDate) return '';
-    if (!endDate || startDate === endDate) {
-      return formatDate(startDate);
+    } catch (err) {
+      console.error('Error loading dashboard:', err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
     }
-    const [startYear, startMonth, startDay] = startDate.split('-');
-    const [endYear, endMonth, endDay] = endDate.split('-');
-    
-    const start = new Date(startYear, startMonth - 1, startDay);
-    const end = new Date(endYear, endMonth - 1, endDay);
-    
-    if (startYear === endYear && startMonth === endMonth) {
-      // Same month: "Dec 15-17, 2025"
-      return `${start.toLocaleDateString('en-US', { month: 'short' })} ${startDay}-${endDay}, ${startYear}`;
-    } else if (startYear === endYear) {
-      // Same year: "Dec 15 - Jan 2, 2025"
-      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${startYear}`;
-    } else {
-      // Different years
-      return `${formatDate(startDate)} - ${formatDate(endDate)}`;
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header skeleton */}
-        <header className="op-header shadow-lg">
-          <div className="op-gradient-border"></div>
-          <div className="max-w-4xl mx-auto px-4 py-6">
-            <div className="flex items-center gap-3">
-              <Skeleton className="h-12 w-12 rounded-full" />
-              <div>
-                <Skeleton className="h-7 w-48 mb-2" />
-                <Skeleton className="h-4 w-64" />
-              </div>
-            </div>
-          </div>
-        </header>
-        
-        <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-          <Skeleton className="h-6 w-32 mb-4" />
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
-        </main>
-      </div>
-    );
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen bg-gray-50 p-4">
-        <ErrorMessage 
-          title="Could not load events" 
-          message={error}
-          onRetry={fetchData}
-        />
-      </div>
-    );
-  }
+  // Filtered teams
+  const filteredTeams = useMemo(() => {
+    return teams.filter((t) => {
+      if (filterProgram !== 'all' && String(t.program_id) !== filterProgram) return false
+      if (filterGender !== 'all' && t.gender !== filterGender) return false
+      return true
+    })
+  }, [teams, filterProgram, filterGender])
 
-  const { active, upcoming, past } = categorizeEvents();
+  // Group teams
+  const groupedTeams = useMemo(() => {
+    if (groupBy === 'none') {
+      return [{ label: null, teams: filteredTeams }]
+    }
+    const groups = new Map()
+    filteredTeams.forEach((t) => {
+      const key =
+        groupBy === 'age'
+          ? t.age_groups?.name || 'Other'
+          : t.programs?.name || 'Other'
+      const sortKey =
+        groupBy === 'age'
+          ? t.age_groups?.sort_order ?? 999
+          : t.programs?.sort_order ?? 999
+      if (!groups.has(key)) groups.set(key, { sortKey, teams: [] })
+      groups.get(key).teams.push(t)
+    })
+    return Array.from(groups.entries())
+      .sort((a, b) => a[1].sortKey - b[1].sortKey)
+      .map(([label, v]) => ({ label, teams: v.teams }))
+  }, [filteredTeams, groupBy])
+
+  // Categorized events
+  const { active: activeEvents, upcoming, past } = useMemo(
+    () => categorizeEvents(events),
+    [events]
+  )
+
+  // Unique programs/genders in current teams for filter options
+  const availablePrograms = useMemo(() => {
+    const m = new Map()
+    teams.forEach((t) => {
+      if (t.programs?.id && !m.has(t.programs.id))
+        m.set(t.programs.id, t.programs)
+    })
+    return Array.from(m.values()).sort(
+      (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    )
+  }, [teams])
+  const availableGenders = useMemo(() => {
+    const s = new Set()
+    teams.forEach((t) => s.add(t.gender))
+    return Array.from(s)
+  }, [teams])
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="op-header shadow-lg">
-        <div className="op-gradient-border"></div>
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between">
-            <Link to="/home" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
-              <OPLogo className="h-12 w-auto" />
-              <div>
-                <h1 className="text-2xl font-bold text-white">College Coach Tracker</h1>
-                <p className="text-cyan-300 text-sm">Track college coach attendance at events</p>
-              </div>
+      <header className="bg-slate-900 text-white">
+        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
+          <Link to="/home" className="flex items-center gap-3 hover:opacity-80">
+            <OPLogo className="h-10 w-10" />
+            <div>
+              <div className="font-semibold">Ohio Premier Soccer</div>
+              <div className="text-xs text-cyan-300">College Coach Tracker</div>
+            </div>
+          </Link>
+          <div className="flex items-center gap-2 text-sm">
+            <Link
+              to="/directory"
+              className="text-gray-300 hover:text-white px-2 py-1"
+            >
+              Coach Directory
             </Link>
-            <nav className="flex items-center gap-2">
-              <Link 
-                to="/directory" 
-                className="text-sm text-gray-300 hover:text-white flex items-center gap-1.5 p-2 -m-2 rounded-lg"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                </svg>
-                Directory
-              </Link>
-              <Link 
-                to="/help?context=parent" 
-                className="text-sm text-gray-300 hover:text-white flex items-center gap-1.5 p-2 -m-2 rounded-lg"
-              >
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Help
-              </Link>
-            </nav>
+            <Link
+              to="/help?context=parent"
+              className="text-gray-300 hover:text-white px-2 py-1"
+            >
+              Help
+            </Link>
           </div>
         </div>
+        <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
       </header>
 
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
-        {/* Active Events */}
-        {active.length > 0 && (
-          <section>
-            <div className="flex items-center gap-2 mb-4">
-              <span className="bg-green-500 h-3 w-3 rounded-full animate-pulse"></span>
-              <h2 className="text-xl font-semibold text-gray-900">Happening Now</h2>
-            </div>
-            <div className="space-y-4">
-              {active.map(event => (
-                <EventCard 
-                  key={event.id} 
-                  event={event} 
-                  teams={eventTeams[event.id] || []}
-                  formatDateRange={formatDateRange}
-                  isActive={true}
-                />
-              ))}
-            </div>
-          </section>
-        )}
+      <main className="max-w-6xl mx-auto px-4 py-6">
+        {loading ? (
+          <div className="text-center py-12 text-gray-500">Loading...</div>
+        ) : error ? (
+          <ErrorMessage error={error} onRetry={load} />
+        ) : (
+          <>
+            {/* Active event banner */}
+            {activeEvents.length > 0 && (
+              <section className="mb-6">
+                {activeEvents.map((ev) => (
+                  <div
+                    key={ev.id}
+                    className="bg-gradient-to-r from-emerald-500 to-cyan-600 text-white rounded-lg shadow-lg p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider opacity-90">
+                        <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
+                        Happening Now
+                      </div>
+                      <h2 className="text-xl font-bold mt-1">{ev.event_name}</h2>
+                      <p className="text-sm opacity-90 mt-0.5">
+                        {formatDateRange(ev.start_date, ev.end_date)}
+                        {ev.location ? ` · ${ev.location}` : ''}
+                      </p>
+                    </div>
+                    <Link
+                      to={`/e/${ev.slug}`}
+                      className="bg-white text-emerald-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-100 self-start sm:self-auto"
+                    >
+                      Open Event →
+                    </Link>
+                  </div>
+                ))}
+              </section>
+            )}
 
-        {/* Upcoming Events */}
-        {upcoming.length > 0 && (
-          <section>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Upcoming Events</h2>
-            <div className="space-y-4">
-              {upcoming.map(event => (
-                <EventCard 
-                  key={event.id} 
-                  event={event} 
-                  teams={eventTeams[event.id] || []}
-                  formatDateRange={formatDateRange}
-                />
-              ))}
-            </div>
-          </section>
-        )}
+            {/* Teams section */}
+            <section className="mb-8">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Our Teams</h2>
+                  {season && (
+                    <p className="text-sm text-gray-500">
+                      {season.name} Season
+                    </p>
+                  )}
+                </div>
+              </div>
 
-        {/* Past Events */}
-        {past.length > 0 && (
-          <section>
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Past Events</h2>
-            <div className="space-y-4">
-              {past.slice(0, 5).map(event => (
-                <EventCard 
-                  key={event.id} 
-                  event={event} 
-                  teams={eventTeams[event.id] || []}
-                  formatDateRange={formatDateRange}
-                  isPast={true}
-                />
-              ))}
-              {past.length > 5 && (
-                <p className="text-center text-gray-500 text-sm py-2">
-                  And {past.length - 5} more past events...
-                </p>
+              {/* Filter/sort controls */}
+              <div className="bg-white rounded-lg shadow-sm p-3 mb-4 flex flex-wrap gap-3 items-center">
+                <ControlGroup label="Group by">
+                  <select
+                    value={groupBy}
+                    onChange={(e) => setGroupBy(e.target.value)}
+                    className="px-2 py-1 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="age">Age Group</option>
+                    <option value="program">Program</option>
+                    <option value="none">None (flat list)</option>
+                  </select>
+                </ControlGroup>
+                {availablePrograms.length > 1 && (
+                  <ControlGroup label="Program">
+                    <select
+                      value={filterProgram}
+                      onChange={(e) => setFilterProgram(e.target.value)}
+                      className="px-2 py-1 border border-gray-300 rounded text-sm"
+                    >
+                      <option value="all">All</option>
+                      {availablePrograms.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
+                  </ControlGroup>
+                )}
+                {availableGenders.length > 1 && (
+                  <ControlGroup label="Gender">
+                    <select
+                      value={filterGender}
+                      onChange={(e) => setFilterGender(e.target.value)}
+                      className="px-2 py-1 border border-gray-300 rounded text-sm"
+                    >
+                      <option value="all">All</option>
+                      {availableGenders.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                    </select>
+                  </ControlGroup>
+                )}
+                {(filterProgram !== 'all' || filterGender !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setFilterProgram('all')
+                      setFilterGender('all')
+                    }}
+                    className="text-xs text-blue-600 hover:underline ml-auto"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
+
+              {filteredTeams.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
+                  No teams match the current filters.
+                </div>
+              ) : (
+                <div className="space-y-5">
+                  {groupedTeams.map((group) => (
+                    <div key={group.label || 'flat'}>
+                      {group.label && (
+                        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2 px-1">
+                          {group.label}
+                        </h3>
+                      )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {group.teams.map((t) => (
+                          <TeamCard
+                            key={t.id}
+                            team={t}
+                            stats={teamStats[t.id]}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
-            </div>
-          </section>
+            </section>
+
+            {/* Upcoming events */}
+            {upcoming.length > 0 && (
+              <section className="mb-6">
+                <h2 className="text-lg font-semibold text-gray-800 mb-3">
+                  Upcoming Events
+                </h2>
+                <div className="space-y-2">
+                  {upcoming.map((ev) => (
+                    <EventCard key={ev.id} event={ev} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* Past events (collapsed) */}
+            {past.length > 0 && (
+              <section className="mb-6">
+                <button
+                  onClick={() => setShowPast((s) => !s)}
+                  className="text-sm text-gray-600 hover:text-gray-800 flex items-center gap-1"
+                >
+                  <span>{showPast ? '▾' : '▸'}</span>
+                  Past Events ({past.length})
+                </button>
+                {showPast && (
+                  <div className="mt-3 space-y-2">
+                    {past.map((ev) => (
+                      <EventCard key={ev.id} event={ev} compact />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+          </>
         )}
+      </main>
 
-        {/* Empty State */}
-        {events.length === 0 && (
-          <div className="bg-white rounded-lg shadow-md p-8 text-center">
-            <div className="text-gray-400 mb-4">
-              <svg className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Events Yet</h3>
-            <p className="text-gray-500">
-              Check back soon for upcoming tournaments and showcases.
-            </p>
-          </div>
-        )}
-
-        {/* Admin Link */}
-        <div className="text-center pt-4">
-          <Link 
-            to="/admin" 
-            className="text-sm text-gray-400 hover:text-gray-600"
-          >
-            Admin Login →
-          </Link>
-        </div>
-      </div>
-
-      {/* Feedback Button */}
-      <FeedbackButton />
+      <FeedbackButton pageContext="club-dashboard" />
     </div>
-  );
+  )
 }
 
-/**
- * Event Card Component
- */
-function EventCard({ event, teams, formatDateRange, isActive = false, isPast = false }) {
-  const [expanded, setExpanded] = useState(isActive);
-
+function ControlGroup({ label, children }) {
   return (
-    <div className={`bg-white rounded-lg shadow-md overflow-hidden ${isActive ? 'ring-2 ring-green-500' : ''}`}>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-4 py-4 flex justify-between items-center hover:bg-gray-50 transition-colors"
-      >
-        <div className="text-left">
-          <div className="flex items-center gap-2">
-            <h3 className={`font-semibold ${isPast ? 'text-gray-600' : 'text-gray-900'}`}>
-              {event.event_name}
-            </h3>
-            {isActive && (
-              <span className="bg-green-100 text-green-700 text-xs font-medium px-2 py-0.5 rounded">
-                LIVE
-              </span>
-            )}
-          </div>
-          <p className={`text-sm ${isPast ? 'text-gray-400' : 'text-gray-500'}`}>
-            {formatDateRange(event.start_date, event.end_date)}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">
-            {teams.length} team{teams.length !== 1 ? 's' : ''}
-          </span>
-          <svg 
-            className={`h-5 w-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} 
-            fill="none" 
-            viewBox="0 0 24 24" 
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </button>
+    <label className="flex items-center gap-2 text-sm text-gray-600">
+      <span>{label}:</span>
+      {children}
+    </label>
+  )
+}
 
-      {expanded && (
-        <div className="border-t px-4 py-3 bg-gray-50">
-          {teams.length === 0 ? (
-            <p className="text-sm text-gray-500 italic">No teams assigned to this event yet.</p>
-          ) : (
-            <div className="space-y-2">
-              {teams.map(et => (
-                <div 
-                  key={et.id} 
-                  className="flex items-center justify-between bg-white rounded-lg p-3 shadow-sm"
-                >
-                  <div>
-                    <Link
-                      to={`/t/${et.slug}`}
-                      className="font-medium text-blue-700 hover:text-blue-900 hover:underline"
-                    >
-                      {et.club_teams?.team_name}
-                    </Link>
-                    <div className="text-xs text-gray-500">{et.club_teams?.gender}</div>
-                  </div>
-                  <div className="flex gap-2">
-                    {et.hasOpenGames && (
-                      <Link
-                        to={`/e/${event.slug}/${et.slug}`}
-                        className="op-button px-3 py-1.5 rounded text-sm font-medium"
-                      >
-                        Live Tracker
-                      </Link>
-                    )}
-                    <Link
-                      to={`/e/${event.slug}/${et.slug}/summary`}
-                      className={`px-3 py-1.5 rounded text-sm font-medium ${
-                        et.hasOpenGames
-                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          : 'op-button'
-                      }`}
-                    >
-                      Summary
-                    </Link>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          
-          {/* Event page link */}
-          <div className="mt-3 pt-3 border-t text-center">
-            <Link
-              to={`/e/${event.slug}`}
-              className="text-sm text-gray-500 hover:text-gray-700"
-            >
-              View all teams at this event →
-            </Link>
+function TeamCard({ team, stats }) {
+  return (
+    <Link
+      to={`/t/${team.slug}`}
+      className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 block border border-gray-100"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-gray-900 truncate">
+            {team.name}
+          </div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {team.age_groups?.name} · {team.gender} · {team.programs?.name}
           </div>
         </div>
-      )}
-    </div>
-  );
+        {stats?.hasActiveEvent && (
+          <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded flex-shrink-0 flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            Live
+          </span>
+        )}
+      </div>
+      <div className="flex gap-3 mt-3 text-xs text-gray-600">
+        <span>
+          <strong>{stats?.games ?? 0}</strong> game{stats?.games === 1 ? '' : 's'}
+        </span>
+        <span>·</span>
+        <span>
+          <strong>{stats?.schools ?? 0}</strong> school{stats?.schools === 1 ? '' : 's'}
+        </span>
+      </div>
+    </Link>
+  )
+}
+
+function EventCard({ event, compact }) {
+  return (
+    <Link
+      to={`/e/${event.slug}`}
+      className={`block bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow ${
+        compact ? 'p-3' : 'p-4'
+      } border border-gray-100`}
+    >
+      <div className="flex justify-between items-start gap-3">
+        <div>
+          <div className="font-medium text-gray-900">{event.event_name}</div>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {formatDateRange(event.start_date, event.end_date)}
+            {event.location ? ` · ${event.location}` : ''}
+          </div>
+        </div>
+        <span className="text-sm text-blue-600">→</span>
+      </div>
+    </Link>
+  )
+}
+
+function categorizeEvents(events) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const active = []
+  const upcoming = []
+  const past = []
+  events.forEach((ev) => {
+    const start = parseDate(ev.start_date)
+    const end = ev.end_date ? parseDate(ev.end_date) : start
+    const endInc = new Date(end)
+    endInc.setDate(endInc.getDate() + 1)
+    if (today >= start && today < endInc) active.push(ev)
+    else if (start > today) upcoming.push(ev)
+    else past.push(ev)
+  })
+  upcoming.sort((a, b) => parseDate(a.start_date) - parseDate(b.start_date))
+  return { active, upcoming, past }
+}
+
+function parseDate(s) {
+  if (!s) return new Date()
+  const [y, m, d] = s.split('-')
+  return new Date(y, m - 1, d)
+}
+
+function formatDateRange(start, end) {
+  const s = parseDate(start)
+  const e = end ? parseDate(end) : s
+  const opts = { month: 'short', day: 'numeric' }
+  const startStr = s.toLocaleDateString('en-US', opts)
+  if (!end || end === start) return startStr
+  const endStr = e.toLocaleDateString('en-US', opts)
+  return `${startStr} – ${endStr}`
 }
