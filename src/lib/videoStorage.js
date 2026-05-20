@@ -132,11 +132,18 @@ function slugify(s) {
 }
 
 export async function deleteVideo(videoId) {
-  // For MVP we just delete the DB row. The R2 file stays orphaned but
-  // takes negligible space; a future cleanup job can sweep them.
-  // Direct R2 deletion would require another /api endpoint.
-  const { error } = await supabase.from('videos').delete().eq('id', videoId)
-  if (error) throw error
+  // Calls /api/video/delete which removes both the R2 object and the DB row.
+  const headers = await authHeader()
+  const res = await fetch('/api/video/delete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ videoId }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error || `Delete failed (${res.status})`)
+  }
+  return res.json()
 }
 
 /**

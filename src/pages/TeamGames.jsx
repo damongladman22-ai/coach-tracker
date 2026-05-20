@@ -15,6 +15,7 @@ import FeedbackButton from '../components/FeedbackButton';
 import { gameResult } from '../components/ScoreInput';
 import VideoBadge from '../components/VideoBadge';
 import GameVideosPanel from '../components/GameVideosPanel';
+import { useRealtimeVideos } from '../hooks/useRealtimeVideos';
 
 /**
  * Live Tracker - Team Games List
@@ -30,7 +31,7 @@ export default function TeamGames() {
   // Page data
   const [eventTeam, setEventTeam] = useState(null);
   const [games, setGames] = useState([]);
-  const [videosByGame, setVideosByGame] = useState({});
+  const { videosByGame } = useRealtimeVideos(games.map((g) => g.id));
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState(null);
   const [unlockMinutes, setUnlockMinutes] = useState(30);
@@ -117,25 +118,6 @@ export default function TeamGames() {
         }
         
         setGames(gamesData || []);
-
-        // Videos for these games (only ready ones)
-        if (gamesData && gamesData.length > 0) {
-          const gameIds = gamesData.map((g) => g.id);
-          const { data: vidData } = await supabase
-            .from('videos')
-            .select(
-              'id, game_id, title, duration_seconds, file_size_bytes, mime_type, uploaded_at'
-            )
-            .in('game_id', gameIds)
-            .eq('upload_status', 'ready')
-            .order('uploaded_at', { ascending: false });
-          const byGame = {};
-          (vidData || []).forEach((v) => {
-            if (!byGame[v.game_id]) byGame[v.game_id] = [];
-            byGame[v.game_id].push(v);
-          });
-          setVideosByGame(byGame);
-        }
 
       } catch (err) {
         console.error('Error loading page data:', err);

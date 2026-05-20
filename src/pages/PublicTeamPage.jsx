@@ -6,6 +6,7 @@ import { computeRecord, gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
 import VideoBadge from '../components/VideoBadge'
 import GameVideosPanel from '../components/GameVideosPanel'
+import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
 
 /**
  * Public Team Page at /t/:teamSlug
@@ -25,7 +26,7 @@ export default function PublicTeamPage() {
   const [team, setTeam] = useState(null)
   const [games, setGames] = useState([])
   const [attendance, setAttendance] = useState([])
-  const [videosByGame, setVideosByGame] = useState({})
+  const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
 
   useEffect(() => {
     load()
@@ -80,25 +81,8 @@ export default function PublicTeamPage() {
         )
         .in('game_id', gameIds)
       setAttendance(attData || [])
-
-      // Videos for those games (only ready ones)
-      const { data: vidData } = await supabase
-        .from('videos')
-        .select(
-          'id, game_id, title, duration_seconds, file_size_bytes, mime_type, uploaded_at'
-        )
-        .in('game_id', gameIds)
-        .eq('upload_status', 'ready')
-        .order('uploaded_at', { ascending: false })
-      const byGame = {}
-      ;(vidData || []).forEach((v) => {
-        if (!byGame[v.game_id]) byGame[v.game_id] = []
-        byGame[v.game_id].push(v)
-      })
-      setVideosByGame(byGame)
     } else {
       setAttendance([])
-      setVideosByGame({})
     }
 
     setLoading(false)
