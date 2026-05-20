@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Link } from 'react-router-dom'
-import { read, utils, writeFile } from 'xlsx'
+import { read, utils } from 'xlsx'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import { getCurrentClubId } from '../lib/club'
@@ -85,7 +85,49 @@ export default function ImportGames({ session }) {
 
   // --- Step 1: Upload ---
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    // Lazy-load ExcelJS only when the user clicks Download Template
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+
+    const teamNames = teams.map((t) => t.name)
+    const eventNames = events.map((e) => e.event_name)
+    const typeNames = gameTypes.map((g) => g.name)
+    const homeAway = ['Home', 'Away']
+
+    // Reference sheet (built first so Games can reference it)
+    const ref = wb.addWorksheet('Reference')
+    ref.addRow([
+      'Teams (valid for Team)',
+      'Events (valid for Event)',
+      'Game Types (valid for Game Type)',
+      'Home/Away',
+    ])
+    ref.getRow(1).font = { bold: true }
+    const maxRows = Math.max(
+      teamNames.length,
+      eventNames.length,
+      typeNames.length,
+      homeAway.length,
+      1
+    )
+    for (let i = 0; i < maxRows; i++) {
+      ref.addRow([
+        teamNames[i] || '',
+        eventNames[i] || '',
+        typeNames[i] || '',
+        homeAway[i] || '',
+      ])
+    }
+    ref.columns = [
+      { width: 30 },
+      { width: 36 },
+      { width: 22 },
+      { width: 12 },
+    ]
+
+    // Games entry sheet
+    const games = wb.addWorksheet('Games')
     const headers = [
       'Team',
       'Date',
@@ -98,13 +140,20 @@ export default function ImportGames({ session }) {
       'Our Score',
       'Opp Score',
     ]
-    const exampleTeamName = teams[0]?.name || 'U16 Girls ECNL'
-    const exampleEventName = events[0]?.event_name || 'Spring Showcase 2026'
+    games.addRow(headers)
+    games.getRow(1).font = { bold: true }
+    games.columns = headers.map((h) => ({
+      width: Math.max(h.length + 2, 16),
+    }))
+
+    // One example row using live club data
+    const exampleTeamName = teams[0]?.name || ''
+    const exampleEventName = events[0]?.event_name || ''
     const exampleTypeName =
       gameTypes.find((g) => /showcase/i.test(g.name))?.name ||
       gameTypes[0]?.name ||
-      'Showcase'
-    const example = [
+      ''
+    games.addRow([
       exampleTeamName,
       '2026-03-15',
       '2:00 PM',
@@ -115,79 +164,55 @@ export default function ImportGames({ session }) {
       exampleTypeName,
       '',
       '',
-    ]
+    ])
 
-    // Games entry sheet
-    const games = utils.aoa_to_sheet([headers, example])
-    games['!cols'] = headers.map((h) => ({ wch: Math.max(h.length + 2, 16) }))
-
-    // Reference sheet listing all valid values
-    const teamNames = teams.map((t) => t.name)
-    const eventNames = events.map((e) => e.event_name)
-    const typeNames = gameTypes.map((g) => g.name)
-    const homeAway = ['Home', 'Away']
-    const maxLen = Math.max(
-      teamNames.length,
-      eventNames.length,
-      typeNames.length,
-      homeAway.length,
-      1
-    )
-    const refRows = [
-      ['Teams (valid for Team column)', 'Events (valid for Event)', 'Game Types (valid for Game Type)', 'Home/Away'],
-    ]
-    for (let i = 0; i < maxLen; i++) {
-      refRows.push([
-        teamNames[i] || '',
-        eventNames[i] || '',
-        typeNames[i] || '',
-        homeAway[i] || '',
-      ])
+    // Data validation (real Excel dropdowns) — applied to rows 2..1000
+    const lastRow = 1001
+    const applyValidation = (col, validation) => {
+      for (let row = 2; row <= lastRow; row++) {
+        games.getCell(`${col}${row}`).dataValidation = validation
+      }
     }
-    const reference = utils.aoa_to_sheet(refRows)
-    reference['!cols'] = [
-      { wch: 30 },
-      { wch: 36 },
-      { wch: 22 },
-      { wch: 12 },
-    ]
-
-    // Excel data validation: dropdowns referencing the Reference sheet
-    // Letters map: A=Team, B=Date, C=Time, D=Opponent, E=Home/Away,
-    //              F=Location, G=Event, H=Game Type, I=Our Score, J=Opp Score
-    const dv = []
     if (teamNames.length > 0) {
-      dv.push({
-        sqref: `A2:A1000`,
+      applyValidation('A', {
         type: 'list',
-        formula1: `=Reference!$A$2:$A$${teamNames.length + 1}`,
+        allowBlank: true,
+        formulae: [`Reference!$A$2:$A$${teamNames.length + 1}`],
       })
     }
-    dv.push({
-      sqref: `E2:E1000`,
+    applyValidation('E', {
       type: 'list',
-      formula1: `"Home,Away"`,
+      allowBlank: true,
+      formulae: ['"Home,Away"'],
     })
     if (eventNames.length > 0) {
-      dv.push({
-        sqref: `G2:G1000`,
+      applyValidation('G', {
         type: 'list',
-        formula1: `=Reference!$B$2:$B$${eventNames.length + 1}`,
+        allowBlank: true,
+        formulae: [`Reference!$B$2:$B$${eventNames.length + 1}`],
       })
     }
     if (typeNames.length > 0) {
-      dv.push({
-        sqref: `H2:H1000`,
+      applyValidation('H', {
         type: 'list',
-        formula1: `=Reference!$C$2:$C$${typeNames.length + 1}`,
+        allowBlank: true,
+        formulae: [`Reference!$C$2:$C$${typeNames.length + 1}`],
       })
     }
-    games['!dataValidations'] = dv
 
-    const wb = utils.book_new()
-    utils.book_append_sheet(wb, games, 'Games')
-    utils.book_append_sheet(wb, reference, 'Reference')
-    writeFile(wb, 'op-soccer-games-template.xlsx')
+    // Trigger download
+    const buf = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buf], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'op-soccer-games-template.xlsx'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
   }
 
   const handleFile = async (e) => {
