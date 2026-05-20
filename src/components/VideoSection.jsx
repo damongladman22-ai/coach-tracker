@@ -7,6 +7,12 @@ import {
   markVideoFailed,
   deleteVideo,
   probeVideoDuration,
+  MULTIPART_THRESHOLD,
+  PART_SIZE,
+  requestMultipartUpload,
+  uploadMultipartParts,
+  completeMultipartUpload,
+  abortMultipartUpload,
 } from '../lib/videoStorage'
 import VideoModal from './VideoModal'
 
@@ -51,9 +57,19 @@ export default function VideoSection({ gameId }) {
     setUploading(true)
     setProgress(0)
 
+    // Branch: single-PUT for small files, multipart for large
+    if (file.size < MULTIPART_THRESHOLD) {
+      await uploadSinglePart(file)
+    } else {
+      await uploadMultipart(file)
+    }
+
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const uploadSinglePart = async (file) => {
     let videoId = null
     try {
-      // Probe duration in parallel with mint
       const [{ uploadUrl, videoId: vid }, duration] = await Promise.all([
         requestUploadUrl(gameId, file),
         probeVideoDuration(file),
@@ -69,7 +85,41 @@ export default function VideoSection({ gameId }) {
     } finally {
       setUploading(false)
       setProgress(0)
-      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const uploadMultipart = async (file) => {
+    let videoId = null
+    let uploadId = null
+    try {
+      // Probe duration in parallel with init (init takes longer for many parts)
+      const [initRes, duration] = await Promise.all([
+        requestMultipartUpload(gameId, file),
+        probeVideoDuration(file),
+      ])
+      videoId = initRes.videoId
+      uploadId = initRes.uploadId
+      const partUrls = initRes.partUrls
+
+      const parts = await uploadMultipartParts(
+        partUrls,
+        file,
+        PART_SIZE,
+        (frac) => setProgress(frac)
+      )
+
+      await completeMultipartUpload(videoId, uploadId, parts, duration)
+      await fetchVideos()
+    } catch (err) {
+      console.error('Multipart upload error:', err)
+      setError(err.message || 'Upload failed')
+      // Best-effort cleanup on R2
+      if (videoId && uploadId) {
+        await abortMultipartUpload(videoId, uploadId).catch(() => {})
+      }
+    } finally {
+      setUploading(false)
+      setProgress(0)
     }
   }
 
@@ -138,7 +188,7 @@ export default function VideoSection({ gameId }) {
         <div className="text-sm text-gray-500">Loading…</div>
       ) : videos.length === 0 ? (
         <p className="text-sm text-gray-500 italic">
-          No videos uploaded for this game yet. Max 4.5 GB per file.
+          No videos uploaded for this game yet. Max 50 GB per file.
         </p>
       ) : (
         <div className="divide-y divide-gray-100">
