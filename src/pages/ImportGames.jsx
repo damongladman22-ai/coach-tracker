@@ -107,38 +107,10 @@ export default function ImportGames({ session }) {
     const typeNames = gameTypes.map((g) => g.name)
     const homeAway = ['Home', 'Away']
 
-    // Reference sheet (built first so Games can reference it)
-    const ref = wb.addWorksheet('Reference')
-    ref.addRow([
-      'Teams (valid for Team)',
-      'Events (valid for Event)',
-      'Game Types (valid for Game Type)',
-      'Home/Away',
-    ])
-    ref.getRow(1).font = { bold: true }
-    const maxRows = Math.max(
-      teamNames.length,
-      eventNames.length,
-      typeNames.length,
-      homeAway.length,
-      1
-    )
-    for (let i = 0; i < maxRows; i++) {
-      ref.addRow([
-        teamNames[i] || '',
-        eventNames[i] || '',
-        typeNames[i] || '',
-        homeAway[i] || '',
-      ])
-    }
-    ref.columns = [
-      { width: 30 },
-      { width: 36 },
-      { width: 22 },
-      { width: 12 },
-    ]
-
-    // Games entry sheet
+    // Games entry sheet — built FIRST so it lands at sheet index 0,
+    // which is what the importer reads by default. Data validations
+    // below reference 'Reference' sheet by name (added second) and
+    // Excel resolves these by name regardless of sheet order.
     const games = wb.addWorksheet('Games')
     const headers = [
       'Team',
@@ -212,6 +184,39 @@ export default function ImportGames({ session }) {
       })
     }
 
+    // Reference sheet — added LAST so it ends up after Games in sheet
+    // order (sheet index 1). The dropdowns above reference it by name,
+    // not by position, so they still resolve correctly.
+    const ref = wb.addWorksheet('Reference')
+    ref.addRow([
+      'Teams (valid for Team)',
+      'Events (valid for Event)',
+      'Game Types (valid for Game Type)',
+      'Home/Away',
+    ])
+    ref.getRow(1).font = { bold: true }
+    const maxRows = Math.max(
+      teamNames.length,
+      eventNames.length,
+      typeNames.length,
+      homeAway.length,
+      1
+    )
+    for (let i = 0; i < maxRows; i++) {
+      ref.addRow([
+        teamNames[i] || '',
+        eventNames[i] || '',
+        typeNames[i] || '',
+        homeAway[i] || '',
+      ])
+    }
+    ref.columns = [
+      { width: 30 },
+      { width: 36 },
+      { width: 22 },
+      { width: 12 },
+    ]
+
     // Build filename: <club-slug>-<season-slug>-games-template-<YYYY-MM-DD>.xlsx
     const clubSlug = club?.slug || 'club'
     const seasonSlug = season?.slug || 'season'
@@ -239,7 +244,14 @@ export default function ImportGames({ session }) {
     if (!file) return
     const buf = await file.arrayBuffer()
     const wb = read(buf)
-    const ws = wb.Sheets[wb.SheetNames[0]]
+    // Prefer a sheet named "Games" (case-insensitive). Falls back to the
+    // first sheet if not found, so older templates and arbitrary uploads
+    // still work. This avoids the bug where the template's Reference
+    // sheet was sheet[0] and got read instead of the actual games data.
+    const gamesSheetName =
+      wb.SheetNames.find((n) => n.toLowerCase() === 'games') ||
+      wb.SheetNames[0]
+    const ws = wb.Sheets[gamesSheetName]
     const data = utils.sheet_to_json(ws, { defval: '', raw: false })
     if (data.length === 0) {
       alert('No rows found in the file.')
