@@ -421,12 +421,13 @@ function ControlGroup({ label, children }) {
 }
 
 function TeamCard({ team, stats }) {
+  const r = stats?.record
   return (
     <Link
       to={`/t/${team.slug}`}
       className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 block border border-gray-100"
     >
-      <div className="flex items-start justify-between gap-2">
+      <div className="flex items-start justify-between gap-2 mb-3">
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-gray-900 truncate">
             {team.name}
@@ -442,21 +443,27 @@ function TeamCard({ team, stats }) {
           </span>
         )}
       </div>
-      <div className="flex gap-3 mt-3 text-xs text-gray-600 items-center flex-wrap">
-        {stats?.record?.played > 0 && (
-          <span className="font-semibold text-gray-900 text-sm">
-            {stats.record.wins}–{stats.record.losses}–{stats.record.ties}
-          </span>
-        )}
-        <span>
-          <strong>{stats?.games ?? 0}</strong> game{stats?.games === 1 ? '' : 's'}
-        </span>
-        <span>·</span>
-        <span>
-          <strong>{stats?.schools ?? 0}</strong> school{stats?.schools === 1 ? '' : 's'}
-        </span>
+      <div className="grid grid-cols-5 gap-1 pt-3 border-t border-gray-100">
+        <MiniStat value={r?.played ?? 0} label="GP" />
+        <MiniStat value={r?.wins ?? 0} label="W" />
+        <MiniStat value={r?.losses ?? 0} label="L" />
+        <MiniStat value={r?.ties ?? 0} label="D" />
+        <MiniStat value={stats?.schools ?? 0} label="Schools" />
       </div>
     </Link>
+  )
+}
+
+function MiniStat({ value, label }) {
+  return (
+    <div className="text-center">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">
+        {label}
+      </div>
+      <div className="text-lg font-bold text-gray-900 leading-none mt-1 tabular-nums">
+        {value}
+      </div>
+    </div>
   )
 }
 
