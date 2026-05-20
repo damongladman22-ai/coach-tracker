@@ -213,29 +213,20 @@ export default function PublicTeamPage() {
               if (r.played === 0) return null
               return (
                 <div className="bg-white rounded-lg shadow-md p-5 mb-6">
-                  <div className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+                  <div className="text-xs uppercase tracking-wide text-gray-500 mb-3">
                     Season Record
                   </div>
-                  <div className="flex flex-wrap items-baseline gap-4">
-                    <div className="text-3xl font-bold text-gray-900">
-                      {r.wins}–{r.losses}–{r.ties}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {r.played} game{r.played === 1 ? '' : 's'} · {r.percent}%
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      Goals for{' '}
-                      <span className="font-semibold text-gray-900">{r.gf}</span>
-                      , against{' '}
-                      <span className="font-semibold text-gray-900">{r.ga}</span>
-                      {r.gd !== 0 && (
-                        <span className="text-gray-500">
-                          {' '}
-                          ({r.gd > 0 ? '+' : ''}
-                          {r.gd})
-                        </span>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-5 flex-wrap">
+                    <RecordStat value={r.played} label="GP" />
+                    <RecordStat value={r.wins} label="W" />
+                    <RecordStat value={r.losses} label="L" />
+                    <RecordStat value={r.ties} label="D" />
+                    <RecordStat value={r.gf} label="GF" />
+                    <RecordStat value={r.ga} label="GA" />
+                    <RecordStat
+                      value={`${r.gd > 0 ? '+' : ''}${r.gd}`}
+                      label="GD"
+                    />
                   </div>
                 </div>
               )
@@ -361,6 +352,19 @@ function StatCard({ label, value }) {
       <div className="text-3xl font-bold text-gray-900">{value}</div>
       <div className="text-xs uppercase tracking-wide text-gray-500 mt-1">
         {label}
+      </div>
+    </div>
+  )
+}
+
+function RecordStat({ value, label }) {
+  return (
+    <div className="text-center">
+      <div className="text-xs uppercase tracking-wider text-gray-500">
+        {label}
+      </div>
+      <div className="text-3xl font-bold text-gray-900 leading-none mt-1">
+        {value}
       </div>
     </div>
   )

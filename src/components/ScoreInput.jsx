@@ -139,7 +139,7 @@ export function gameResult(game) {
       score: `${game.our_score}-${game.opponent_score}`,
     }
   return {
-    label: 'T',
+    label: 'D',
     color: 'bg-gray-200 text-gray-700',
     score: `${game.our_score}-${game.opponent_score}`,
   }
