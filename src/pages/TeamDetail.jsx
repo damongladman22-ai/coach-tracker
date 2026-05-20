@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import TimePicker from '../components/TimePicker'
+import DateField from '../components/DateField'
 import ScoreInput, { gameResult } from '../components/ScoreInput'
 import { getCurrentClubId } from '../lib/club'
 import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
@@ -36,13 +37,11 @@ export default function TeamDetail({ session }) {
   const [showcaseTypeId, setShowcaseTypeId] = useState(null)
   const [loading, setLoading] = useState(true)
 
-  const today = new Date().toISOString().slice(0, 10)
-
   const [showForm, setShowForm] = useState(false)
   const [editingGame, setEditingGame] = useState(null)
   const [formData, setFormData] = useState({
     event_id: '',
-    game_date: today,
+    game_date: '',
     opponent: '',
     game_time: '',
     timezone: 'America/New_York',
@@ -104,7 +103,7 @@ export default function TeamDetail({ session }) {
     setShowForm(false)
     setFormData({
       event_id: '',
-      game_date: today,
+      game_date: '',
       opponent: '',
       game_time: '',
       timezone: 'America/New_York',
@@ -360,18 +359,14 @@ export default function TeamDetail({ session }) {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Date *</label>
-                <input
-                  type="date"
-                  value={formData.game_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, game_date: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  required
-                />
-              </div>
+              <DateField
+                label="Date"
+                value={formData.game_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, game_date: e.target.value })
+                }
+                required
+              />
               <div>
                 <label className="block text-sm text-gray-600 mb-1">
                   Opponent

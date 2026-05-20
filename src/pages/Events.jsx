@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import DateField from '../components/DateField'
 import { getCurrentClubId } from '../lib/club'
 import { listSeasons, getActiveSeasonId } from '../lib/season'
 
@@ -319,52 +320,22 @@ export default function Events({ session }) {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date *
-                </label>
-                <input
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, start_date: e.target.value })
-                  }
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formData.start_date
-                      ? 'border-gray-300 text-gray-900'
-                      : 'border-orange-300 bg-orange-50 text-gray-500'
-                  }`}
-                  required
-                />
-                {!formData.start_date && (
-                  <p className="text-xs text-orange-600 italic mt-1">
-                    Tap to pick a date — none selected yet
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date *
-                </label>
-                <input
-                  type="date"
-                  value={formData.end_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, end_date: e.target.value })
-                  }
-                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-                    formData.end_date
-                      ? 'border-gray-300 text-gray-900'
-                      : 'border-orange-300 bg-orange-50 text-gray-500'
-                  }`}
-                  required
-                />
-                {!formData.end_date && (
-                  <p className="text-xs text-orange-600 italic mt-1">
-                    Tap to pick a date — none selected yet
-                  </p>
-                )}
-              </div>
+              <DateField
+                label="Start Date"
+                value={formData.start_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, start_date: e.target.value })
+                }
+                required
+              />
+              <DateField
+                label="End Date"
+                value={formData.end_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, end_date: e.target.value })
+                }
+                required
+              />
             </div>
             <div className="flex space-x-3">
               <button

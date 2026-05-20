@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import DateField from '../components/DateField'
 import TimePicker from '../components/TimePicker'
 import ScoreInput, { gameResult } from '../components/ScoreInput'
 import { getCurrentClubId } from '../lib/club'
@@ -127,10 +128,9 @@ export default function EventDetail({ session }) {
   const resetGameForm = () => {
     setEditingGame(null)
     setShowGameForm(false)
-    const today = new Date().toISOString().slice(0, 10) // YYYY-MM-DD
     setGameFormData({
       team_id: '',
-      game_date: today,
+      game_date: '',
       opponent: '',
       game_time: '',
       timezone: 'America/New_York',
@@ -472,18 +472,14 @@ export default function EventDetail({ session }) {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm text-gray-600 mb-1">Date *</label>
-                <input
-                  type="date"
-                  value={gameFormData.game_date}
-                  onChange={(e) =>
-                    setGameFormData({ ...gameFormData, game_date: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                  required
-                />
-              </div>
+              <DateField
+                label="Date"
+                value={gameFormData.game_date}
+                onChange={(e) =>
+                  setGameFormData({ ...gameFormData, game_date: e.target.value })
+                }
+                required
+              />
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Opponent</label>
                 <input

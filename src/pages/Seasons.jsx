@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import DateField from '../components/DateField'
 import { clearSeasonCache } from '../lib/season'
 
 /**
@@ -60,6 +61,19 @@ export default function Seasons({ session }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+
+    if (!formData.name?.trim()) {
+      alert('Season name is required.')
+      return
+    }
+    if (!formData.start_date || !formData.end_date) {
+      alert('Both Start Date and End Date are required. Please pick dates.')
+      return
+    }
+    if (formData.end_date < formData.start_date) {
+      alert('End Date must be on or after Start Date.')
+      return
+    }
 
     const payload = {
       ...formData,
@@ -218,34 +232,22 @@ export default function Seasons({ session }) {
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Start Date *
-                </label>
-                <input
-                  type="date"
-                  value={formData.start_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, start_date: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  End Date *
-                </label>
-                <input
-                  type="date"
-                  value={formData.end_date}
-                  onChange={(e) =>
-                    setFormData({ ...formData, end_date: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  required
-                />
-              </div>
+              <DateField
+                label="Start Date"
+                value={formData.start_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, start_date: e.target.value })
+                }
+                required
+              />
+              <DateField
+                label="End Date"
+                value={formData.end_date}
+                onChange={(e) =>
+                  setFormData({ ...formData, end_date: e.target.value })
+                }
+                required
+              />
             </div>
             <div className="flex items-center gap-2">
               <input
