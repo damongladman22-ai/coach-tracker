@@ -222,15 +222,23 @@ export default function Teams({ session }) {
             ))}
           </select>
         </div>
-        <button
-          onClick={() => {
-            resetForm()
-            setShowForm(true)
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-        >
-          + Add Team
-        </button>
+        <div className="flex gap-2">
+          <Link
+            to="/admin/import-games"
+            className="bg-cyan-100 text-cyan-700 hover:bg-cyan-200 px-4 py-2 rounded-lg text-sm font-medium"
+          >
+            Import Games →
+          </Link>
+          <button
+            onClick={() => {
+              resetForm()
+              setShowForm(true)
+            }}
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+          >
+            + Add Team
+          </button>
+        </div>
       </div>
 
       {/* Form */}
