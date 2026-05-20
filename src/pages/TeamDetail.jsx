@@ -252,13 +252,36 @@ export default function TeamDetail({ session }) {
       </Link>
 
       <div className="bg-white rounded-lg shadow-md p-5 mb-6">
-        <h1 className="text-2xl font-bold">{team.name}</h1>
-        <p className="text-gray-600 mt-1">
-          {team.age_groups?.name} · {team.gender} · {team.programs?.name}
-        </p>
-        <p className="text-xs text-gray-400 mt-1">
-          Season: {team.seasons?.name}
-        </p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">{team.name}</h1>
+            <p className="text-gray-600 mt-1">
+              {team.age_groups?.name} · {team.gender} · {team.programs?.name}
+            </p>
+            <p className="text-xs text-gray-400 mt-1">
+              Season: {team.seasons?.name}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={() => {
+                const url = `${window.location.origin}/t/${team.slug}`
+                navigator.clipboard.writeText(url)
+                alert('Public team link copied to clipboard:\n\n' + url)
+              }}
+              className="bg-cyan-100 text-cyan-700 px-3 py-2 rounded text-sm hover:bg-cyan-200"
+            >
+              Copy Public Team Link
+            </button>
+            <Link
+              to={`/t/${team.slug}`}
+              target="_blank"
+              className="text-center text-sm text-blue-600 hover:underline"
+            >
+              View public team page →
+            </Link>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow-md p-6 mb-6">

@@ -389,7 +389,12 @@ function EventCard({ event, teams, formatDateRange, isActive = false, isPast = f
                   className="flex items-center justify-between bg-white rounded-lg p-3 shadow-sm"
                 >
                   <div>
-                    <div className="font-medium text-gray-900">{et.club_teams?.team_name}</div>
+                    <Link
+                      to={`/t/${et.slug}`}
+                      className="font-medium text-blue-700 hover:text-blue-900 hover:underline"
+                    >
+                      {et.club_teams?.team_name}
+                    </Link>
                     <div className="text-xs text-gray-500">{et.club_teams?.gender}</div>
                   </div>
                   <div className="flex gap-2">

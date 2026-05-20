@@ -10,6 +10,7 @@ import GameAttendance from './pages/GameAttendance'
 import ParentSummary from './pages/ParentSummary'
 import ClubDashboard from './pages/ClubDashboard'
 import EventLanding from './pages/EventLanding'
+import PublicTeamPage from './pages/PublicTeamPage'
 import CoachDirectory from './pages/CoachDirectory'
 import Help from './pages/Help'
 
@@ -88,6 +89,7 @@ function App() {
             <Route path="/home" element={<ClubDashboard />} />
             <Route path="/directory" element={<CoachDirectory />} />
             <Route path="/help" element={<Help />} />
+            <Route path="/t/:teamSlug" element={<PublicTeamPage />} />
             <Route path="/e/:eventSlug/:teamSlug" element={<TeamGames />} />
             <Route path="/e/:eventSlug/:teamSlug/game/:gameId" element={<GameAttendance />} />
             <Route path="/e/:eventSlug/:teamSlug/summary" element={<ParentSummary />} />

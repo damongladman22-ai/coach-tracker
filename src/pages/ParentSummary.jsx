@@ -663,7 +663,10 @@ export default function ParentSummary() {
                 </Link>
               </div>
               <h1 className="text-xl sm:text-2xl font-bold text-white truncate">
-                {eventTeam?.club_teams?.team_name} - Summary
+                <Link to={`/t/${teamSlug}`} className="hover:text-cyan-300">
+                  {eventTeam?.club_teams?.team_name}
+                </Link>
+                {' '}- Summary
               </h1>
               {eventTeam?.events?.start_date && (
                 <p className="text-sm text-cyan-300">

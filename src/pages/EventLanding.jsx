@@ -291,9 +291,12 @@ export default function EventLanding() {
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
-                      <h3 className="font-semibold text-lg text-gray-900">
+                      <Link
+                        to={`/t/${et.slug}`}
+                        className="font-semibold text-lg text-blue-700 hover:text-blue-900 hover:underline"
+                      >
                         {et.club_teams?.team_name}
-                      </h3>
+                      </Link>
                       <p className="text-sm text-gray-500">{et.club_teams?.gender}</p>
                       <div className="flex gap-4 mt-2 text-sm text-gray-600">
                         <span>{stats.games} game{stats.games !== 1 ? 's' : ''}</span>

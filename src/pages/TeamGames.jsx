@@ -302,11 +302,14 @@ export default function TeamGames() {
           </div>
           
           {/* Team name */}
-          <h1 className="text-xl font-bold text-white">
+          <Link
+            to={`/t/${teamSlug}`}
+            className="inline-block text-xl font-bold text-white hover:text-cyan-300"
+          >
             {eventTeam?.club_teams?.team_name}
-          </h1>
+          </Link>
           <p className="text-sm text-gray-400">
-            Tap a game to log coaches
+            Tap a game to log coaches · Tap team name for full schedule
           </p>
         </div>
       </header>
