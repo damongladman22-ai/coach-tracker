@@ -7,6 +7,7 @@ import { listSeasons, getActiveSeasonId } from '../lib/season'
 
 export default function Events({ session }) {
   const [events, setEvents] = useState([])
+  const [eventGameCounts, setEventGameCounts] = useState({}) // { eventId: count }
   const [seasons, setSeasons] = useState([])
   const [selectedSeasonId, setSelectedSeasonId] = useState(null)
   const [clubId, setClubId] = useState(null)
@@ -54,6 +55,23 @@ export default function Events({ session }) {
 
     const { data, error } = await query
     if (!error) setEvents(data || [])
+
+    // Fetch game counts per event
+    if (data && data.length > 0) {
+      const eventIds = data.map((e) => e.id)
+      const { data: games } = await supabase
+        .from('games')
+        .select('event_id')
+        .in('event_id', eventIds)
+      const counts = {}
+      ;(games || []).forEach((g) => {
+        counts[g.event_id] = (counts[g.event_id] || 0) + 1
+      })
+      setEventGameCounts(counts)
+    } else {
+      setEventGameCounts({})
+    }
+
     setLoading(false)
   }
 
@@ -210,7 +228,7 @@ export default function Events({ session }) {
   }
 
   return (
-    <AdminLayout session={session} title="Events">
+    <AdminLayout session={session} title="Events &amp; Schedules">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div className="flex items-center gap-3">
           <label className="text-sm font-medium text-gray-700">Season:</label>
@@ -375,10 +393,12 @@ export default function Events({ session }) {
         </div>
       ) : (
         <div className="space-y-4">
-          {events.map((event) => (
+          {events.map((event) => {
+            const gameCount = eventGameCounts[event.id] || 0
+            return (
             <div key={event.id} className="bg-white rounded-lg shadow-md p-6">
-              <div className="flex justify-between items-start">
-                <div>
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex-1 min-w-0">
                   <Link
                     to={`/admin/events/${event.id}`}
                     className="text-xl font-semibold text-blue-600 hover:text-blue-800"
@@ -387,6 +407,11 @@ export default function Events({ session }) {
                   </Link>
                   <p className="text-gray-600 mt-1">
                     {formatDate(event.start_date)} - {formatDate(event.end_date)}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {gameCount === 0
+                      ? 'No games scheduled yet'
+                      : `${gameCount} game${gameCount === 1 ? '' : 's'} scheduled`}
                   </p>
                   {event.location && (
                     <p className="text-gray-500 text-sm mt-1">
@@ -399,16 +424,16 @@ export default function Events({ session }) {
                     </p>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1">
+                <div className="flex flex-wrap gap-1 flex-shrink-0 justify-end">
                   <Link
                     to={`/admin/events/${event.id}`}
-                    className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm"
+                    className="text-cyan-700 bg-cyan-50 hover:bg-cyan-100 px-3 py-2 rounded-lg text-sm font-medium"
                   >
-                    Manage
+                    Schedule &amp; Games →
                   </Link>
                   <button
                     onClick={() => handleEdit(event)}
-                    className="text-gray-600 hover:text-gray-800 hover:bg-gray-100 px-3 py-2 rounded-lg text-sm"
+                    className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm"
                   >
                     Edit
                   </button>
@@ -421,7 +446,7 @@ export default function Events({ session }) {
                 </div>
               </div>
             </div>
-          ))}
+          )})}
         </div>
       )}
     </AdminLayout>
