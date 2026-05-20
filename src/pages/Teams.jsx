@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import { getCurrentClubId } from '../lib/club'
@@ -338,8 +339,13 @@ export default function Teams({ session }) {
             <tbody className="divide-y divide-gray-200">
               {teams.map((team) => (
                 <tr key={team.id}>
-                  <td className="px-6 py-4 text-gray-900 font-medium">
-                    {team.name}
+                  <td className="px-6 py-4">
+                    <Link
+                      to={`/admin/teams/${team.id}`}
+                      className="text-blue-600 hover:text-blue-800 font-medium"
+                    >
+                      {team.name}
+                    </Link>
                   </td>
                   <td className="px-6 py-4 text-gray-600 hidden sm:table-cell">
                     {team.age_groups?.name}

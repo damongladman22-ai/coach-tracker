@@ -18,7 +18,12 @@ const AdminLogin = lazy(() => import('./pages/AdminLogin'))
 const AdminSetup = lazy(() => import('./pages/AdminSetup'))
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
 const Teams = lazy(() => import('./pages/Teams'))
+const TeamDetail = lazy(() => import('./pages/TeamDetail'))
 const Seasons = lazy(() => import('./pages/Seasons'))
+const Programs = lazy(() => import('./pages/Programs'))
+const AgeGroups = lazy(() => import('./pages/AgeGroups'))
+const GameTypes = lazy(() => import('./pages/GameTypes'))
+const ClubSettings = lazy(() => import('./pages/ClubSettings'))
 const Events = lazy(() => import('./pages/Events'))
 const EventDetail = lazy(() => import('./pages/EventDetail'))
 const Schools = lazy(() => import('./pages/Schools'))
@@ -63,7 +68,12 @@ function App() {
             <Route path="/admin" element={session ? <AdminDashboard session={session} /> : <AdminLogin />} />
             <Route path="/admin/setup" element={<AdminSetup />} />
             <Route path="/admin/teams" element={session ? <Teams session={session} /> : <AdminLogin />} />
+            <Route path="/admin/teams/:teamId" element={session ? <TeamDetail session={session} /> : <AdminLogin />} />
             <Route path="/admin/seasons" element={session ? <Seasons session={session} /> : <AdminLogin />} />
+            <Route path="/admin/programs" element={session ? <Programs session={session} /> : <AdminLogin />} />
+            <Route path="/admin/age-groups" element={session ? <AgeGroups session={session} /> : <AdminLogin />} />
+            <Route path="/admin/game-types" element={session ? <GameTypes session={session} /> : <AdminLogin />} />
+            <Route path="/admin/club-settings" element={session ? <ClubSettings session={session} /> : <AdminLogin />} />
             <Route path="/admin/events" element={session ? <Events session={session} /> : <AdminLogin />} />
             <Route path="/admin/events/:eventId" element={session ? <EventDetail session={session} /> : <AdminLogin />} />
             <Route path="/admin/schools" element={session ? <Schools session={session} /> : <AdminLogin />} />

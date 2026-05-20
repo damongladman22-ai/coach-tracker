@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import TimePicker from '../components/TimePicker'
 import { getCurrentClubId } from '../lib/club'
 import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
 
@@ -476,13 +477,11 @@ export default function EventDetail({ session }) {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-gray-600 mb-1">Time (optional)</label>
-                <input
-                  type="time"
+                <TimePicker
                   value={gameFormData.game_time}
-                  onChange={(e) =>
-                    setGameFormData({ ...gameFormData, game_time: e.target.value })
+                  onChange={(v) =>
+                    setGameFormData({ ...gameFormData, game_time: v })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
                 />
                 <p className="text-xs text-gray-400 mt-1">
                   If set, tracker locks until near game time

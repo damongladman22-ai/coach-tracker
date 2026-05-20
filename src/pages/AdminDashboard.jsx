@@ -180,6 +180,39 @@ export default function AdminDashboard({ session }) {
         </Link>
       </div>
 
+      {/* Club Configuration Section */}
+      <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Club Configuration</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Link
+          to="/admin/club-settings"
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">Club Settings</h2>
+          <p className="text-gray-600 text-sm">Name, branding, colors</p>
+        </Link>
+        <Link
+          to="/admin/programs"
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">Programs</h2>
+          <p className="text-gray-600 text-sm">ECNL, NPL, OVPL, etc.</p>
+        </Link>
+        <Link
+          to="/admin/age-groups"
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">Age Groups</h2>
+          <p className="text-gray-600 text-sm">U10, U14, U16, etc.</p>
+        </Link>
+        <Link
+          to="/admin/game-types"
+          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+        >
+          <h2 className="text-lg font-semibold text-gray-800 mb-1">Game Types</h2>
+          <p className="text-gray-600 text-sm">League, Showcase, Tournament</p>
+        </Link>
+      </div>
+
       {/* Settings Section */}
       <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Settings & Help</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
