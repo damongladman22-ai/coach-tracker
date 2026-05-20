@@ -83,6 +83,21 @@ export default function Events({ session }) {
       return
     }
 
+    if (!formData.event_name?.trim()) {
+      alert('Event name is required.')
+      return
+    }
+
+    if (!formData.start_date || !formData.end_date) {
+      alert('Both Start Date and End Date are required. Please pick dates.')
+      return
+    }
+
+    if (formData.end_date < formData.start_date) {
+      alert('End Date must be on or after Start Date.')
+      return
+    }
+
     const slug = generateSlug(formData.event_name)
     const seasonId = formData.season_id
       ? parseInt(formData.season_id, 10)
@@ -260,9 +275,18 @@ export default function Events({ session }) {
                   onChange={(e) =>
                     setFormData({ ...formData, start_date: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    formData.start_date
+                      ? 'border-gray-300 text-gray-900'
+                      : 'border-orange-300 bg-orange-50 text-gray-500'
+                  }`}
                   required
                 />
+                {!formData.start_date && (
+                  <p className="text-xs text-orange-600 italic mt-1">
+                    Tap to pick a date — none selected yet
+                  </p>
+                )}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -274,9 +298,18 @@ export default function Events({ session }) {
                   onChange={(e) =>
                     setFormData({ ...formData, end_date: e.target.value })
                   }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                    formData.end_date
+                      ? 'border-gray-300 text-gray-900'
+                      : 'border-orange-300 bg-orange-50 text-gray-500'
+                  }`}
                   required
                 />
+                {!formData.end_date && (
+                  <p className="text-xs text-orange-600 italic mt-1">
+                    Tap to pick a date — none selected yet
+                  </p>
+                )}
               </div>
             </div>
             <div className="flex space-x-3">
