@@ -25,6 +25,7 @@ import {
  */
 export default function Teams({ session }) {
   const [teams, setTeams] = useState([])
+  const [teamGameCounts, setTeamGameCounts] = useState({}) // { teamId: count }
   const [seasons, setSeasons] = useState([])
   const [programs, setPrograms] = useState([])
   const [ageGroups, setAgeGroups] = useState([])
@@ -81,6 +82,23 @@ export default function Teams({ session }) {
       .order('name')
 
     if (!error) setTeams(data || [])
+
+    // Game counts per team (cheap aggregate)
+    if (data && data.length > 0) {
+      const teamIds = data.map((t) => t.id)
+      const { data: games } = await supabase
+        .from('games')
+        .select('team_id')
+        .in('team_id', teamIds)
+      const counts = {}
+      ;(games || []).forEach((g) => {
+        counts[g.team_id] = (counts[g.team_id] || 0) + 1
+      })
+      setTeamGameCounts(counts)
+    } else {
+      setTeamGameCounts({})
+    }
+
     setLoading(false)
   }
 
@@ -186,7 +204,7 @@ export default function Teams({ session }) {
       : ''
 
   return (
-    <AdminLayout session={session} title="Teams">
+    <AdminLayout session={session} title="Teams &amp; Schedules">
       {/* Season selector + Add button row */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
         <div className="flex items-center gap-3">
@@ -337,7 +355,9 @@ export default function Teams({ session }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {teams.map((team) => (
+              {teams.map((team) => {
+                const gameCount = teamGameCounts[team.id] || 0
+                return (
                 <tr key={team.id}>
                   <td className="px-6 py-4">
                     <Link
@@ -346,6 +366,11 @@ export default function Teams({ session }) {
                     >
                       {team.name}
                     </Link>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {gameCount === 0
+                        ? 'No games scheduled yet'
+                        : `${gameCount} game${gameCount === 1 ? '' : 's'} scheduled`}
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-gray-600 hidden sm:table-cell">
                     {team.age_groups?.name}
@@ -357,7 +382,13 @@ export default function Teams({ session }) {
                     {team.gender}
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex justify-end gap-1">
+                    <div className="flex justify-end gap-1 flex-wrap">
+                      <Link
+                        to={`/admin/teams/${team.id}`}
+                        className="text-cyan-700 bg-cyan-50 hover:bg-cyan-100 px-3 py-2 rounded-lg text-sm font-medium"
+                      >
+                        Schedule &amp; Games →
+                      </Link>
                       <button
                         onClick={() => handleEdit(team)}
                         className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-3 py-2 rounded-lg text-sm"
@@ -373,7 +404,7 @@ export default function Teams({ session }) {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
