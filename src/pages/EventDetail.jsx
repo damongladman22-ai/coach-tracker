@@ -149,7 +149,7 @@ export default function EventDetail({ session }) {
 
     const payload = {
       team_id: parseInt(gameFormData.team_id, 10),
-      event_id: parseInt(eventId, 10),
+      event_id: eventId,
       game_date: gameFormData.game_date,
       opponent: gameFormData.opponent,
       game_time: gameFormData.game_time || null,
