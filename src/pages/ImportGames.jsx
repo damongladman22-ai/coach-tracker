@@ -4,7 +4,7 @@ import { read, utils } from 'xlsx'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import { getCurrentClubId } from '../lib/club'
-import { getActiveSeasonId } from '../lib/season'
+import { getActiveSeason } from '../lib/season'
 import { getGameTypes } from '../lib/lookups'
 
 /**
@@ -47,6 +47,8 @@ export default function ImportGames({ session }) {
   const [teams, setTeams] = useState([])
   const [events, setEvents] = useState([])
   const [gameTypes, setGameTypes] = useState([])
+  const [club, setClub] = useState(null)
+  const [season, setSeason] = useState(null)
 
   const [previewData, setPreviewData] = useState([]) // [{ row, team, event, gameType, parsedDate, ... include }]
   const [importing, setImporting] = useState(false)
@@ -57,11 +59,21 @@ export default function ImportGames({ session }) {
   }, [])
 
   const loadLookups = async () => {
-    const [seasonId, clubId, types] = await Promise.all([
-      getActiveSeasonId(),
+    const [activeSeason, clubId, types] = await Promise.all([
+      getActiveSeason(),
       getCurrentClubId(),
       getGameTypes(),
     ])
+    setSeason(activeSeason)
+    const seasonId = activeSeason?.id
+    if (clubId) {
+      const { data: clubData } = await supabase
+        .from('clubs')
+        .select('id, name, slug')
+        .eq('id', clubId)
+        .maybeSingle()
+      setClub(clubData)
+    }
     if (clubId && seasonId) {
       const [teamsRes, eventsRes] = await Promise.all([
         supabase
@@ -200,6 +212,13 @@ export default function ImportGames({ session }) {
       })
     }
 
+    // Build filename: <club-slug>-<season-slug>-games-template-<YYYY-MM-DD>.xlsx
+    const clubSlug = club?.slug || 'club'
+    const seasonSlug = season?.slug || 'season'
+    const today = new Date()
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const filename = `${clubSlug}-${seasonSlug}-games-template-${dateStr}.xlsx`
+
     // Trigger download
     const buf = await wb.xlsx.writeBuffer()
     const blob = new Blob([buf], {
@@ -208,7 +227,7 @@ export default function ImportGames({ session }) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'op-soccer-games-template.xlsx'
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
