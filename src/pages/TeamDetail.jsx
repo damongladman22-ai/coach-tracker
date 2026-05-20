@@ -561,6 +561,12 @@ function GameList({ games, onEdit, onDelete, onSaveScore, formatDate, formatTime
                 onSave={(o, p) => onSaveScore(g.id, o, p)}
                 compact
               />
+              <Link
+                to={`/admin/games/${g.id}`}
+                className="text-cyan-700 bg-cyan-50 hover:bg-cyan-100 px-3 py-1 rounded text-sm"
+              >
+                Coaches
+              </Link>
               <button
                 onClick={() => onEdit(g)}
                 className="text-blue-600 hover:bg-blue-50 px-3 py-1 rounded text-sm"
