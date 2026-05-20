@@ -151,8 +151,8 @@ export async function deleteVideo(videoId) {
 // ============================================================
 
 export const MULTIPART_THRESHOLD = 100 * 1024 * 1024 // 100 MB
-export const PART_SIZE = 100 * 1024 * 1024 // 100 MB
-const MAX_CONCURRENCY = 4
+export const PART_SIZE = 250 * 1024 * 1024 // 250 MB
+const MAX_CONCURRENCY = 6
 const MAX_PART_RETRIES = 3
 
 /**

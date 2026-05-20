@@ -39,6 +39,20 @@ export default function VideoSection({ gameId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameId])
 
+  // Warn the user before they leave the page during an active upload.
+  // Browsers no longer show custom text but still honor preventDefault()
+  // and display their own "Leave / Stay" prompt.
+  useEffect(() => {
+    if (!uploading) return
+    const handler = (e) => {
+      e.preventDefault()
+      e.returnValue = '' // legacy browsers
+      return ''
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [uploading])
+
   const fetchVideos = async () => {
     setLoading(true)
     const { data } = await supabase
