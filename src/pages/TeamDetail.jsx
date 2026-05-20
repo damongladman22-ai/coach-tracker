@@ -562,6 +562,12 @@ function GameList({ games, onEdit, onDelete, onSaveScore, formatDate, formatTime
               >
                 Coaches
               </Link>
+              <Link
+                to={`/admin/games/${g.id}/videos`}
+                className="text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1 rounded text-sm"
+              >
+                Videos
+              </Link>
               <button
                 onClick={() => onEdit(g)}
                 className="text-blue-600 hover:bg-blue-50 px-3 py-1 rounded text-sm"

@@ -3,7 +3,6 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import { gameResult } from '../components/ScoreInput'
-import VideoSection from '../components/VideoSection'
 
 /**
  * Admin Game Attendance — manage coach attendance on any single game.
@@ -334,9 +333,6 @@ export default function AdminGameAttendance({ session }) {
           ))}
         </div>
       )}
-
-      {/* Videos section */}
-      <VideoSection gameId={gameId} />
 
       {/* Add Coaches Modal */}
       {showAddModal && (

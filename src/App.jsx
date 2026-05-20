@@ -31,6 +31,7 @@ const Schools = lazy(() => import('./pages/Schools'))
 const ImportCoaches = lazy(() => import('./pages/ImportCoaches'))
 const AttendanceMatrix = lazy(() => import('./pages/AttendanceMatrix'))
 const AdminGameAttendance = lazy(() => import('./pages/AdminGameAttendance'))
+const AdminGameVideos = lazy(() => import('./pages/AdminGameVideos'))
 const ImportGames = lazy(() => import('./pages/ImportGames'))
 const DedupCoaches = lazy(() => import('./pages/DedupCoaches'))
 const DedupSchools = lazy(() => import('./pages/DedupSchools'))
@@ -83,6 +84,7 @@ function App() {
             <Route path="/admin/import" element={session ? <ImportCoaches session={session} /> : <AdminLogin />} />
             <Route path="/admin/events/:eventId/matrix/:teamId" element={session ? <AttendanceMatrix session={session} /> : <AdminLogin />} />
             <Route path="/admin/games/:gameId" element={session ? <AdminGameAttendance session={session} /> : <AdminLogin />} />
+            <Route path="/admin/games/:gameId/videos" element={session ? <AdminGameVideos session={session} /> : <AdminLogin />} />
             <Route path="/admin/import-games" element={session ? <ImportGames session={session} /> : <AdminLogin />} />
             <Route path="/admin/dedup" element={session ? <DedupCoaches session={session} /> : <AdminLogin />} />
             <Route path="/admin/dedup-schools" element={session ? <DedupSchools session={session} /> : <AdminLogin />} />
