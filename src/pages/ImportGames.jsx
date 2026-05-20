@@ -98,23 +98,95 @@ export default function ImportGames({ session }) {
       'Our Score',
       'Opp Score',
     ]
+    const exampleTeamName = teams[0]?.name || 'U16 Girls ECNL'
+    const exampleEventName = events[0]?.event_name || 'Spring Showcase 2026'
+    const exampleTypeName =
+      gameTypes.find((g) => /showcase/i.test(g.name))?.name ||
+      gameTypes[0]?.name ||
+      'Showcase'
     const example = [
-      'U16 Girls ECNL',
+      exampleTeamName,
       '2026-03-15',
       '2:00 PM',
       'Example FC',
       'Home',
       'OP Main Field',
-      'Spring Showcase 2026',
-      'Showcase',
+      exampleEventName,
+      exampleTypeName,
       '',
       '',
     ]
-    const ws = utils.aoa_to_sheet([headers, example])
-    // Reasonable column widths
-    ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length + 2, 14) }))
+
+    // Games entry sheet
+    const games = utils.aoa_to_sheet([headers, example])
+    games['!cols'] = headers.map((h) => ({ wch: Math.max(h.length + 2, 16) }))
+
+    // Reference sheet listing all valid values
+    const teamNames = teams.map((t) => t.name)
+    const eventNames = events.map((e) => e.event_name)
+    const typeNames = gameTypes.map((g) => g.name)
+    const homeAway = ['Home', 'Away']
+    const maxLen = Math.max(
+      teamNames.length,
+      eventNames.length,
+      typeNames.length,
+      homeAway.length,
+      1
+    )
+    const refRows = [
+      ['Teams (valid for Team column)', 'Events (valid for Event)', 'Game Types (valid for Game Type)', 'Home/Away'],
+    ]
+    for (let i = 0; i < maxLen; i++) {
+      refRows.push([
+        teamNames[i] || '',
+        eventNames[i] || '',
+        typeNames[i] || '',
+        homeAway[i] || '',
+      ])
+    }
+    const reference = utils.aoa_to_sheet(refRows)
+    reference['!cols'] = [
+      { wch: 30 },
+      { wch: 36 },
+      { wch: 22 },
+      { wch: 12 },
+    ]
+
+    // Excel data validation: dropdowns referencing the Reference sheet
+    // Letters map: A=Team, B=Date, C=Time, D=Opponent, E=Home/Away,
+    //              F=Location, G=Event, H=Game Type, I=Our Score, J=Opp Score
+    const dv = []
+    if (teamNames.length > 0) {
+      dv.push({
+        sqref: `A2:A1000`,
+        type: 'list',
+        formula1: `=Reference!$A$2:$A$${teamNames.length + 1}`,
+      })
+    }
+    dv.push({
+      sqref: `E2:E1000`,
+      type: 'list',
+      formula1: `"Home,Away"`,
+    })
+    if (eventNames.length > 0) {
+      dv.push({
+        sqref: `G2:G1000`,
+        type: 'list',
+        formula1: `=Reference!$B$2:$B$${eventNames.length + 1}`,
+      })
+    }
+    if (typeNames.length > 0) {
+      dv.push({
+        sqref: `H2:H1000`,
+        type: 'list',
+        formula1: `=Reference!$C$2:$C$${typeNames.length + 1}`,
+      })
+    }
+    games['!dataValidations'] = dv
+
     const wb = utils.book_new()
-    utils.book_append_sheet(wb, ws, 'Games')
+    utils.book_append_sheet(wb, games, 'Games')
+    utils.book_append_sheet(wb, reference, 'Reference')
     writeFile(wb, 'op-soccer-games-template.xlsx')
   }
 
@@ -445,8 +517,9 @@ export default function ImportGames({ session }) {
                 Need a template?
               </div>
               <p className="text-xs text-blue-800 mt-0.5">
-                Download a starter Excel file with the right column headers and
-                one example row.
+                Download an Excel file pre-populated with your club's teams,
+                events, and game types as dropdown options. Includes a Reference
+                tab listing every valid value.
               </p>
             </div>
             <button
