@@ -228,6 +228,12 @@ export default function ClubDashboard() {
             >
               Help
             </Link>
+            <Link
+              to="/admin"
+              className="text-gray-400 hover:text-white px-2 py-1"
+            >
+              Admin
+            </Link>
           </div>
         </div>
         <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>

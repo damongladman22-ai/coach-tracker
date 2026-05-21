@@ -218,6 +218,9 @@ export default function EventLanding() {
               <Link to="/help?context=parent" className="text-sm text-gray-300 hover:text-white p-2 -m-2 rounded-lg">
                 Help
               </Link>
+              <Link to="/admin" className="text-sm text-gray-400 hover:text-white p-2 -m-2 rounded-lg">
+                Admin
+              </Link>
             </nav>
           </div>
           {/* Breadcrumb navigation */}
