@@ -31,7 +31,7 @@ export default function AdminLogin() {
         <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/home" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
             <OPLogo className="h-8 w-auto" />
-            <span className="font-bold">Coach Tracker</span>
+            <span className="font-bold">PitchSide</span>
           </Link>
           <Link to="/home" className="text-sm text-blue-300 hover:text-white">
             ← Club Dashboard

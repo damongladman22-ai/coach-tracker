@@ -394,7 +394,7 @@ Anyone (parents and players too) can mark coaches inactive in the Coach Director
             <Link to={isAdminContext ? "/admin" : "/home"} className="flex items-center space-x-3">
               <OPLogo className="h-10 w-10" />
               <div>
-                <h1 className="text-lg font-bold leading-tight">Coach Tracker</h1>
+                <h1 className="text-lg font-bold leading-tight">PitchSide</h1>
                 <p className="text-xs text-blue-300">Help Center</p>
               </div>
             </Link>
@@ -413,7 +413,7 @@ Anyone (parents and players too) can mark coaches inactive in the Coach Director
       <main className="max-w-3xl mx-auto px-4 py-6">
         {/* Intro */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Coach Tracker</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Welcome to PitchSide</h2>
           <p className="text-gray-600">
             This app helps track which college coaches attend your team's games at showcases and tournaments. 
             Users log attendance during games, and the data is compiled into exportable reports for recruiting follow-up.

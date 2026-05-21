@@ -139,7 +139,7 @@ export default function AdminSetup() {
         <div className="max-w-md mx-auto px-4 py-4 flex items-center justify-between">
           <Link to="/home" className="flex items-center gap-2 hover:opacity-90 transition-opacity">
             <OPLogo className="h-8 w-auto" />
-            <span className="font-bold">Coach Tracker</span>
+            <span className="font-bold">PitchSide</span>
           </Link>
         </div>
         <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
@@ -190,7 +190,7 @@ export default function AdminSetup() {
                   </svg>
                 </div>
                 <h1 className="text-2xl font-bold text-gray-800 mb-2">
-                  Welcome to Coach Tracker!
+                  Welcome to PitchSide!
                 </h1>
                 <p className="text-gray-500 text-sm">
                   Set your password to complete your account setup

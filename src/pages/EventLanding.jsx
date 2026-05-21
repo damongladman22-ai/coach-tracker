@@ -209,7 +209,7 @@ export default function EventLanding() {
           <div className="flex items-center justify-between mb-3">
             <Link to="/home" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
               <OPLogo className="h-10 w-auto" />
-              <span className="text-lg font-bold text-white hidden sm:inline">Coach Tracker</span>
+              <span className="text-lg font-bold text-white hidden sm:inline">PitchSide</span>
             </Link>
             <nav className="flex items-center gap-2">
               <Link to="/directory" className="text-sm text-gray-300 hover:text-white p-2 -m-2 rounded-lg">

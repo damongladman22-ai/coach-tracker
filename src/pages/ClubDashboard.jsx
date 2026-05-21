@@ -212,7 +212,7 @@ export default function ClubDashboard() {
             <OPLogo className="h-10 w-10" />
             <div>
               <div className="font-semibold">Ohio Premier Soccer</div>
-              <div className="text-xs text-cyan-300">College Coach Tracker</div>
+              <div className="text-xs text-cyan-300">PitchSide</div>
             </div>
           </Link>
           <div className="flex items-center gap-2 text-sm">
