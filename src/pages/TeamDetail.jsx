@@ -503,6 +503,7 @@ export default function TeamDetail({ session }) {
                 </Link>
               </div>
               <GameList
+                videoCounts={videoCounts}
                 games={eGames}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
@@ -519,6 +520,7 @@ export default function TeamDetail({ session }) {
                 Standalone games not tied to an event (league fixtures, friendlies)
               </p>
               <GameList
+                videoCounts={videoCounts}
                 games={grouped.standalone}
                 onEdit={handleEdit}
                 onDelete={handleDelete}
@@ -534,7 +536,7 @@ export default function TeamDetail({ session }) {
   )
 }
 
-function GameList({ games, onEdit, onDelete, onSaveScore, formatDate, formatTime }) {
+function GameList({ games, videoCounts = {}, onEdit, onDelete, onSaveScore, formatDate, formatTime }) {
   return (
     <div className="divide-y divide-gray-100">
       {games.map((g) => {
