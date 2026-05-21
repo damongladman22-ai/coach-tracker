@@ -14,9 +14,10 @@ import {
   completeMultipartUpload,
   abortMultipartUpload,
   generateAndUploadThumbnailFromFile,
+  generateAndUploadThumbnailFromExisting,
 } from '../lib/videoStorage'
 import VideoModal from './VideoModal'
-import VideoThumbnail from './VideoThumbnail'
+import VideoThumbnail, { invalidateThumbnailCache } from './VideoThumbnail'
 
 /**
  * VideoSection — admin UI to upload + manage videos for one game.
@@ -34,6 +35,7 @@ export default function VideoSection({ gameId }) {
   const [progress, setProgress] = useState(0)
   const [error, setError] = useState(null)
   const [playingVideoId, setPlayingVideoId] = useState(null)
+  const [thumbVersions, setThumbVersions] = useState({})
   const fileInputRef = useRef(null)
 
   useEffect(() => {
@@ -161,6 +163,19 @@ export default function VideoSection({ gameId }) {
     }
   }
 
+  const handleRegenThumb = async (videoId) => {
+    const path = await generateAndUploadThumbnailFromExisting(videoId)
+    if (!path) {
+      alert('Could not regenerate the thumbnail. Check the browser console for details.')
+      return
+    }
+    // Bust the in-memory URL cache so VideoThumbnail will fetch a fresh
+    // signed URL, and bump a version counter so the component remounts.
+    invalidateThumbnailCache(videoId)
+    setThumbVersions((v) => ({ ...v, [videoId]: (v[videoId] || 0) + 1 }))
+    await fetchVideos()
+  }
+
   return (
     <div className="bg-white rounded-lg shadow-md p-5 mt-6">
       <div className="flex justify-between items-center mb-3">
@@ -218,10 +233,11 @@ export default function VideoSection({ gameId }) {
         <div className="divide-y divide-gray-100">
           {videos.map((v) => (
             <VideoRow
-              key={v.id}
+              key={`${v.id}-${thumbVersions[v.id] || 0}`}
               video={v}
               onPlay={() => handlePlay(v.id)}
               onDelete={() => handleDelete(v.id)}
+              onRegenThumb={() => handleRegenThumb(v.id)}
             />
           ))}
         </div>
@@ -237,7 +253,8 @@ export default function VideoSection({ gameId }) {
   )
 }
 
-function VideoRow({ video, onPlay, onDelete }) {
+function VideoRow({ video, onPlay, onDelete, onRegenThumb }) {
+  const [regenerating, setRegenerating] = useState(false)
   const statusBadge = () => {
     if (video.upload_status === 'ready') return null
     const colorMap = {
@@ -253,6 +270,12 @@ function VideoRow({ video, onPlay, onDelete }) {
         {video.upload_status}
       </span>
     )
+  }
+  const handleRegen = async () => {
+    if (regenerating) return
+    setRegenerating(true)
+    await onRegenThumb()
+    setRegenerating(false)
   }
   return (
     <div className="py-3 flex items-center justify-between gap-3">
@@ -275,14 +298,24 @@ function VideoRow({ video, onPlay, onDelete }) {
             : ''}
         </div>
       </div>
-      <div className="flex gap-1 flex-shrink-0">
+      <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
         {video.upload_status === 'ready' && (
-          <button
-            onClick={onPlay}
-            className="text-cyan-700 bg-cyan-50 hover:bg-cyan-100 px-3 py-1.5 rounded text-sm font-medium"
-          >
-            Play
-          </button>
+          <>
+            <button
+              onClick={onPlay}
+              className="text-cyan-700 bg-cyan-50 hover:bg-cyan-100 px-3 py-1.5 rounded text-sm font-medium"
+            >
+              Play
+            </button>
+            <button
+              onClick={handleRegen}
+              disabled={regenerating}
+              className="text-gray-700 bg-gray-100 hover:bg-gray-200 disabled:opacity-60 disabled:cursor-wait px-3 py-1.5 rounded text-sm"
+              title="Re-extract the thumbnail frame from this video"
+            >
+              {regenerating ? 'Regenerating…' : 'Regen thumb'}
+            </button>
+          </>
         )}
         <button
           onClick={onDelete}

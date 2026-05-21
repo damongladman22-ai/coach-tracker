@@ -4,6 +4,16 @@ import { getThumbnailUrls } from '../lib/videoStorage'
 // In-memory cache so we don't refetch URLs on every render across components.
 // Keyed by videoId, value is the signed URL string.
 const urlCache = new Map()
+
+/**
+ * Drop a videoId from the URL cache so the next render fetches a fresh
+ * signed URL. Used after a thumbnail is regenerated (the file in R2 has
+ * been overwritten; the cached URL points to it but the browser may
+ * have the old bytes in its HTTP cache).
+ */
+export function invalidateThumbnailCache(videoId) {
+  urlCache.delete(videoId)
+}
 // Track in-flight batched requests to dedupe simultaneous fetches.
 let pendingBatch = null
 let pendingIds = new Set()

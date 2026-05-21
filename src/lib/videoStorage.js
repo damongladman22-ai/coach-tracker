@@ -352,7 +352,7 @@ export async function abortMultipartUpload(videoId, uploadId) {
  * should handle gracefully.
  */
 export function extractVideoThumbnail(fileOrUrl, options = {}) {
-  const { seekFraction = 0.1, maxWidth = 640, quality = 0.8 } = options
+  const { seekFraction = 0.15, maxWidth = 640, quality = 0.8 } = options
 
   return new Promise((resolve) => {
     const video = document.createElement('video')
@@ -379,19 +379,19 @@ export function extractVideoThumbnail(fileOrUrl, options = {}) {
     }
 
     let seeked = false
+    let drawn = false
 
     video.addEventListener('loadedmetadata', () => {
       if (!isFinite(video.duration) || video.duration === 0) {
-        // Some streams report 0 duration but still play; try a small seek
         video.currentTime = 1.0
       } else {
         video.currentTime = Math.max(0.5, video.duration * seekFraction)
       }
     })
 
-    video.addEventListener('seeked', () => {
-      if (seeked) return
-      seeked = true
+    const drawFrame = () => {
+      if (drawn) return
+      drawn = true
       try {
         const canvas = document.createElement('canvas')
         let w = video.videoWidth
@@ -420,13 +420,28 @@ export function extractVideoThumbnail(fileOrUrl, options = {}) {
       } catch (err) {
         fail(err.message || String(err))
       }
+    }
+
+    video.addEventListener('seeked', () => {
+      if (seeked) return
+      seeked = true
+      // Critical: 'seeked' fires when the seek completes but the frame
+      // at that timestamp isn't necessarily decoded + rendered yet, so
+      // drawing immediately can capture a stale (often black) frame.
+      // Wait for the next actually-rendered frame.
+      if (typeof video.requestVideoFrameCallback === 'function') {
+        video.requestVideoFrameCallback(() => drawFrame())
+      } else {
+        // Older Safari fallback — give the decoder ~250ms to settle
+        setTimeout(drawFrame, 250)
+      }
     })
 
     video.addEventListener('error', () => fail('video element error'))
 
     // Safety net: if extraction hangs for more than 30 seconds, give up
     setTimeout(() => {
-      if (!seeked) fail('timeout')
+      if (!drawn) fail('timeout')
     }, 30000)
   })
 }
