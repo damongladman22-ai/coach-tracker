@@ -23,6 +23,7 @@ export default function EventDetail({ session }) {
   const { eventId } = useParams()
   const [event, setEvent] = useState(null)
   const [teamsAtEvent, setTeamsAtEvent] = useState([]) // [{ team, games: [] }]
+  const [videoCounts, setVideoCounts] = useState({})
   const [availableTeams, setAvailableTeams] = useState([])
   const [gameTypes, setGameTypes] = useState([])
   const [defaultGameTypeId, setDefaultGameTypeId] = useState(null)
@@ -113,6 +114,23 @@ export default function EventDetail({ session }) {
       a.team.name.localeCompare(b.team.name)
     )
     setTeamsAtEvent(teamsList)
+
+    // Video counts per game (ready only)
+    const allGameIds = (gamesData || []).map((g) => g.id)
+    if (allGameIds.length > 0) {
+      const { data: vidData } = await supabase
+        .from('videos')
+        .select('game_id')
+        .in('game_id', allGameIds)
+        .eq('upload_status', 'ready')
+      const counts = {}
+      ;(vidData || []).forEach((v) => {
+        counts[v.game_id] = (counts[v.game_id] || 0) + 1
+      })
+      setVideoCounts(counts)
+    } else {
+      setVideoCounts({})
+    }
 
     // Fetch all teams in this event's season (for "add game" dropdown)
     const { data: allTeams } = await supabase
@@ -691,6 +709,16 @@ export default function EventDetail({ session }) {
                           <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
                             Closed
                           </span>
+                        )}
+                        {videoCounts[game.id] > 0 && (
+                          <Link
+                            to={`/admin/games/${game.id}/videos`}
+                            className="text-xs font-medium bg-purple-100 text-purple-800 hover:bg-purple-200 px-2 py-0.5 rounded inline-flex items-center gap-1"
+                            title="Manage videos"
+                          >
+                            <span aria-hidden="true">🎥</span>
+                            {videoCounts[game.id]}
+                          </Link>
                         )}
                       </span>
                       <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">

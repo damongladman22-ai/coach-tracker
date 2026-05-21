@@ -32,6 +32,7 @@ export default function TeamDetail({ session }) {
   const { teamId } = useParams()
   const [team, setTeam] = useState(null)
   const [games, setGames] = useState([])
+  const [videoCounts, setVideoCounts] = useState({})
   const [events, setEvents] = useState([]) // events in the team's season
   const [gameTypes, setGameTypes] = useState([])
   const [leagueTypeId, setLeagueTypeId] = useState(null)
@@ -94,6 +95,23 @@ export default function TeamDetail({ session }) {
         .eq('team_id', teamId)
         .order('game_date')
       setGames(gamesData || [])
+
+      // Video counts per game (ready only)
+      if (gamesData && gamesData.length > 0) {
+        const gameIds = gamesData.map((g) => g.id)
+        const { data: vidData } = await supabase
+          .from('videos')
+          .select('game_id')
+          .in('game_id', gameIds)
+          .eq('upload_status', 'ready')
+        const counts = {}
+        ;(vidData || []).forEach((v) => {
+          counts[v.game_id] = (counts[v.game_id] || 0) + 1
+        })
+        setVideoCounts(counts)
+      } else {
+        setVideoCounts({})
+      }
     }
 
     setLoading(false)
@@ -565,9 +583,14 @@ function GameList({ games, onEdit, onDelete, onSaveScore, formatDate, formatTime
               </Link>
               <Link
                 to={`/admin/games/${g.id}/videos`}
-                className="text-purple-700 bg-purple-50 hover:bg-purple-100 px-3 py-1 rounded text-sm"
+                className={`px-3 py-1 rounded text-sm ${
+                  videoCounts[g.id]
+                    ? 'text-purple-900 bg-purple-100 hover:bg-purple-200 font-medium'
+                    : 'text-purple-700 bg-purple-50 hover:bg-purple-100'
+                }`}
               >
                 Videos
+                {videoCounts[g.id] ? ` (${videoCounts[g.id]})` : ''}
               </Link>
               <button
                 onClick={() => onEdit(g)}
