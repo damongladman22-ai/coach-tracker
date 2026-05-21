@@ -13,8 +13,10 @@ import {
   uploadMultipartParts,
   completeMultipartUpload,
   abortMultipartUpload,
+  generateAndUploadThumbnailFromFile,
 } from '../lib/videoStorage'
 import VideoModal from './VideoModal'
+import VideoThumbnail from './VideoThumbnail'
 
 /**
  * VideoSection — admin UI to upload + manage videos for one game.
@@ -91,6 +93,10 @@ export default function VideoSection({ gameId }) {
       videoId = vid
       await uploadToStorage(uploadUrl, file, (frac) => setProgress(frac))
       await markVideoReady(videoId, duration)
+      // Best-effort thumbnail — don't block the UI
+      generateAndUploadThumbnailFromFile(videoId, file).then(() => {
+        fetchVideos() // refresh once thumbnail is in
+      })
       await fetchVideos()
     } catch (err) {
       console.error('Upload error:', err)
@@ -123,6 +129,10 @@ export default function VideoSection({ gameId }) {
       )
 
       await completeMultipartUpload(videoId, uploadId, parts, duration)
+      // Best-effort thumbnail — don't block the UI
+      generateAndUploadThumbnailFromFile(videoId, file).then(() => {
+        fetchVideos()
+      })
       await fetchVideos()
     } catch (err) {
       console.error('Multipart upload error:', err)
@@ -246,6 +256,9 @@ function VideoRow({ video, onPlay, onDelete }) {
   }
   return (
     <div className="py-3 flex items-center justify-between gap-3">
+      {video.upload_status === 'ready' && (
+        <VideoThumbnail videoId={video.id} size="md" />
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-gray-900 truncate">

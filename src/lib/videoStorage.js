@@ -335,6 +335,185 @@ export async function abortMultipartUpload(videoId, uploadId) {
   }
 }
 
+// ============================================================
+// Thumbnails
+// ============================================================
+
+/**
+ * Extract a still-frame thumbnail from a video file or URL using the
+ * browser's <video> element + <canvas>. Returns a JPEG Blob (~30-80KB).
+ *
+ * For Files: pass the File directly (used during upload flow).
+ * For URLs: pass a signed playback URL (used for backfill of existing
+ * videos). The video element streams only what it needs via HTTP range
+ * requests — does NOT download the whole video to extract one frame.
+ *
+ * Returns null if extraction fails (codec issues, taint, etc.) — caller
+ * should handle gracefully.
+ */
+export function extractVideoThumbnail(fileOrUrl, options = {}) {
+  const { seekFraction = 0.1, maxWidth = 640, quality = 0.8 } = options
+
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.muted = true
+    video.playsInline = true
+
+    let objectUrl = null
+    if (typeof fileOrUrl === 'string') {
+      video.crossOrigin = 'anonymous'
+      video.src = fileOrUrl
+    } else {
+      objectUrl = URL.createObjectURL(fileOrUrl)
+      video.src = objectUrl
+    }
+
+    const cleanup = () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+    const fail = (reason) => {
+      console.warn('Thumbnail extraction failed:', reason)
+      cleanup()
+      resolve(null)
+    }
+
+    let seeked = false
+
+    video.addEventListener('loadedmetadata', () => {
+      if (!isFinite(video.duration) || video.duration === 0) {
+        // Some streams report 0 duration but still play; try a small seek
+        video.currentTime = 1.0
+      } else {
+        video.currentTime = Math.max(0.5, video.duration * seekFraction)
+      }
+    })
+
+    video.addEventListener('seeked', () => {
+      if (seeked) return
+      seeked = true
+      try {
+        const canvas = document.createElement('canvas')
+        let w = video.videoWidth
+        let h = video.videoHeight
+        if (!w || !h) {
+          fail('zero video dimensions')
+          return
+        }
+        if (w > maxWidth) {
+          h = Math.round((maxWidth / w) * h)
+          w = maxWidth
+        }
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(video, 0, 0, w, h)
+        canvas.toBlob(
+          (blob) => {
+            cleanup()
+            if (blob) resolve(blob)
+            else fail('canvas toBlob returned null')
+          },
+          'image/jpeg',
+          quality
+        )
+      } catch (err) {
+        fail(err.message || String(err))
+      }
+    })
+
+    video.addEventListener('error', () => fail('video element error'))
+
+    // Safety net: if extraction hangs for more than 30 seconds, give up
+    setTimeout(() => {
+      if (!seeked) fail('timeout')
+    }, 30000)
+  })
+}
+
+/**
+ * Upload a thumbnail Blob for an existing video. Mints a signed PUT URL
+ * for the thumbnail path, uploads the Blob, then patches the videos
+ * row to set thumbnail_path. Returns the storage path on success, null
+ * on any failure (thumbnail upload is best-effort, never block on it).
+ */
+export async function uploadThumbnail(videoId, blob) {
+  try {
+    const headers = await authHeader()
+    const res = await fetch('/api/video/thumbnail-upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({ videoId }),
+    })
+    if (!res.ok) throw new Error(`thumbnail-upload-url ${res.status}`)
+    const { uploadUrl, thumbnailPath } = await res.json()
+
+    const putRes = await fetch(uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'image/jpeg' },
+      body: blob,
+    })
+    if (!putRes.ok) throw new Error(`R2 PUT ${putRes.status}`)
+
+    const { error } = await supabase
+      .from('videos')
+      .update({ thumbnail_path: thumbnailPath })
+      .eq('id', videoId)
+    if (error) throw error
+
+    return thumbnailPath
+  } catch (err) {
+    console.warn('Thumbnail upload failed (non-fatal):', err)
+    return null
+  }
+}
+
+/**
+ * Generate + upload a thumbnail for a fresh video file. Used immediately
+ * after upload completes. Best-effort: failures are logged and ignored.
+ */
+export async function generateAndUploadThumbnailFromFile(videoId, file) {
+  const blob = await extractVideoThumbnail(file)
+  if (!blob) return null
+  return uploadThumbnail(videoId, blob)
+}
+
+/**
+ * Generate + upload a thumbnail for an existing video by streaming it
+ * from R2 via a signed URL. Used for backfill of videos uploaded before
+ * thumbnails existed.
+ */
+export async function generateAndUploadThumbnailFromExisting(videoId) {
+  try {
+    const { url } = await getPlaybackUrl(videoId)
+    const blob = await extractVideoThumbnail(url)
+    if (!blob) return null
+    return await uploadThumbnail(videoId, blob)
+  } catch (err) {
+    console.warn('Backfill thumbnail failed:', err)
+    return null
+  }
+}
+
+/**
+ * Batch fetch signed thumbnail URLs for a set of videoIds.
+ * Returns { [videoId]: url }. Videos without thumbnails are omitted.
+ */
+export async function getThumbnailUrls(videoIds) {
+  if (!videoIds || videoIds.length === 0) return {}
+  const res = await fetch('/api/video/thumbnail-urls', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoIds }),
+  })
+  if (!res.ok) {
+    console.warn('Thumbnail URLs request failed:', res.status)
+    return {}
+  }
+  const { urls } = await res.json()
+  return urls || {}
+}
+
 /**
  * Try to read video duration from a file (client-side, using a hidden
  * <video> element). Returns null if it fails.

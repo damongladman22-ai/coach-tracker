@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { getDownloadUrl, buildVideoFilename } from '../lib/videoStorage'
 import VideoModal from './VideoModal'
+import VideoThumbnail from './VideoThumbnail'
 
 /**
  * GameVideosPanel — inline parent-facing video list for one game.
@@ -62,16 +63,19 @@ export default function GameVideosPanel({ videos, game, teamName }) {
           return (
             <div
               key={v.id}
-              className="bg-white rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+              className="bg-white rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
             >
-              <div className="min-w-0 flex-1">
-                <div className="font-medium text-gray-900 text-sm truncate">
-                  {v.title || 'Video'}
-                </div>
-                <div className="text-xs text-gray-500 mt-0.5">
-                  {durationMin ? `${durationMin} min` : null}
-                  {durationMin && sizeGB ? ' · ' : null}
-                  {sizeGB ? `${sizeGB} GB` : null}
+              <div className="flex items-center gap-3 min-w-0 flex-1">
+                <VideoThumbnail videoId={v.id} size="lg" />
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium text-gray-900 text-sm truncate">
+                    {v.title || 'Video'}
+                  </div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {durationMin ? `${durationMin} min` : null}
+                    {durationMin && sizeGB ? ' · ' : null}
+                    {sizeGB ? `${sizeGB} GB` : null}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-2 flex-shrink-0">

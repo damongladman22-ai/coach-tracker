@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getPublicBaseUrl } from '../lib/publicUrl'
 import AdminLayout from '../components/AdminLayout'
+import ThumbnailBackfill from '../components/ThumbnailBackfill'
 
 export default function AdminDashboard({ session }) {
   const [copied, setCopied] = useState(false)
@@ -122,6 +123,8 @@ export default function AdminDashboard({ session }) {
           </Link>
         </div>
       </div>
+
+      <ThumbnailBackfill scope="all" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <Link

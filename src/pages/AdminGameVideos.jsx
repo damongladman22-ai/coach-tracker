@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import { gameResult } from '../components/ScoreInput'
 import VideoSection from '../components/VideoSection'
+import ThumbnailBackfill from '../components/ThumbnailBackfill'
 
 /**
  * Admin Game Videos — manage video uploads on any single game.
@@ -112,6 +113,7 @@ export default function AdminGameVideos({ session }) {
         </div>
       </div>
 
+      <ThumbnailBackfill scope={{ gameId }} />
       <VideoSection gameId={gameId} />
     </AdminLayout>
   )

@@ -41,7 +41,7 @@ export default async function handler(req, res) {
   // Look up the video so we know what to delete from R2
   const { data: video, error: lookupErr } = await supabase
     .from('videos')
-    .select('id, storage_path')
+    .select('id, storage_path, thumbnail_path')
     .eq('id', videoId)
     .maybeSingle()
   if (lookupErr) {
@@ -51,26 +51,33 @@ export default async function handler(req, res) {
     return res.status(404).json({ error: 'Video not found' })
   }
 
-  // Best-effort R2 delete. If it fails we log and continue.
+  // Best-effort R2 deletes. If they fail we log and continue.
   let r2DeleteWarning = null
+  const s3 = new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+  })
+  const toDelete = []
   if (video.storage_path && video.storage_path !== 'pending') {
+    toDelete.push(video.storage_path)
+  }
+  if (video.thumbnail_path) {
+    toDelete.push(video.thumbnail_path)
+  }
+  for (const key of toDelete) {
     try {
-      const s3 = new S3Client({
-        region: 'auto',
-        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-        },
-      })
       await s3.send(
         new DeleteObjectCommand({
           Bucket: process.env.R2_BUCKET_NAME,
-          Key: video.storage_path,
+          Key: key,
         })
       )
     } catch (err) {
-      console.error('R2 delete failed (continuing):', err)
+      console.error(`R2 delete failed for ${key} (continuing):`, err)
       r2DeleteWarning = err.message
     }
   }
