@@ -177,16 +177,37 @@ export default function Teams({ session }) {
   }
 
   const handleDelete = async (team) => {
+    const gameCount = teamGameCounts[team.id] || 0
+
+    if (gameCount > 0) {
+      alert(
+        `Cannot delete "${team.name}" — this team has ${gameCount} game${gameCount === 1 ? '' : 's'} attached.\n\n` +
+          `To delete this team, first either:\n` +
+          `  • Delete each game from the team's Schedule page, or\n` +
+          `  • Reassign them to another team via the database.\n\n` +
+          `(This protects against accidentally wiping a season of games — a deleted team is irreversible.)`
+      )
+      return
+    }
+
     if (
       !confirm(
-        `Delete team "${team.name}"? This will also delete all games, attendance, and videos for this team. This cannot be undone.`
+        `Delete team "${team.name}"? This will also remove any attendance records and videos. This cannot be undone.`
       )
     )
       return
 
     const { error } = await supabase.from('teams').delete().eq('id', team.id)
     if (error) {
-      alert('Could not delete team: ' + error.message)
+      // FK violation will surface here if games got added between the check and the delete
+      if (error.code === '23503' || /foreign key/i.test(error.message || '')) {
+        alert(
+          `Could not delete "${team.name}" — games are still attached.\n\n` +
+            `Refresh the page and try again, deleting any games first.`
+        )
+      } else {
+        alert('Could not delete team: ' + error.message)
+      }
       return
     }
     fetchTeams()
