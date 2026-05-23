@@ -236,26 +236,13 @@ export default function EventLanding() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Event Stats */}
-        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Event Overview</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-center">
-            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
-              <div className="text-2xl sm:text-3xl font-bold text-gray-800">{eventTeams.length}</div>
-              <div className="text-xs sm:text-sm text-gray-500">Teams</div>
-            </div>
-            <div className="bg-cyan-50 rounded-lg p-3 sm:p-4">
-              <div className="text-2xl sm:text-3xl font-bold text-cyan-600">{totalStats.games}</div>
-              <div className="text-xs sm:text-sm text-gray-500">Games</div>
-            </div>
-            <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
-              <div className="text-2xl sm:text-3xl font-bold text-blue-600">{totalStats.schools}</div>
-              <div className="text-xs sm:text-sm text-gray-500">Colleges</div>
-            </div>
-            <div className="bg-purple-50 rounded-lg p-3 sm:p-4">
-              <div className="text-2xl sm:text-3xl font-bold text-purple-600">{totalStats.coaches}</div>
-              <div className="text-xs sm:text-sm text-gray-500">Coaches</div>
-            </div>
+        {/* Compact stat row — replaces the old Event Overview card */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-5">
+          <div className="grid grid-cols-4 gap-2">
+            <CompactStat value={eventTeams.length} label="Teams" />
+            <CompactStat value={totalStats.games} label="Games" />
+            <CompactStat value={totalStats.schools} label="Colleges" />
+            <CompactStat value={totalStats.coaches} label="Coaches" />
           </div>
         </div>
 
@@ -331,6 +318,24 @@ export default function EventLanding() {
 
       {/* Feedback Button */}
       <FeedbackButton />
+    </div>
+  );
+}
+
+/**
+ * CompactStat — single value+label cell used in the tightened header stat row.
+ * Same shape as the CompactStat on ParentSummary and HeaderStat on the team
+ * page so the parent flow looks uniform.
+ */
+function CompactStat({ value, label }) {
+  return (
+    <div className="text-center">
+      <div className="text-xl sm:text-2xl font-bold text-gray-900 leading-none tabular-nums">
+        {value}
+      </div>
+      <div className="text-[10px] sm:text-xs uppercase tracking-wider text-gray-500 mt-1">
+        {label}
+      </div>
     </div>
   );
 }

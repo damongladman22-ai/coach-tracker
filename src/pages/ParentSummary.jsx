@@ -690,17 +690,6 @@ export default function ParentSummary() {
                   <span>📍 {eventTeam.events.location}</span>
                 )}
               </div>
-
-              {/* Team identity - secondary */}
-              <div className="mt-3 pt-3 border-t border-gray-700 text-sm text-gray-300">
-                Attendance Summary for{' '}
-                <Link
-                  to={`/t/${teamSlug}`}
-                  className="font-semibold text-white hover:text-cyan-300"
-                >
-                  {eventTeam?.club_teams?.team_name}
-                </Link>
-              </div>
             </div>
             <HamburgerMenu />
           </div>
@@ -708,22 +697,12 @@ export default function ParentSummary() {
       </div>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
-        {/* Stats Summary */}
-        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-6">
-          <h2 className="text-lg font-semibold mb-4">Attendance Summary</h2>
-          <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
-            <div className="bg-cyan-50 rounded-lg p-3 sm:p-4">
-              <div className="text-2xl sm:text-3xl font-bold text-cyan-600">{games.length}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Games</div>
-            </div>
-            <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
-              <div className="text-2xl sm:text-3xl font-bold text-blue-600">{uniqueSchools}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Colleges</div>
-            </div>
-            <div className="bg-purple-50 rounded-lg p-3 sm:p-4">
-              <div className="text-2xl sm:text-3xl font-bold text-purple-600">{uniqueCoaches}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Coaches</div>
-            </div>
+        {/* Compact stat row — replaces the old Stats Summary card */}
+        <div className="bg-white rounded-lg shadow-md p-4 mb-5">
+          <div className="grid grid-cols-3 gap-2">
+            <CompactStat value={games.length} label="Games" />
+            <CompactStat value={uniqueSchools} label="Colleges" />
+            <CompactStat value={uniqueCoaches} label="Coaches" />
           </div>
         </div>
 
@@ -1041,6 +1020,24 @@ function GameCardWithVideos({
             ))}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * CompactStat — single value+label cell used in the tightened header stat row.
+ * Matches the visual pattern from PublicTeamPage so the parent flow feels
+ * consistent across team page, summary, and event landing.
+ */
+function CompactStat({ value, label }) {
+  return (
+    <div className="text-center">
+      <div className="text-xl sm:text-2xl font-bold text-gray-900 leading-none tabular-nums">
+        {value}
+      </div>
+      <div className="text-[10px] sm:text-xs uppercase tracking-wider text-gray-500 mt-1">
+        {label}
       </div>
     </div>
   );
