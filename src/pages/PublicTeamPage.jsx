@@ -8,6 +8,7 @@ import VideoThumbnail from '../components/VideoThumbnail'
 import GameVideosPanel from '../components/GameVideosPanel'
 import FeedbackButton from '../components/FeedbackButton'
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
+import { useFavorite } from '../hooks/useFavorite'
 
 /**
  * Public Team Page at /t/:teamSlug
@@ -24,7 +25,7 @@ import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
  * Sprint 2 changes:
  *  - Old Upcoming/Past split replaced with Games + Events tabs
  *  - Game rows show prominent video thumbnails (replacing the small VideoBadge pill)
- *  - Subtle 🎓 N indicator on game rows where coaches have logged attendance
+ *  - Subtle "N colleges" indicator on game rows where coaches have logged attendance
  *  - Events tab gives a per-event scorecard view, drilling into the existing
  *    /e/:eventSlug/:teamSlug page for game-day flows
  */
@@ -37,6 +38,7 @@ export default function PublicTeamPage() {
   const [attendance, setAttendance] = useState([])
   const [activeTab, setActiveTab] = useState('games') // 'games' | 'events'
   const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
+  const [isFavorite, setFavorite] = useFavorite(team?.id)
 
   useEffect(() => {
     load()
@@ -114,7 +116,7 @@ export default function PublicTeamPage() {
     }
   }, [games, attendance])
 
-  // Unique school count per game — drives the 🎓 N indicator on each row.
+  // Unique school count per game — drives the "N colleges" indicator on each row.
   // Using schools (not coaches) because recruiting parents care more about
   // "how many programs scouted this game" than "how many bodies showed up."
   const schoolsByGame = useMemo(() => {
@@ -258,48 +260,56 @@ export default function PublicTeamPage() {
           </div>
         ) : (
           <>
-            {/* Identity card */}
-            <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-              <h1 className="text-3xl font-bold text-gray-900">{team.name}</h1>
-              <p className="text-gray-600 mt-1">
-                {team.age_groups?.name} · {team.gender} · {team.programs?.name}
-              </p>
-              <p className="text-xs text-gray-400 mt-2">
-                Season: {team.seasons?.name}
-              </p>
-            </div>
-
-            {/* Season record */}
+            {/* Compact team header — replaces the old Identity / Season Record /
+                Stats stack so the first game is visible above the fold on phones */}
             {(() => {
               const r = computeRecord(games)
-              if (r.played === 0) return null
               return (
-                <div className="bg-white rounded-lg shadow-md p-5 mb-6">
-                  <div className="text-xs uppercase tracking-wide text-gray-500 mb-3">
-                    Season Record
+                <div className="bg-white rounded-lg shadow-md p-4 sm:p-5 mb-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
+                        {team.name}
+                      </h1>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {team.age_groups?.name} · {team.gender} ·{' '}
+                        {team.programs?.name}
+                      </p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {team.seasons?.name}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setFavorite(!isFavorite)}
+                      aria-label={
+                        isFavorite
+                          ? 'Remove from My Teams'
+                          : 'Add to My Teams'
+                      }
+                      aria-pressed={isFavorite}
+                      className="flex-shrink-0 p-2 -m-2 rounded-full hover:bg-gray-100 active:bg-gray-200"
+                    >
+                      <StarIcon filled={isFavorite} />
+                    </button>
                   </div>
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-x-2 gap-y-4 sm:gap-y-0">
-                    <RecordStat value={r.played} label="GP" />
-                    <RecordStat value={r.wins} label="W" />
-                    <RecordStat value={r.losses} label="L" />
-                    <RecordStat value={r.ties} label="D" />
-                    <RecordStat value={r.gf} label="GF" />
-                    <RecordStat value={r.ga} label="GA" />
-                    <RecordStat
-                      value={`${r.gd > 0 ? '+' : ''}${r.gd}`}
-                      label="GD"
-                    />
-                  </div>
+                  {r.played > 0 && (
+                    <div className="grid grid-cols-7 gap-1 sm:gap-2 pt-3 mt-3 border-t border-gray-100">
+                      <HeaderStat value={r.played} label="GP" />
+                      <HeaderStat value={r.wins} label="W" />
+                      <HeaderStat value={r.losses} label="L" />
+                      <HeaderStat value={r.ties} label="D" />
+                      <HeaderStat value={r.gf} label="GF" />
+                      <HeaderStat value={r.ga} label="GA" />
+                      <HeaderStat
+                        value={`${r.gd > 0 ? '+' : ''}${r.gd}`}
+                        label="GD"
+                      />
+                    </div>
+                  )}
                 </div>
               )
             })()}
-
-            {/* Stats */}
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              <StatCard label="Games" value={stats.games} />
-              <StatCard label="Schools" value={stats.schools} />
-              <StatCard label="Coaches" value={stats.coaches} />
-            </div>
 
             {/* Tabs + tab content */}
             {games.length === 0 ? (
@@ -364,9 +374,17 @@ export default function PublicTeamPage() {
             {/* Top colleges */}
             {topColleges.length > 0 && (
               <>
-                <h2 className="text-xl font-semibold text-gray-800 mb-3">
-                  Colleges Watching This Team
-                </h2>
+                <div className="mb-3">
+                  <h2 className="text-xl font-semibold text-gray-800">
+                    Colleges Watching This Team
+                  </h2>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {stats.schools}{' '}
+                    {stats.schools === 1 ? 'school' : 'schools'} ·{' '}
+                    {stats.coaches}{' '}
+                    {stats.coaches === 1 ? 'coach' : 'coaches'} across all games
+                  </p>
+                </div>
                 <div className="bg-white rounded-lg shadow-md overflow-hidden mb-8">
                   <table className="w-full">
                     <thead className="bg-gray-50">
@@ -425,29 +443,48 @@ export default function PublicTeamPage() {
   )
 }
 
-function StatCard({ label, value }) {
+function HeaderStat({ value, label }) {
   return (
-    <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 text-center">
-      <div className="text-2xl sm:text-3xl font-bold text-gray-900 tabular-nums">
+    <div className="text-center">
+      <div className="text-base sm:text-lg font-bold text-gray-900 leading-none tabular-nums">
         {value}
       </div>
-      <div className="text-[10px] sm:text-xs uppercase tracking-wide text-gray-500 mt-1">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">
         {label}
       </div>
     </div>
   )
 }
 
-function RecordStat({ value, label }) {
+function StarIcon({ filled }) {
+  if (filled) {
+    return (
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        className="text-amber-400"
+        aria-hidden="true"
+      >
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+      </svg>
+    )
+  }
   return (
-    <div className="text-center">
-      <div className="text-[10px] sm:text-xs uppercase tracking-wider text-gray-500 font-medium">
-        {label}
-      </div>
-      <div className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none mt-1 tabular-nums">
-        {value}
-      </div>
-    </div>
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinejoin="round"
+      className="text-gray-400"
+      aria-hidden="true"
+    >
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+    </svg>
   )
 }
 
@@ -486,7 +523,7 @@ function TabButton({ active, onClick, children }) {
  *                                      [action button (if applicable)]
  *
  * Content lines:
- *   1. Date + result badge + status + 🎓 N indicator
+ *   1. Date + result badge + status + "N colleges" indicator
  *   2. Time · vs/at opponent
  *   3. Event context (or game type) + location
  *
@@ -575,13 +612,12 @@ function GameCard({
             )}
             {schoolsCount > 0 && (
               <span
-                className="inline-flex items-center gap-0.5 text-xs text-purple-700"
+                className="text-xs text-purple-700 font-medium"
                 title={`${schoolsCount} ${
-                  schoolsCount === 1 ? 'school' : 'schools'
+                  schoolsCount === 1 ? 'college' : 'colleges'
                 } attended`}
               >
-                <span aria-hidden="true">🎓</span>
-                {schoolsCount}
+                {schoolsCount} {schoolsCount === 1 ? 'college' : 'colleges'}
               </span>
             )}
           </div>
@@ -726,8 +762,8 @@ function EventCard({ event, games, attendance, teamSlug }) {
           </>
         )}
         {schoolsCount > 0 && (
-          <span className="inline-flex items-center gap-0.5 text-purple-700 ml-auto whitespace-nowrap">
-            <span aria-hidden="true">🎓</span> {schoolsCount}
+          <span className="text-purple-700 font-medium ml-auto whitespace-nowrap">
+            {schoolsCount} {schoolsCount === 1 ? 'college' : 'colleges'}
           </span>
         )}
       </div>
