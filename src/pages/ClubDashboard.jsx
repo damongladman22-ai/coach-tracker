@@ -6,6 +6,7 @@ import OPLogo from '../components/OPLogo'
 import FeedbackButton from '../components/FeedbackButton'
 import SeasonSelector from '../components/SeasonSelector'
 import HamburgerMenu from '../components/HamburgerMenu'
+import PullToRefresh from '../components/PullToRefresh'
 import { computeRecord } from '../components/ScoreInput'
 import { useFavorite, useFavorites } from '../hooks/useFavorite'
 
@@ -246,8 +247,13 @@ export default function ClubDashboard() {
   }, [teams])
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-slate-900 text-white">
+    <PullToRefresh
+      onRefresh={async () => {
+        if (selectedSeason?.id) await load(selectedSeason.id)
+      }}
+    >
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-slate-900 text-white">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
           <Link to="/home" className="flex items-center gap-3 hover:opacity-80">
             <OPLogo className="h-10 w-10" />
@@ -397,8 +403,9 @@ export default function ClubDashboard() {
         )}
       </main>
 
-      <FeedbackButton pageContext="club-dashboard" />
-    </div>
+        <FeedbackButton pageContext="club-dashboard" />
+      </div>
+    </PullToRefresh>
   )
 }
 

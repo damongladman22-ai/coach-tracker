@@ -8,6 +8,7 @@ import VideoThumbnail from '../components/VideoThumbnail'
 import GameVideosPanel from '../components/GameVideosPanel'
 import FeedbackButton from '../components/FeedbackButton'
 import HamburgerMenu from '../components/HamburgerMenu'
+import PullToRefresh from '../components/PullToRefresh'
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
 import { useFavorite } from '../hooks/useFavorite'
 
@@ -219,8 +220,9 @@ export default function PublicTeamPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-slate-900 text-white">
+    <PullToRefresh onRefresh={async () => { await load() }}>
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-slate-900 text-white">
         <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
           <Link to="/home" className="flex items-center gap-3 hover:opacity-80">
             <OPLogo className="h-10 w-10" />
@@ -429,8 +431,9 @@ export default function PublicTeamPage() {
           </>
         )}
       </main>
-      <FeedbackButton />
-    </div>
+        <FeedbackButton />
+      </div>
+    </PullToRefresh>
   )
 }
 
