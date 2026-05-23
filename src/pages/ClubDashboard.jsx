@@ -12,11 +12,12 @@ import { computeRecord } from '../components/ScoreInput'
  *
  * The new mental model:
  *  - Teams are the primary unit (each team is identity + season schedule)
- *  - Events are a secondary view ("happening now", "upcoming")
- *  - Past events tucked into an archive
- *  - Parents pick a season via the SeasonSelector at the top — teams and
- *    events both filter to whichever year is selected. Defaults to the
- *    DB-active season on first visit.
+ *  - Events are no longer displayed as separate rails — team cards surface
+ *    their event context via the live badge and (coming next) a next-game
+ *    one-liner
+ *  - Parents pick a season via the SeasonSelector at the top — teams
+ *    filter to whichever year is selected. Defaults to the DB-active
+ *    season on first visit.
  *
  * Filter/sort controls let the user pick how to organize the team list.
  */
@@ -32,7 +33,6 @@ export default function ClubDashboard() {
   const [groupBy, setGroupBy] = useState('age') // 'age' | 'program' | 'none'
   const [filterProgram, setFilterProgram] = useState('all')
   const [filterGender, setFilterGender] = useState('all')
-  const [showPast, setShowPast] = useState(false)
 
   // Reload teams + events whenever the selected season changes. The selector
   // fires its initial onChange with the active season once seasons load, so
@@ -181,12 +181,6 @@ export default function ClubDashboard() {
       .map(([label, v]) => ({ label, teams: v.teams }))
   }, [filteredTeams, groupBy])
 
-  // Categorized events
-  const { active: activeEvents, upcoming, past } = useMemo(
-    () => categorizeEvents(events),
-    [events]
-  )
-
   // Unique programs/genders in current teams for filter options
   const availablePrograms = useMemo(() => {
     const m = new Map()
@@ -255,36 +249,6 @@ export default function ClubDashboard() {
           <ErrorMessage error={error} onRetry={() => load(selectedSeason.id)} />
         ) : (
           <>
-            {/* Active event banner */}
-            {activeEvents.length > 0 && (
-              <section className="mb-6">
-                {activeEvents.map((ev) => (
-                  <div
-                    key={ev.id}
-                    className="bg-gradient-to-r from-emerald-500 to-cyan-600 text-white rounded-lg shadow-lg p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-                  >
-                    <div>
-                      <div className="flex items-center gap-2 text-xs uppercase tracking-wider opacity-90">
-                        <span className="h-2 w-2 rounded-full bg-white animate-pulse"></span>
-                        Happening Now
-                      </div>
-                      <h2 className="text-xl font-bold mt-1">{ev.event_name}</h2>
-                      <p className="text-sm opacity-90 mt-0.5">
-                        {formatDateRange(ev.start_date, ev.end_date)}
-                        {ev.location ? ` · ${ev.location}` : ''}
-                      </p>
-                    </div>
-                    <Link
-                      to={`/e/${ev.slug}`}
-                      className="bg-white text-emerald-700 font-semibold px-4 py-2 rounded-lg hover:bg-gray-100 self-start sm:self-auto"
-                    >
-                      Open Event →
-                    </Link>
-                  </div>
-                ))}
-              </section>
-            )}
-
             {/* Teams section */}
             <section className="mb-8">
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
@@ -380,40 +344,6 @@ export default function ClubDashboard() {
                 </div>
               )}
             </section>
-
-            {/* Upcoming events */}
-            {upcoming.length > 0 && (
-              <section className="mb-6">
-                <h2 className="text-lg font-semibold text-gray-800 mb-3">
-                  Upcoming Events
-                </h2>
-                <div className="space-y-2">
-                  {upcoming.map((ev) => (
-                    <EventCard key={ev.id} event={ev} />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* Past events (collapsed) */}
-            {past.length > 0 && (
-              <section className="mb-6">
-                <button
-                  onClick={() => setShowPast((s) => !s)}
-                  className="text-sm text-gray-600 hover:text-gray-800 flex items-center gap-1"
-                >
-                  <span>{showPast ? '▾' : '▸'}</span>
-                  Past Events ({past.length})
-                </button>
-                {showPast && (
-                  <div className="mt-3 space-y-2">
-                    {past.map((ev) => (
-                      <EventCard key={ev.id} event={ev} compact />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
           </>
         )}
       </main>
@@ -479,59 +409,9 @@ function MiniStat({ value, label }) {
   )
 }
 
-function EventCard({ event, compact }) {
-  return (
-    <Link
-      to={`/e/${event.slug}`}
-      className={`block bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow ${
-        compact ? 'p-3' : 'p-4'
-      } border border-gray-100`}
-    >
-      <div className="flex justify-between items-start gap-3">
-        <div>
-          <div className="font-medium text-gray-900">{event.event_name}</div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            {formatDateRange(event.start_date, event.end_date)}
-            {event.location ? ` · ${event.location}` : ''}
-          </div>
-        </div>
-        <span className="text-sm text-blue-600">→</span>
-      </div>
-    </Link>
-  )
-}
-
-function categorizeEvents(events) {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const active = []
-  const upcoming = []
-  const past = []
-  events.forEach((ev) => {
-    const start = parseDate(ev.start_date)
-    const end = ev.end_date ? parseDate(ev.end_date) : start
-    const endInc = new Date(end)
-    endInc.setDate(endInc.getDate() + 1)
-    if (today >= start && today < endInc) active.push(ev)
-    else if (start > today) upcoming.push(ev)
-    else past.push(ev)
-  })
-  upcoming.sort((a, b) => parseDate(a.start_date) - parseDate(b.start_date))
-  return { active, upcoming, past }
-}
-
 function parseDate(s) {
   if (!s) return new Date()
   const [y, m, d] = s.split('-')
   return new Date(y, m - 1, d)
 }
 
-function formatDateRange(start, end) {
-  const s = parseDate(start)
-  const e = end ? parseDate(end) : s
-  const opts = { month: 'short', day: 'numeric' }
-  const startStr = s.toLocaleDateString('en-US', opts)
-  if (!end || end === start) return startStr
-  const endStr = e.toLocaleDateString('en-US', opts)
-  return `${startStr} – ${endStr}`
-}
