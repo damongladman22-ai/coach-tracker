@@ -16,18 +16,27 @@ import { listSeasons } from '../lib/season'
  *
  * Behavior:
  *  - Loads seasons via listSeasons() on mount (cached at the lib level)
- *  - If no `value` passed, auto-selects the DB-active season and emits
- *    onChange so the parent sees the initial state immediately.
- *  - Tap trigger → sheet slides up from bottom with all seasons.
+ *  - If no `value` passed AND allowAll is false, auto-selects the DB-active
+ *    season and emits onChange so the parent sees the initial state immediately.
+ *  - When allowAll is true, "All Seasons" is rendered at the top of the sheet;
+ *    selecting it fires onChange(null). The admin Events page uses this to
+ *    let admins see events across all seasons.
  *  - Tap a season → fires onChange(seasonRecord) and closes after a brief
  *    delay so the checkmark animation registers.
  *
  * Props:
- *  - value:    selected season record (null/undefined → use active)
- *  - onChange: (seasonRecord) => void
+ *  - value:    selected season record (null = "All Seasons" when allowAll)
+ *  - onChange: (seasonRecord | null) => void
  *  - variant:  'parent' | 'admin'  (default 'parent')
+ *  - allowAll: boolean, default false. When true, adds an "All Seasons" option
+ *              and skips the auto-select-active behavior (parent controls value)
  */
-export default function SeasonSelector({ value, onChange, variant = 'parent' }) {
+export default function SeasonSelector({
+  value,
+  onChange,
+  variant = 'parent',
+  allowAll = false,
+}) {
   const [open, setOpen] = useState(false)
   const [seasons, setSeasons] = useState([])
   const [loading, setLoading] = useState(true)
@@ -41,8 +50,10 @@ export default function SeasonSelector({ value, onChange, variant = 'parent' }) 
       setSeasons(list)
       setLoading(false)
 
-      // Auto-select active season on first load if parent hasn't chosen yet
-      if (!value && !hasAutoSelected && list.length > 0) {
+      // Auto-select active season on first load if parent hasn't chosen yet.
+      // Skipped when allowAll is set — the parent owns initial value entirely
+      // (it may legitimately want to start at null / "All Seasons").
+      if (!allowAll && !value && !hasAutoSelected && list.length > 0) {
         const active = list.find((s) => s.is_active) || list[0]
         if (active) {
           onChange?.(active)
@@ -73,8 +84,12 @@ export default function SeasonSelector({ value, onChange, variant = 'parent' }) 
     }
   }, [open])
 
-  const displayed =
-    value || seasons.find((s) => s.is_active) || seasons[0] || null
+  // When allowAll is enabled and the parent explicitly set value=null,
+  // we want to show "All Seasons" rather than falling back to active.
+  const allSeasonsSelected = allowAll && value === null
+  const displayed = allSeasonsSelected
+    ? null
+    : value || seasons.find((s) => s.is_active) || seasons[0] || null
 
   const handleSelect = (season) => {
     onChange?.(season)
@@ -86,6 +101,7 @@ export default function SeasonSelector({ value, onChange, variant = 'parent' }) 
       <SelectorTrigger
         variant={variant}
         season={displayed}
+        allSeasonsSelected={allSeasonsSelected}
         loading={loading}
         disabled={!loading && seasons.length === 0}
         onClick={() => setOpen(true)}
@@ -159,8 +175,54 @@ export default function SeasonSelector({ value, onChange, variant = 'parent' }) 
               </div>
             ) : (
               <ul className="space-y-1">
+                {allowAll && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(null)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
+                        allSeasonsSelected
+                          ? 'bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200'
+                          : 'hover:bg-gray-50 active:bg-gray-100'
+                      }`}
+                      style={{ minHeight: 56 }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={`truncate text-base font-medium ${
+                            allSeasonsSelected
+                              ? 'text-cyan-900'
+                              : 'text-gray-900'
+                          }`}
+                        >
+                          All Seasons
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-500">
+                          Show across every year
+                        </div>
+                      </div>
+                      {allSeasonsSelected && (
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="text-cyan-600 flex-shrink-0"
+                          aria-hidden="true"
+                        >
+                          <path d="M20 6 9 17l-5-5" />
+                        </svg>
+                      )}
+                    </button>
+                  </li>
+                )}
                 {seasons.map((season) => {
-                  const isSelected = displayed?.id === season.id
+                  const isSelected =
+                    !allSeasonsSelected && displayed?.id === season.id
                   const isActive = !!season.is_active
                   return (
                     <li key={season.id}>
@@ -225,8 +287,21 @@ export default function SeasonSelector({ value, onChange, variant = 'parent' }) 
 /**
  * The button that opens the sheet. Visual differs by variant.
  */
-function SelectorTrigger({ variant, season, loading, disabled, onClick }) {
-  const label = loading ? 'Loading…' : season ? season.name : 'No seasons'
+function SelectorTrigger({
+  variant,
+  season,
+  allSeasonsSelected,
+  loading,
+  disabled,
+  onClick,
+}) {
+  const label = loading
+    ? 'Loading…'
+    : allSeasonsSelected
+    ? 'All Seasons'
+    : season
+    ? season.name
+    : 'No seasons'
 
   if (variant === 'admin') {
     return (

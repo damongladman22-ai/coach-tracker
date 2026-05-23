@@ -2,8 +2,9 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import SeasonSelector from '../components/SeasonSelector'
 import { getCurrentClubId } from '../lib/club'
-import { listSeasons, getActiveSeason } from '../lib/season'
+import { getActiveSeason } from '../lib/season'
 import {
   getPrograms,
   getAgeGroups,
@@ -21,15 +22,15 @@ import {
  *
  * Name and slug are auto-generated from those fields.
  *
- * Filter by season at the top of the page. Default to active season.
+ * Filter by season at the top of the page using the admin-variant
+ * SeasonSelector. Defaults to active season; admin can pick any.
  */
 export default function Teams({ session }) {
   const [teams, setTeams] = useState([])
   const [teamGameCounts, setTeamGameCounts] = useState({}) // { teamId: count }
-  const [seasons, setSeasons] = useState([])
   const [programs, setPrograms] = useState([])
   const [ageGroups, setAgeGroups] = useState([])
-  const [selectedSeasonId, setSelectedSeasonId] = useState(null)
+  const [selectedSeason, setSelectedSeason] = useState(null)
   const [clubId, setClubId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -45,26 +46,23 @@ export default function Teams({ session }) {
   }, [])
 
   useEffect(() => {
-    if (selectedSeasonId && clubId) {
+    if (selectedSeason?.id && clubId) {
       fetchTeams()
     }
-  }, [selectedSeasonId, clubId])
+  }, [selectedSeason?.id, clubId])
 
   const initialize = async () => {
-    const [cid, seasonsList, programsList, ageGroupsList, activeSeason] =
-      await Promise.all([
-        getCurrentClubId(),
-        listSeasons(),
-        getPrograms(),
-        getAgeGroups(),
-        getActiveSeason(),
-      ])
+    const [cid, programsList, ageGroupsList, activeSeason] = await Promise.all([
+      getCurrentClubId(),
+      getPrograms(),
+      getAgeGroups(),
+      getActiveSeason(),
+    ])
 
     setClubId(cid)
-    setSeasons(seasonsList)
     setPrograms(programsList)
     setAgeGroups(ageGroupsList)
-    setSelectedSeasonId(activeSeason?.id || seasonsList[0]?.id || null)
+    setSelectedSeason(activeSeason || null)
     setLoading(false)
   }
 
@@ -78,7 +76,7 @@ export default function Teams({ session }) {
         programs (id, name, sort_order)
       `)
       .eq('club_id', clubId)
-      .eq('season_id', selectedSeasonId)
+      .eq('season_id', selectedSeason.id)
       .order('name')
 
     if (!error) setTeams(data || [])
@@ -113,7 +111,7 @@ export default function Teams({ session }) {
     if (!formData.age_group_id || !formData.program_id || !formData.gender) {
       return
     }
-    if (!clubId || !selectedSeasonId) {
+    if (!clubId || !selectedSeason?.id) {
       alert('Club or season not set. Please contact admin.')
       return
     }
@@ -131,7 +129,7 @@ export default function Teams({ session }) {
 
     const payload = {
       club_id: clubId,
-      season_id: selectedSeasonId,
+      season_id: selectedSeason.id,
       age_group_id: ageGroup.id,
       program_id: program.id,
       gender: formData.gender,
@@ -228,21 +226,11 @@ export default function Teams({ session }) {
     <AdminLayout session={session} title="Teams &amp; Schedules">
       {/* Season selector + Add button row */}
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-700">Season:</label>
-          <select
-            value={selectedSeasonId || ''}
-            onChange={(e) => setSelectedSeasonId(parseInt(e.target.value, 10))}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            {seasons.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.is_active ? ' (active)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SeasonSelector
+          value={selectedSeason}
+          onChange={setSelectedSeason}
+          variant="admin"
+        />
         <div className="flex gap-2">
           <Link
             to="/admin/import-games"

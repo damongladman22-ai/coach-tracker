@@ -2,15 +2,19 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import SeasonSelector from '../components/SeasonSelector'
 import DateField from '../components/DateField'
 import { getCurrentClubId } from '../lib/club'
-import { listSeasons, getActiveSeasonId } from '../lib/season'
+import { listSeasons, getActiveSeason } from '../lib/season'
 
 export default function Events({ session }) {
   const [events, setEvents] = useState([])
   const [eventGameCounts, setEventGameCounts] = useState({}) // { eventId: count }
+  // seasons list is needed for the in-form season dropdown (the SeasonSelector
+  // at the top of the page loads its own list internally, but the create/edit
+  // form needs a static <select> since we're inside a modal).
   const [seasons, setSeasons] = useState([])
-  const [selectedSeasonId, setSelectedSeasonId] = useState(null)
+  const [selectedSeason, setSelectedSeason] = useState(null) // null = "All Seasons"
   const [clubId, setClubId] = useState(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -22,24 +26,28 @@ export default function Events({ session }) {
     location: '',
     season_id: '',
   })
+  // Track whether the user has manually chosen a season — used so we don't
+  // re-overwrite their "All Seasons" selection on mount.
+  const [seasonInitialized, setSeasonInitialized] = useState(false)
 
   useEffect(() => {
     initialize()
   }, [])
 
   useEffect(() => {
-    if (clubId) fetchEvents()
-  }, [clubId, selectedSeasonId])
+    if (clubId && seasonInitialized) fetchEvents()
+  }, [clubId, selectedSeason, seasonInitialized])
 
   const initialize = async () => {
-    const [cid, seasonsList, activeSeasonId] = await Promise.all([
+    const [cid, seasonsList, activeSeason] = await Promise.all([
       getCurrentClubId(),
       listSeasons(),
-      getActiveSeasonId(),
+      getActiveSeason(),
     ])
     setClubId(cid)
     setSeasons(seasonsList)
-    setSelectedSeasonId(activeSeasonId)
+    setSelectedSeason(activeSeason || null)
+    setSeasonInitialized(true)
   }
 
   const fetchEvents = async () => {
@@ -50,8 +58,8 @@ export default function Events({ session }) {
       .eq('club_id', clubId)
       .order('start_date', { ascending: false })
 
-    if (selectedSeasonId) {
-      query = query.eq('season_id', selectedSeasonId)
+    if (selectedSeason?.id) {
+      query = query.eq('season_id', selectedSeason.id)
     }
 
     const { data, error } = await query
@@ -88,7 +96,7 @@ export default function Events({ session }) {
       start_date: '',
       end_date: '',
       location: '',
-      season_id: selectedSeasonId || '',
+      season_id: selectedSeason?.id || '',
     })
     setEditingEvent(null)
     setShowForm(false)
@@ -120,7 +128,7 @@ export default function Events({ session }) {
     const slug = generateSlug(formData.event_name)
     const seasonId = formData.season_id
       ? parseInt(formData.season_id, 10)
-      : selectedSeasonId
+      : selectedSeason?.id
 
     if (!seasonId) {
       alert('Season is required. Please select one.')
@@ -231,26 +239,12 @@ export default function Events({ session }) {
   return (
     <AdminLayout session={session} title="Events &amp; Schedules">
       <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-700">Season:</label>
-          <select
-            value={selectedSeasonId || ''}
-            onChange={(e) =>
-              setSelectedSeasonId(
-                e.target.value ? parseInt(e.target.value, 10) : null
-              )
-            }
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">All seasons</option>
-            {seasons.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-                {s.is_active ? ' (active)' : ''}
-              </option>
-            ))}
-          </select>
-        </div>
+        <SeasonSelector
+          value={selectedSeason}
+          onChange={setSelectedSeason}
+          variant="admin"
+          allowAll
+        />
         <div className="flex gap-2">
           <Link
             to="/admin/import-games"
@@ -297,7 +291,7 @@ export default function Events({ session }) {
                   Season *
                 </label>
                 <select
-                  value={formData.season_id || selectedSeasonId || ''}
+                  value={formData.season_id || selectedSeason?.id || ''}
                   onChange={(e) =>
                     setFormData({ ...formData, season_id: e.target.value })
                   }
