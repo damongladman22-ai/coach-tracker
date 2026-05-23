@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getActiveSeasonId } from '../lib/season'
 import { computeRecord, gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
-import VideoBadge from '../components/VideoBadge'
+import VideoThumbnail from '../components/VideoThumbnail'
 import GameVideosPanel from '../components/GameVideosPanel'
 import FeedbackButton from '../components/FeedbackButton'
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
@@ -14,11 +14,19 @@ import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
  *
  * The "team identity" hub for parents/players. Shows:
  *  - Identity (name, age group, gender, program, season)
- *  - Season summary (games, schools, coaches)
- *  - Full schedule grouped by event + "Other Games" for standalone
+ *  - Season record (W/L/D/GF/GA/GD)
+ *  - Stats (games, schools, coaches)
+ *  - Two tabs: Games (chronological newest-first) and Events (grouped by event)
  *  - Top colleges that have watched this team
  *
  * Defaults to the team in the active season for the given slug.
+ *
+ * Sprint 2 changes:
+ *  - Old Upcoming/Past split replaced with Games + Events tabs
+ *  - Game rows show prominent video thumbnails (replacing the small VideoBadge pill)
+ *  - Subtle 🎓 N indicator on game rows where coaches have logged attendance
+ *  - Events tab gives a per-event scorecard view, drilling into the existing
+ *    /e/:eventSlug/:teamSlug page for game-day flows
  */
 export default function PublicTeamPage() {
   const { teamSlug } = useParams()
@@ -27,6 +35,7 @@ export default function PublicTeamPage() {
   const [team, setTeam] = useState(null)
   const [games, setGames] = useState([])
   const [attendance, setAttendance] = useState([])
+  const [activeTab, setActiveTab] = useState('games') // 'games' | 'events'
   const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
 
   useEffect(() => {
@@ -89,14 +98,8 @@ export default function PublicTeamPage() {
     setLoading(false)
   }
 
-  // Date helper used by the schedule split
-  const parseGameDate = (s) => {
-    const [y, m, d] = s.split('-')
-    return new Date(y, m - 1, d)
-  }
-
   // Stats
-  const stats = (() => {
+  const stats = useMemo(() => {
     const games_count = games.length
     const schools = new Set()
     const coaches = new Set()
@@ -109,30 +112,67 @@ export default function PublicTeamPage() {
       schools: schools.size,
       coaches: coaches.size,
     }
-  })()
+  }, [games, attendance])
 
-  // Split games into upcoming and past
-  const { upcoming, past } = (() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const up = []
-    const p = []
-    games.forEach((g) => {
-      const d = parseGameDate(g.game_date)
-      // Past = before today, or today-but-closed (already played + locked)
-      if (d < today || (d.getTime() === today.getTime() && g.is_closed)) {
-        p.push(g)
-      } else {
-        up.push(g)
-      }
+  // Unique school count per game — drives the 🎓 N indicator on each row.
+  // Using schools (not coaches) because recruiting parents care more about
+  // "how many programs scouted this game" than "how many bodies showed up."
+  const schoolsByGame = useMemo(() => {
+    const map = new Map()
+    attendance.forEach((a) => {
+      const schoolId = a.coaches?.schools?.id
+      if (!schoolId) return
+      if (!map.has(a.game_id)) map.set(a.game_id, new Set())
+      map.get(a.game_id).add(schoolId)
     })
-    up.sort((a, b) => parseGameDate(a.game_date) - parseGameDate(b.game_date))
-    p.sort((a, b) => parseGameDate(b.game_date) - parseGameDate(a.game_date))
-    return { upcoming: up, past: p }
-  })()
+    const out = {}
+    map.forEach((set, gid) => {
+      out[gid] = set.size
+    })
+    return out
+  }, [attendance])
+
+  // Games sorted chronological newest-first for the Games tab.
+  // Future games naturally rise to the top; past games descend. A team in
+  // mid-season sees "next Saturday's game" at the top, then everything
+  // before that descending.
+  const sortedGames = useMemo(() => {
+    return [...games].sort(
+      (a, b) => parseGameDate(b.game_date) - parseGameDate(a.game_date)
+    )
+  }, [games])
+
+  // Games grouped by event for the Events tab. Standalone games (no event_id)
+  // are excluded from Events tab; they still appear in Games tab.
+  const eventGroups = useMemo(() => {
+    const groups = new Map()
+    games.forEach((g) => {
+      if (!g.events) return
+      const eid = g.events.id
+      if (!groups.has(eid)) {
+        groups.set(eid, {
+          event: g.events,
+          games: [],
+          attendance: [],
+        })
+      }
+      groups.get(eid).games.push(g)
+    })
+    // Attach attendance rows to each event group based on game_id
+    attendance.forEach((a) => {
+      groups.forEach((g) => {
+        if (g.games.some((game) => game.id === a.game_id)) {
+          g.attendance.push(a)
+        }
+      })
+    })
+    return Array.from(groups.values()).sort(
+      (a, b) => parseGameDate(b.event.start_date) - parseGameDate(a.event.start_date)
+    )
+  }, [games, attendance])
 
   // Top colleges by attendance count
-  const topColleges = (() => {
+  const topColleges = useMemo(() => {
     const tally = new Map()
     attendance.forEach((a) => {
       const school = a.coaches?.schools
@@ -157,7 +197,7 @@ export default function PublicTeamPage() {
       }))
       .sort((a, b) => b.games - a.games || b.coaches - a.coaches)
       .slice(0, 10)
-  })()
+  }, [attendance])
 
   const formatDate = (s) => {
     const [y, m, d] = s.split('-')
@@ -261,64 +301,64 @@ export default function PublicTeamPage() {
               <StatCard label="Coaches" value={stats.coaches} />
             </div>
 
-            {/* Schedule */}
+            {/* Tabs + tab content */}
             {games.length === 0 ? (
               <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500 mb-8">
                 No games scheduled yet.
               </div>
             ) : (
-              <div className="mb-8 space-y-6">
-                {upcoming.length > 0 && (
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-blue-500"></span>
-                      Upcoming
-                      <span className="text-sm font-normal text-gray-500">
-                        ({upcoming.length})
-                      </span>
-                    </h2>
-                    <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100">
-                      {upcoming.map((g) => (
-                        <GameCard
-                          key={g.id}
-                          game={g}
-                          teamSlug={teamSlug}
-                          teamName={team?.name}
-                          isPast={false}
-                          formatDate={formatDate}
-                          formatTime={formatTime}
-                          videos={videosByGame[g.id] || []}
-                        />
-                      ))}
+              <>
+                <div className="mb-4 border-b border-gray-200 flex gap-1">
+                  <TabButton
+                    active={activeTab === 'games'}
+                    onClick={() => setActiveTab('games')}
+                  >
+                    Games <span className="text-gray-400 ml-1">({games.length})</span>
+                  </TabButton>
+                  <TabButton
+                    active={activeTab === 'events'}
+                    onClick={() => setActiveTab('events')}
+                  >
+                    Events <span className="text-gray-400 ml-1">({eventGroups.length})</span>
+                  </TabButton>
+                </div>
+
+                {activeTab === 'games' ? (
+                  <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100 mb-8">
+                    {sortedGames.map((g) => (
+                      <GameCard
+                        key={g.id}
+                        game={g}
+                        teamSlug={teamSlug}
+                        teamName={team?.name}
+                        formatDate={formatDate}
+                        formatTime={formatTime}
+                        videos={videosByGame[g.id] || []}
+                        schoolsCount={schoolsByGame[g.id] || 0}
+                      />
+                    ))}
+                  </div>
+                ) : eventGroups.length === 0 ? (
+                  <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500 mb-8">
+                    No event-based games this season.
+                    <div className="text-xs text-gray-400 mt-1">
+                      Standalone games appear in the Games tab.
                     </div>
                   </div>
-                )}
-                {past.length > 0 && (
-                  <div>
-                    <h2 className="text-xl font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      <span className="h-2 w-2 rounded-full bg-gray-400"></span>
-                      Past Results
-                      <span className="text-sm font-normal text-gray-500">
-                        ({past.length})
-                      </span>
-                    </h2>
-                    <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100">
-                      {past.map((g) => (
-                        <GameCard
-                          key={g.id}
-                          game={g}
-                          teamSlug={teamSlug}
-                          teamName={team?.name}
-                          isPast={true}
-                          formatDate={formatDate}
-                          formatTime={formatTime}
-                          videos={videosByGame[g.id] || []}
-                        />
-                      ))}
-                    </div>
+                ) : (
+                  <div className="space-y-3 mb-8">
+                    {eventGroups.map((group) => (
+                      <EventCard
+                        key={group.event.id}
+                        event={group.event}
+                        games={group.games}
+                        attendance={group.attendance}
+                        teamSlug={teamSlug}
+                      />
+                    ))}
                   </div>
                 )}
-              </div>
+              </>
             )}
 
             {/* Top colleges */}
@@ -370,10 +410,7 @@ export default function PublicTeamPage() {
                 </div>
                 <p className="text-xs text-gray-500 mb-8">
                   Want to contact one of these coaches? Visit the{' '}
-                  <Link
-                    to="/directory"
-                    className="text-blue-600 hover:underline"
-                  >
+                  <Link to="/directory" className="text-blue-600 hover:underline">
                     Coach Directory
                   </Link>
                   .
@@ -415,20 +452,58 @@ function RecordStat({ value, label }) {
 }
 
 /**
- * Unified game card. Renders one game with:
- *  - Date + time, vs/at opponent
- *  - Event context (when game belongs to one) or game-type badge (when standalone)
- *  - Result badge for past games with score recorded
- *  - Action button: Live Tracker (open game in an event), or Summary (closed/past)
+ * Tab button used in the Games | Events tab strip on the team page.
+ * Sized for mobile tap targets (44px+ via py-3 + line-height).
+ */
+function TabButton({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`relative px-4 py-3 text-sm font-medium transition-colors ${
+        active
+          ? 'text-cyan-700'
+          : 'text-gray-600 hover:text-gray-900'
+      }`}
+      style={{ minHeight: 44 }}
+    >
+      {children}
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute bottom-0 left-2 right-2 h-0.5 bg-cyan-600 rounded-t"
+        />
+      )}
+    </button>
+  )
+}
+
+/**
+ * GameCard — one row in the Games tab.
+ *
+ * Layout (mobile-first):
+ *   [content lines]                    [thumbnail (if video)]
+ *                                      [action button (if applicable)]
+ *
+ * Content lines:
+ *   1. Date + result badge + status + 🎓 N indicator
+ *   2. Time · vs/at opponent
+ *   3. Event context (or game type) + location
+ *
+ * Right column:
+ *  - VideoThumbnail (md size) when videos exist — tap toggles inline panel.
+ *  - Action button (Live Tracker / Summary) underneath, when game is in an event.
+ *
+ * Tapping the thumbnail expands the same GameVideosPanel used previously.
  */
 function GameCard({
   game,
   teamSlug,
   teamName,
-  isPast,
   formatDate,
   formatTime,
   videos = [],
+  schoolsCount = 0,
 }) {
   const [videosExpanded, setVideosExpanded] = useState(false)
   const r = gameResult(game)
@@ -436,29 +511,37 @@ function GameCard({
   const eventName = game.events?.event_name
   const isClosed = game.is_closed
   const inEvent = !!eventSlug
+  const hasVideo = videos.length > 0
 
-  // Action button:
-  // - Past or closed game with attendance: Summary
-  // - Upcoming open game in an event: Live Tracker
-  // - Anything else (standalone game): no button (not trackable yet)
+  const isPast = (() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const gameDate = parseGameDate(game.game_date)
+    return (
+      gameDate < today ||
+      (gameDate.getTime() === today.getTime() && isClosed)
+    )
+  })()
+
+  // Action button — present only for games attached to an event
   let action = null
   if (inEvent) {
     if (isPast || isClosed) {
       action = (
         <Link
           to={`/e/${eventSlug}/${teamSlug}/summary`}
-          className="text-sm font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-4 py-2.5 rounded-lg text-center min-w-[110px] block"
+          className="text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-3 py-2 rounded-lg text-center block whitespace-nowrap"
         >
-          Event Summary
+          Summary
         </Link>
       )
     } else {
       action = (
         <Link
           to={`/e/${eventSlug}/${teamSlug}`}
-          className="text-sm font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-4 py-2.5 rounded-lg text-center min-w-[110px] block"
+          className="text-xs font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-3 py-2 rounded-lg text-center block whitespace-nowrap"
         >
-          Live Tracker
+          Open Tracker
         </Link>
       )
     }
@@ -466,9 +549,9 @@ function GameCard({
 
   return (
     <div>
-      <div className="p-4 flex items-center justify-between gap-3">
+      <div className="p-4 flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          {/* Line 1: Date + result/closed badges + video badge */}
+          {/* Line 1: date + result + status badges + coach indicator */}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-semibold text-gray-900 text-sm">
               {formatDate(game.game_date)}
@@ -485,18 +568,29 @@ function GameCard({
                 Closed
               </span>
             )}
-            <VideoBadge
-              count={videos.length}
-              expanded={videosExpanded}
-              onClick={() => setVideosExpanded((e) => !e)}
-            />
+            {!isPast && !isClosed && (
+              <span className="text-xs text-blue-600 font-medium">
+                Upcoming
+              </span>
+            )}
+            {schoolsCount > 0 && (
+              <span
+                className="inline-flex items-center gap-0.5 text-xs text-purple-700"
+                title={`${schoolsCount} ${
+                  schoolsCount === 1 ? 'school' : 'schools'
+                } attended`}
+              >
+                <span aria-hidden="true">🎓</span>
+                {schoolsCount}
+              </span>
+            )}
           </div>
-          {/* Line 2: time + vs/at opponent */}
+          {/* Line 2: time · vs/at opponent */}
           <div className="text-sm text-gray-700 mt-0.5">
             {game.game_time && <>{formatTime(game.game_time)} · </>}
             {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
           </div>
-          {/* Line 3: event context (or game type for standalone) */}
+          {/* Line 3: event context (or game type) + location */}
           <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
             {eventName ? (
               <span className="truncate">
@@ -514,11 +608,151 @@ function GameCard({
             )}
           </div>
         </div>
-        {action && <div className="flex-shrink-0">{action}</div>}
+
+        {/* Right column: thumbnail + action stacked vertically */}
+        {(hasVideo || action) && (
+          <div className="flex-shrink-0 flex flex-col items-stretch gap-2">
+            {hasVideo && (
+              <button
+                type="button"
+                onClick={() => setVideosExpanded((e) => !e)}
+                aria-expanded={videosExpanded}
+                aria-label={`${videos.length} video${
+                  videos.length === 1 ? '' : 's'
+                } available — tap to ${videosExpanded ? 'collapse' : 'expand'}`}
+                className="relative rounded-md overflow-hidden block hover:opacity-90 active:opacity-80"
+              >
+                <VideoThumbnail videoId={videos[0].id} size="md" />
+                <div
+                  className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <svg
+                    width="22"
+                    height="22"
+                    viewBox="0 0 24 24"
+                    fill="white"
+                  >
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                </div>
+                {videos.length > 1 && (
+                  <div
+                    className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-medium px-1.5 py-0.5 rounded pointer-events-none"
+                    aria-hidden="true"
+                  >
+                    {videos.length}
+                  </div>
+                )}
+              </button>
+            )}
+            {action}
+          </div>
+        )}
       </div>
-      {videosExpanded && videos.length > 0 && (
+      {videosExpanded && hasVideo && (
         <GameVideosPanel videos={videos} game={game} teamName={teamName} />
       )}
     </div>
   )
+}
+
+/**
+ * EventCard — one entry in the Events tab.
+ *
+ * A self-contained scorecard for the team at one event. Shows event name,
+ * date range, location, and a row of stat pills (GP · W-L-D · GF·GA) along
+ * with an optional coach-attendance pill. Whole card is one tap target
+ * that drills into the existing /e/:eventSlug/:teamSlug page for game-day
+ * flows (live tracker, attendance matrix, summary).
+ */
+function EventCard({ event, games, attendance, teamSlug }) {
+  const record = computeRecord(games)
+  const schoolIds = new Set()
+  attendance.forEach((a) => {
+    if (a.coaches?.schools?.id) schoolIds.add(a.coaches.schools.id)
+  })
+  const schoolsCount = schoolIds.size
+
+  return (
+    <Link
+      to={`/e/${event.slug}/${teamSlug}`}
+      className="block bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4"
+    >
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-semibold text-gray-900 truncate">
+            {event.event_name}
+          </h3>
+          <div className="text-xs text-gray-500 mt-0.5">
+            {formatEventDate(event.start_date, event.end_date)}
+            {event.location ? ` · ${event.location}` : ''}
+          </div>
+        </div>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          className="text-gray-400 flex-shrink-0 mt-1"
+          aria-hidden="true"
+        >
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+        <Pill label="GP" value={games.length} />
+        {record.played > 0 && (
+          <>
+            <Pill label="W" value={record.wins} color="emerald" />
+            <Pill label="L" value={record.losses} color="rose" />
+            <Pill label="D" value={record.ties} />
+            <Pill label="GF" value={record.gf} />
+            <Pill label="GA" value={record.ga} />
+          </>
+        )}
+        {schoolsCount > 0 && (
+          <span className="inline-flex items-center gap-0.5 text-purple-700 ml-auto whitespace-nowrap">
+            <span aria-hidden="true">🎓</span> {schoolsCount}
+          </span>
+        )}
+      </div>
+    </Link>
+  )
+}
+
+function Pill({ label, value, color = 'gray' }) {
+  const colorClasses = {
+    gray: 'bg-gray-100 text-gray-700',
+    emerald: 'bg-emerald-100 text-emerald-700',
+    rose: 'bg-rose-100 text-rose-700',
+  }
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded ${colorClasses[color]}`}
+    >
+      <span className="text-[10px] font-medium uppercase tracking-wide">
+        {label}
+      </span>
+      <span className="font-bold tabular-nums">{value}</span>
+    </span>
+  )
+}
+
+function formatEventDate(start, end) {
+  const s = parseGameDate(start)
+  const e = end ? parseGameDate(end) : s
+  const opts = { month: 'short', day: 'numeric' }
+  const startStr = s.toLocaleDateString('en-US', opts)
+  if (!end || end === start) return startStr
+  const endStr = e.toLocaleDateString('en-US', opts)
+  return `${startStr} – ${endStr}`
+}
+
+function parseGameDate(s) {
+  if (!s) return new Date()
+  const [y, m, d] = s.split('-')
+  return new Date(y, m - 1, d)
 }
