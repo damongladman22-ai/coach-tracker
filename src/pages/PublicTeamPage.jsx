@@ -662,9 +662,16 @@ function GameCard({
  *
  * A self-contained scorecard for the team at one event. Shows event name,
  * date range, location, and a row of stat pills (GP · W-L-D · GF·GA) along
- * with an optional coach-attendance pill. Whole card is one tap target
- * that drills into the existing /e/:eventSlug/:teamSlug page for game-day
- * flows (live tracker, attendance matrix, summary).
+ * with an optional coach-attendance pill.
+ *
+ * Smart routing on tap to avoid a flash from the live tracker's internal
+ * redirect logic:
+ *   - All games closed (and there are games) → /summary directly
+ *   - Otherwise (live / upcoming) → /e/:eventSlug/:teamSlug (live tracker)
+ *
+ * Without this, past events tap into the live tracker, which then sees
+ * "all games closed" and bounces to /summary — producing a visible flash
+ * of the wrong page.
  */
 function EventCard({ event, games, attendance, teamSlug }) {
   const record = computeRecord(games)
@@ -674,9 +681,14 @@ function EventCard({ event, games, attendance, teamSlug }) {
   })
   const schoolsCount = schoolIds.size
 
+  const allClosed = games.length > 0 && games.every((g) => g.is_closed)
+  const destHref = allClosed
+    ? `/e/${event.slug}/${teamSlug}/summary`
+    : `/e/${event.slug}/${teamSlug}`
+
   return (
     <Link
-      to={`/e/${event.slug}/${teamSlug}`}
+      to={destHref}
       className="block bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4"
     >
       <div className="flex items-start justify-between gap-3 mb-3">
