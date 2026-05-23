@@ -259,7 +259,7 @@ export default function EventLanding() {
             </div>
             <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
               <div className="text-2xl sm:text-3xl font-bold text-blue-600">{totalStats.schools}</div>
-              <div className="text-xs sm:text-sm text-gray-500">Schools</div>
+              <div className="text-xs sm:text-sm text-gray-500">Colleges</div>
             </div>
             <div className="bg-purple-50 rounded-lg p-3 sm:p-4">
               <div className="text-2xl sm:text-3xl font-bold text-purple-600">{totalStats.coaches}</div>

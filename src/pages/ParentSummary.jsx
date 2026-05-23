@@ -735,7 +735,7 @@ export default function ParentSummary() {
             </div>
             <div className="bg-blue-50 rounded-lg p-3 sm:p-4">
               <div className="text-2xl sm:text-3xl font-bold text-blue-600">{uniqueSchools}</div>
-              <div className="text-xs sm:text-sm text-gray-600">Schools</div>
+              <div className="text-xs sm:text-sm text-gray-600">Colleges</div>
             </div>
             <div className="bg-purple-50 rounded-lg p-3 sm:p-4">
               <div className="text-2xl sm:text-3xl font-bold text-purple-600">{uniqueCoaches}</div>

@@ -515,7 +515,7 @@ function TeamCard({ team, stats }) {
         <MiniStat value={r?.wins ?? 0} label="W" />
         <MiniStat value={r?.losses ?? 0} label="L" />
         <MiniStat value={r?.ties ?? 0} label="D" />
-        <MiniStat value={stats?.schools ?? 0} label="Schools" />
+        <MiniStat value={stats?.schools ?? 0} label="Colleges" />
       </div>
 
       {/* LIVE TRACKER button — replaces the old static badge */}

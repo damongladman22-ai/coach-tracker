@@ -380,7 +380,7 @@ export default function PublicTeamPage() {
                   </h2>
                   <p className="text-xs text-gray-500 mt-0.5">
                     {stats.schools}{' '}
-                    {stats.schools === 1 ? 'school' : 'schools'} ·{' '}
+                    {stats.schools === 1 ? 'college' : 'colleges'} ·{' '}
                     {stats.coaches}{' '}
                     {stats.coaches === 1 ? 'coach' : 'coaches'} across all games
                   </p>
