@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { isValidEmail } from '../lib/validation';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
+import HamburgerMenu from '../components/HamburgerMenu';
 
 // US States for filter dropdown
 const US_STATES = [
@@ -578,12 +579,18 @@ export default function CoachDirectory() {
             <span className="text-xl font-bold sm:hidden">Directory</span>
           </Link>
           <nav className="flex items-center gap-4">
-            <Link to={isAdminContext ? "/admin" : "/home"} className="text-sm text-gray-300 hover:text-white">
-              {isAdminContext ? "Dashboard" : "Events"}
-            </Link>
-            <Link to={isAdminContext ? "/help?context=admin" : "/help?context=parent"} className="text-sm text-gray-300 hover:text-white">
-              Help
-            </Link>
+            {isAdminContext ? (
+              <>
+                <Link to="/admin" className="text-sm text-gray-300 hover:text-white">
+                  Dashboard
+                </Link>
+                <Link to="/help?context=admin" className="text-sm text-gray-300 hover:text-white">
+                  Help
+                </Link>
+              </>
+            ) : (
+              <HamburgerMenu />
+            )}
           </nav>
         </div>
         <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>

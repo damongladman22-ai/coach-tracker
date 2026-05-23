@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { PageLoader, ErrorMessage } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
+import HamburgerMenu from '../components/HamburgerMenu';
 
 /**
  * Public Event Landing Page
@@ -211,17 +212,7 @@ export default function EventLanding() {
               <OPLogo className="h-10 w-auto" />
               <span className="text-lg font-bold text-white hidden sm:inline">PitchSide</span>
             </Link>
-            <nav className="flex items-center gap-2">
-              <Link to="/directory" className="text-sm text-gray-300 hover:text-white p-2 -m-2 rounded-lg">
-                Directory
-              </Link>
-              <Link to="/help?context=parent" className="text-sm text-gray-300 hover:text-white p-2 -m-2 rounded-lg">
-                Help
-              </Link>
-              <Link to="/admin" className="text-sm text-gray-400 hover:text-white p-2 -m-2 rounded-lg">
-                Admin
-              </Link>
-            </nav>
+            <HamburgerMenu />
           </div>
           {/* Breadcrumb navigation */}
           <div className="flex items-center gap-2 text-sm text-gray-400 mb-2">

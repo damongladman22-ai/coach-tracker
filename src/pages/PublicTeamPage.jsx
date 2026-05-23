@@ -7,6 +7,7 @@ import OPLogo from '../components/OPLogo'
 import VideoThumbnail from '../components/VideoThumbnail'
 import GameVideosPanel from '../components/GameVideosPanel'
 import FeedbackButton from '../components/FeedbackButton'
+import HamburgerMenu from '../components/HamburgerMenu'
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
 import { useFavorite } from '../hooks/useFavorite'
 
@@ -228,17 +229,7 @@ export default function PublicTeamPage() {
               <div className="text-xs text-cyan-300">PitchSide</div>
             </div>
           </Link>
-          <div className="flex items-center gap-2 text-sm">
-            <Link to="/directory" className="text-gray-300 hover:text-white px-2 py-1">
-              Directory
-            </Link>
-            <Link to="/help?context=parent" className="text-gray-300 hover:text-white px-2 py-1">
-              Help
-            </Link>
-            <Link to="/admin" className="text-gray-400 hover:text-white px-2 py-1">
-              Admin
-            </Link>
-          </div>
+          <HamburgerMenu />
         </div>
         <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
       </header>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
@@ -7,6 +7,11 @@ import { supabase } from '../lib/supabase';
  * 
  * Displays a small floating button that opens a modal for submitting feedback.
  * Auto-captures the current page URL for context.
+ * 
+ * Also listens for a window 'open-feedback' event so other components (like
+ * the HamburgerMenu's "Submit Feedback" item) can trigger the same modal
+ * without lifting state. Belt-and-suspenders: floating button + menu item
+ * → same modal.
  * 
  * Props:
  * - position: 'bottom-left' (default) or 'bottom-right'
@@ -35,6 +40,13 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
     resetForm();
     setIsOpen(true);
   };
+
+  // Allow other components (e.g. HamburgerMenu) to open this modal via event.
+  useEffect(() => {
+    const handler = () => handleOpen();
+    window.addEventListener('open-feedback', handler);
+    return () => window.removeEventListener('open-feedback', handler);
+  }, []);
 
   const handleClose = () => {
     setIsOpen(false);

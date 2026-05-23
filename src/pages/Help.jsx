@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import OPLogo from '../components/OPLogo'
+import HamburgerMenu from '../components/HamburgerMenu'
 
 export default function Help() {
   const [searchParams] = useSearchParams()
@@ -398,12 +399,16 @@ Anyone (parents and players too) can mark coaches inactive in the Coach Director
                 <p className="text-xs text-blue-300">Help Center</p>
               </div>
             </Link>
-            <Link
-              to={isAdminContext ? "/admin" : "/home"}
-              className="text-sm text-blue-300 hover:text-white"
-            >
-              ← Back
-            </Link>
+            {isAdminContext ? (
+              <Link
+                to="/admin"
+                className="text-sm text-blue-300 hover:text-white"
+              >
+                ← Back
+              </Link>
+            ) : (
+              <HamburgerMenu />
+            )}
           </div>
         </div>
         <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>

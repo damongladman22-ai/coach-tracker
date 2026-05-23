@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FeedbackButton from '../components/FeedbackButton'
+import HamburgerMenu from '../components/HamburgerMenu'
 
 export default function GameAttendance() {
   const { eventSlug, teamSlug, gameId } = useParams()
@@ -288,12 +289,15 @@ export default function GameAttendance() {
       {/* Header */}
       <header className="bg-blue-600 text-white p-4">
         {/* Breadcrumb navigation */}
-        <div className="flex items-center gap-2 text-sm text-blue-200 mb-2">
-          <Link to="/home" className="hover:text-white">Home</Link>
-          <span>›</span>
-          <Link to={`/e/${eventSlug}`} className="hover:text-white">Event</Link>
-          <span>›</span>
-          <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-white">Team</Link>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2 text-sm text-blue-200">
+            <Link to="/home" className="hover:text-white">Home</Link>
+            <span>›</span>
+            <Link to={`/e/${eventSlug}`} className="hover:text-white">Event</Link>
+            <span>›</span>
+            <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-white">Team</Link>
+          </div>
+          <HamburgerMenu />
         </div>
         <h1 className="text-xl font-bold">
           {game && `${formatDate(game.game_date)} vs ${game.opponent}`}
