@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { ErrorMessage } from '../components/LoadingStates'
 import OPLogo from '../components/OPLogo'
 import FeedbackButton from '../components/FeedbackButton'
-import { getActiveSeasonId, getActiveSeason } from '../lib/season'
+import SeasonSelector from '../components/SeasonSelector'
 import { computeRecord } from '../components/ScoreInput'
 
 /**
@@ -14,13 +14,16 @@ import { computeRecord } from '../components/ScoreInput'
  *  - Teams are the primary unit (each team is identity + season schedule)
  *  - Events are a secondary view ("happening now", "upcoming")
  *  - Past events tucked into an archive
+ *  - Parents pick a season via the SeasonSelector at the top — teams and
+ *    events both filter to whichever year is selected. Defaults to the
+ *    DB-active season on first visit.
  *
  * Filter/sort controls let the user pick how to organize the team list.
  */
 export default function ClubDashboard() {
-  const [season, setSeason] = useState(null)
+  const [selectedSeason, setSelectedSeason] = useState(null)
   const [teams, setTeams] = useState([])
-  const [teamStats, setTeamStats] = useState({}) // teamId -> { games, schools, hasActiveEvent }
+  const [teamStats, setTeamStats] = useState({}) // teamId -> { games, schools, hasActiveEvent, record }
   const [events, setEvents] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -31,47 +34,42 @@ export default function ClubDashboard() {
   const [filterGender, setFilterGender] = useState('all')
   const [showPast, setShowPast] = useState(false)
 
+  // Reload teams + events whenever the selected season changes. The selector
+  // fires its initial onChange with the active season once seasons load, so
+  // this also serves as the first-load trigger.
   useEffect(() => {
-    load()
-  }, [])
+    if (selectedSeason?.id) {
+      load(selectedSeason.id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSeason?.id])
 
-  const load = async () => {
+  const load = async (seasonId) => {
     try {
       setLoading(true)
       setError(null)
 
-      const [activeSeason, activeSeasonId] = await Promise.all([
-        getActiveSeason(),
-        getActiveSeasonId(),
-      ])
-      setSeason(activeSeason)
-      if (!activeSeasonId) {
-        setError('No active season configured.')
-        setLoading(false)
-        return
-      }
-
-      // Teams in active season
+      // Teams in selected season
       const { data: teamsData, error: teamsErr } = await supabase
         .from('teams')
         .select(
           '*, age_groups(id, name, sort_order), programs(id, name, sort_order)'
         )
-        .eq('season_id', activeSeasonId)
+        .eq('season_id', seasonId)
         .eq('active', true)
       if (teamsErr) throw teamsErr
       const teamList = (teamsData || []).sort((a, b) => a.name.localeCompare(b.name))
       setTeams(teamList)
 
-      // Events in active season
+      // Events in selected season
       const { data: eventsData } = await supabase
         .from('events')
         .select('*')
-        .eq('season_id', activeSeasonId)
+        .eq('season_id', seasonId)
         .order('start_date', { ascending: false })
       setEvents(eventsData || [])
 
-      // Per-team aggregate stats (games count + schools count + active event flag)
+      // Per-team aggregate stats (games count + schools count + active event flag + record)
       if (teamList.length > 0) {
         const teamIds = teamList.map((t) => t.id)
         const { data: games } = await supabase
@@ -140,6 +138,8 @@ export default function ClubDashboard() {
           }
         })
         setTeamStats(stats)
+      } else {
+        setTeamStats({})
       }
     } catch (err) {
       console.error('Error loading dashboard:', err)
@@ -240,10 +240,19 @@ export default function ClubDashboard() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-6">
-        {loading ? (
+        {/* Season selector — drives team + event filtering below */}
+        <div className="mb-5">
+          <SeasonSelector
+            value={selectedSeason}
+            onChange={setSelectedSeason}
+            variant="parent"
+          />
+        </div>
+
+        {!selectedSeason || loading ? (
           <div className="text-center py-12 text-gray-500">Loading...</div>
         ) : error ? (
-          <ErrorMessage error={error} onRetry={load} />
+          <ErrorMessage error={error} onRetry={() => load(selectedSeason.id)} />
         ) : (
           <>
             {/* Active event banner */}
@@ -281,11 +290,6 @@ export default function ClubDashboard() {
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Our Teams</h2>
-                  {season && (
-                    <p className="text-sm text-gray-500">
-                      {season.name} Season
-                    </p>
-                  )}
                 </div>
               </div>
 
@@ -349,7 +353,9 @@ export default function ClubDashboard() {
 
               {filteredTeams.length === 0 ? (
                 <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
-                  No teams match the current filters.
+                  {teams.length === 0
+                    ? `No teams in ${selectedSeason.name} yet.`
+                    : 'No teams match the current filters.'}
                 </div>
               ) : (
                 <div className="space-y-5">
