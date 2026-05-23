@@ -6,6 +6,7 @@ import { computeRecord, gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
 import VideoBadge from '../components/VideoBadge'
 import GameVideosPanel from '../components/GameVideosPanel'
+import FeedbackButton from '../components/FeedbackButton'
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
 
 /**
@@ -382,6 +383,7 @@ export default function PublicTeamPage() {
           </>
         )}
       </main>
+      <FeedbackButton />
     </div>
   )
 }
