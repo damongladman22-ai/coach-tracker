@@ -1,9 +1,19 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { getPlaybackUrl } from '../lib/videoStorage'
 
 /**
  * VideoModal — full-screen modal that streams a video via a signed
  * playback URL. Used by both admin and parent surfaces.
+ *
+ * Rendered via createPortal to document.body so it escapes any ancestor
+ * with a CSS transform / will-change / filter / backdrop-filter. Those
+ * properties create a "containing block" for position:fixed descendants
+ * (CSS spec), which means a fixed-position modal nested inside such an
+ * ancestor positions itself relative to that ancestor instead of the
+ * viewport. PullToRefresh applies a will-change: transform wrapper
+ * around the whole app, which previously trapped this modal there and
+ * made it render far below the viewport.
  *
  * Props:
  *  - videoId: string  (required)
@@ -37,7 +47,18 @@ export default function VideoModal({ videoId, title, onClose }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  return (
+  // Lock body scroll while modal is open — without this the page behind
+  // the modal can still be scrolled on iOS / mobile, which is jarring
+  // when the user taps near the edges.
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [])
+
+  return createPortal(
     <div
       className="fixed inset-0 bg-black/85 z-50 flex items-center justify-center p-2 sm:p-4"
       onClick={onClose}
@@ -72,6 +93,7 @@ export default function VideoModal({ videoId, title, onClose }) {
           />
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
