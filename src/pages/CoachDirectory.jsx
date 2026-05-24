@@ -43,9 +43,13 @@ export default function CoachDirectory() {
   const [showInactive, setShowInactive] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
   const [togglingActive, setTogglingActive] = useState(null); // coach id whose active state is being toggled
-  // Gender filter: 'W' (default, back-compat with women's-only directory),
-  // 'M' for men's programs, 'ALL' to show both.
-  const [genderFilter, setGenderFilter] = useState('W');
+  // Gender filter: 'W' (women's), 'M' (men's), 'ALL' (both).
+  // Default depends on context:
+  // - Parent/player context (no ?context=admin): 'ALL' — they may be from
+  //   a Boys family or a Girls family, show everything by default
+  // - Admin context: 'W' — preserves existing muscle memory; admins toggle
+  //   to 'M' when working on men's data
+  const [genderFilter, setGenderFilter] = useState(isAdminContext ? 'W' : 'ALL');
   
   // Debounce timer ref
   const searchTimerRef = useRef(null);
