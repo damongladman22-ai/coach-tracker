@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import GenderBadge from '../components/GenderBadge'
+import { programGenderLabel } from '../lib/lookups'
 
 // US States list with full names
 const US_STATES = [
@@ -71,6 +73,10 @@ export default function Schools({ session }) {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 50
+
+  // Gender filter for the table. 'W' by default for back-compat with existing
+  // workflow; admins flip to 'M' to manage men's programs, or 'ALL' to see both.
+  const [genderFilter, setGenderFilter] = useState('W')
   
   // Add School state
   const [showAddSchool, setShowAddSchool] = useState(false)
@@ -80,7 +86,8 @@ export default function Schools({ session }) {
     state: '',
     type: 'Public',
     conference: '',
-    division: 'NCAA D1'
+    division: 'NCAA D1',
+    program_gender: 'W'
   })
   const [addingSchool, setAddingSchool] = useState(false)
   
@@ -93,7 +100,8 @@ export default function Schools({ session }) {
     state: '',
     type: 'Public',
     conference: '',
-    division: 'NCAA D1'
+    division: 'NCAA D1',
+    program_gender: 'W'
   })
   const [savingSchool, setSavingSchool] = useState(false)
 
@@ -177,7 +185,8 @@ export default function Schools({ session }) {
         state: '',
         type: 'Public',
         conference: '',
-        division: 'NCAA D1'
+        division: 'NCAA D1',
+        program_gender: genderFilter === 'M' ? 'M' : 'W'
       })
     }
     setAddingSchool(false)
@@ -192,7 +201,8 @@ export default function Schools({ session }) {
       state: school.state || '',
       type: school.type || 'Public',
       conference: school.conference || '',
-      division: school.division || 'NCAA D1'
+      division: school.division || 'NCAA D1',
+      program_gender: school.program_gender || 'W'
     })
     setShowEditSchool(true)
   }
@@ -319,11 +329,22 @@ export default function Schools({ session }) {
     }
   }
 
-  const filteredSchools = schools.filter(school => 
-    school.school.toLowerCase().includes(search.toLowerCase()) ||
-    school.state?.toLowerCase().includes(search.toLowerCase()) ||
-    school.conference?.toLowerCase().includes(search.toLowerCase())
-  )
+  const filteredSchools = useMemo(() => {
+    const term = search.toLowerCase()
+    return schools.filter(school => {
+      // Gender filter (default 'W', 'M' for men's, 'ALL' to show both)
+      if (genderFilter !== 'ALL' && (school.program_gender || 'W') !== genderFilter) {
+        return false
+      }
+      // Text search
+      if (!term) return true
+      return (
+        school.school.toLowerCase().includes(term) ||
+        school.state?.toLowerCase().includes(term) ||
+        school.conference?.toLowerCase().includes(term)
+      )
+    })
+  }, [schools, search, genderFilter])
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredSchools.length / ITEMS_PER_PAGE)
@@ -336,6 +357,17 @@ export default function Schools({ session }) {
     setCurrentPage(1)
   }
 
+  // Reset to page 1 when gender filter changes
+  const handleGenderFilterChange = (g) => {
+    setGenderFilter(g)
+    setCurrentPage(1)
+    // Also update the add-school form default so new schools land in the
+    // currently-visible bucket.
+    if (g === 'M' || g === 'W') {
+      setSchoolFormData(prev => ({ ...prev, program_gender: g }))
+    }
+  }
+
   // Change page and scroll to top
   const goToPage = (page) => {
     setCurrentPage(page)
@@ -344,6 +376,34 @@ export default function Schools({ session }) {
 
   return (
     <AdminLayout session={session} title="Schools & Coaches">
+      {/* Gender filter pills */}
+      <div className="mb-4 flex items-center gap-2 text-sm">
+        <span className="text-gray-600 mr-1">Showing:</span>
+        {[
+          { key: 'W', label: "Women's" },
+          { key: 'M', label: "Men's" },
+          { key: 'ALL', label: 'Both' },
+        ].map(opt => {
+          const active = genderFilter === opt.key
+          return (
+            <button
+              key={opt.key}
+              onClick={() => handleGenderFilterChange(opt.key)}
+              className={`px-3 py-1.5 rounded-full border transition ${
+                active
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {opt.label}
+            </button>
+          )
+        })}
+        <span className="ml-auto text-xs text-gray-500">
+          {filteredSchools.length.toLocaleString()} {filteredSchools.length === 1 ? 'school' : 'schools'}
+        </span>
+      </div>
+
       {/* Search and Add School */}
       <div className="mb-6 flex flex-col md:flex-row gap-4">
         <input
@@ -442,6 +502,18 @@ export default function Schools({ session }) {
                   className="w-full px-3 py-2 border rounded-lg"
                   placeholder="e.g., SEC"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Program Gender *</label>
+                <select
+                  value={schoolFormData.program_gender}
+                  onChange={(e) => setSchoolFormData({ ...schoolFormData, program_gender: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  <option value="W">Women's</option>
+                  <option value="M">Men's</option>
+                </select>
               </div>
             </div>
             
@@ -546,6 +618,18 @@ export default function Schools({ session }) {
                   placeholder="e.g., SEC"
                 />
               </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Program Gender *</label>
+                <select
+                  value={editSchoolFormData.program_gender}
+                  onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, program_gender: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                >
+                  <option value="W">Women's</option>
+                  <option value="M">Men's</option>
+                </select>
+              </div>
             </div>
             
             <div className="flex gap-3 mt-6">
@@ -596,7 +680,10 @@ export default function Schools({ session }) {
                 onClick={() => toggleSchool(school.id)}
               >
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900">{school.school}</h3>
+                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+                    <span>{school.school}</span>
+                    <GenderBadge gender={school.program_gender} size="xs" />
+                  </h3>
                   <p className="text-sm text-gray-600">
                     {school.city}, {school.state} • {school.division} • {school.conference}
                   </p>

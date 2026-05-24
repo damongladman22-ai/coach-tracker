@@ -115,3 +115,34 @@ export function clearLookupCaches() {
   cachedAgeGroups = null
   cachedGameTypes = null
 }
+
+// ============================================================================
+// Program gender helpers
+// ============================================================================
+// Teams have gender = 'Boys' | 'Girls'
+// Schools have program_gender = 'M' | 'W'
+// These helpers bridge the two and provide consistent labels.
+
+export const PROGRAM_GENDER_M = 'M'
+export const PROGRAM_GENDER_W = 'W'
+
+/**
+ * Maps a team's gender string ('Boys'/'Girls') to the schools table's
+ * program_gender code ('M'/'W'). Returns null for unknown inputs.
+ */
+export function teamGenderToProgramGender(gender) {
+  if (gender === 'Boys') return PROGRAM_GENDER_M
+  if (gender === 'Girls') return PROGRAM_GENDER_W
+  return null
+}
+
+/**
+ * Human-friendly label for a program_gender code.
+ * Pass { short: true } for a single-letter badge.
+ */
+export function programGenderLabel(g, { short = false } = {}) {
+  if (g === PROGRAM_GENDER_M) return short ? 'M' : "Men's"
+  if (g === PROGRAM_GENDER_W) return short ? 'W' : "Women's"
+  return ''
+}
+

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
+import GenderBadge from '../components/GenderBadge'
 
 export default function DedupSchools({ session }) {
   const [schools, setSchools] = useState([])
@@ -106,6 +107,13 @@ export default function DedupSchools({ session }) {
       for (let j = i + 1; j < schoolsData.length; j++) {
         const a = schoolsData[i]
         const b = schoolsData[j]
+
+        // Never pair across program genders. A men's Ohio State row and a
+        // women's Ohio State row are intentionally separate schools, not duplicates.
+        // Treat null/missing program_gender as 'W' for back-compat.
+        const aG = a.program_gender || 'W'
+        const bG = b.program_gender || 'W'
+        if (aG !== bG) continue
 
         const pairKey = [a.id, b.id].sort().join('-')
         if (checked.has(pairKey)) continue
@@ -514,7 +522,10 @@ export default function DedupSchools({ session }) {
                   <div className={`p-3 rounded-lg border-2 ${
                     isSelected ? 'border-blue-300' : 'border-gray-200'
                   }`}>
-                    <div className="font-medium text-lg">{school1.school}</div>
+                    <div className="font-medium text-lg flex items-center gap-2">
+                      <span>{school1.school}</span>
+                      <GenderBadge gender={school1.program_gender} size="xs" />
+                    </div>
                     <div className={`text-sm ${school1.city && school1.state ? 'text-gray-600' : 'text-gray-400'}`}>
                       {school1.city || '(no city)'}, {school1.state || '(no state)'}
                     </div>
@@ -533,7 +544,10 @@ export default function DedupSchools({ session }) {
                   <div className={`p-3 rounded-lg border-2 ${
                     isSelected ? 'border-blue-300' : 'border-gray-200'
                   }`}>
-                    <div className="font-medium text-lg">{school2.school}</div>
+                    <div className="font-medium text-lg flex items-center gap-2">
+                      <span>{school2.school}</span>
+                      <GenderBadge gender={school2.program_gender} size="xs" />
+                    </div>
                     <div className={`text-sm ${school2.city && school2.state ? 'text-gray-600' : 'text-gray-400'}`}>
                       {school2.city || '(no city)'}, {school2.state || '(no state)'}
                     </div>

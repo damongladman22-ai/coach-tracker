@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
 import { SchoolSearch } from '../components/SchoolSearch'
+import GenderBadge from '../components/GenderBadge'
+import { teamGenderToProgramGender, programGenderLabel } from '../lib/lookups'
 
 export default function AttendanceMatrix({ session }) {
   const { eventId, teamId } = useParams()
@@ -19,6 +21,12 @@ export default function AttendanceMatrix({ session }) {
   const [newCoach, setNewCoach] = useState({ first_name: '', last_name: '' })
   const [showNewCoachForm, setShowNewCoachForm] = useState(false)
   const [toast, setToast] = useState(null)
+
+  // Team gender → schools program_gender (null when team gender unknown)
+  const programGender = useMemo(
+    () => teamGenderToProgramGender(eventTeam?.club_teams?.gender),
+    [eventTeam]
+  )
 
   useEffect(() => {
     fetchData()
@@ -305,10 +313,19 @@ export default function AttendanceMatrix({ session }) {
                 <h3 className="font-medium mb-3">Add Coach to Matrix</h3>
                 
                 <div className="mb-4">
-                  <label className="block text-sm text-gray-600 mb-1">Search for School</label>
+                  <label className="block text-sm text-gray-600 mb-1">
+                    Search for School
+                    {programGender && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-gray-500">
+                        <GenderBadge gender={programGender} size="xs" />
+                        <span>{programGenderLabel(programGender).toLowerCase()} programs only</span>
+                      </span>
+                    )}
+                  </label>
                   <SchoolSearch 
                     selectedSchool={selectedSchool} 
-                    onSelect={handleSchoolSelect} 
+                    onSelect={handleSchoolSelect}
+                    programGender={programGender}
                   />
                 </div>
 

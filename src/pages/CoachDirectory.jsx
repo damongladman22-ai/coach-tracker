@@ -5,6 +5,7 @@ import { isValidEmail } from '../lib/validation';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
 import HamburgerMenu from '../components/HamburgerMenu';
+import GenderBadge from '../components/GenderBadge';
 
 // US States for filter dropdown
 const US_STATES = [
@@ -42,6 +43,9 @@ export default function CoachDirectory() {
   const [showInactive, setShowInactive] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
   const [togglingActive, setTogglingActive] = useState(null); // coach id whose active state is being toggled
+  // Gender filter: 'W' (default, back-compat with women's-only directory),
+  // 'M' for men's programs, 'ALL' to show both.
+  const [genderFilter, setGenderFilter] = useState('W');
   
   // Debounce timer ref
   const searchTimerRef = useRef(null);
@@ -98,7 +102,7 @@ export default function CoachDirectory() {
           setEmailLinksEnabled(settingData.value === 'true');
         }
 
-        // Fetch all coaches with school info
+        // Fetch all coaches with school info (incl. program_gender on the school)
         let allCoaches = [];
         let from = 0;
         const batchSize = 1000;
@@ -108,7 +112,7 @@ export default function CoachDirectory() {
             .from('coaches')
             .select(`
               id, first_name, last_name, email, phone, title, is_active,
-              schools (id, school, city, state, division, conference)
+              schools (id, school, city, state, division, conference, program_gender)
             `)
             .order('last_name')
             .range(from, from + batchSize - 1);
@@ -127,14 +131,14 @@ export default function CoachDirectory() {
         
         setCoaches(allCoaches);
         
-        // Fetch all schools for reference
+        // Fetch all schools for reference (incl. program_gender)
         let allSchools = [];
         from = 0;
         
         while (true) {
           const { data, error } = await supabase
             .from('schools')
-            .select('id, school, city, state, division, conference')
+            .select('id, school, city, state, division, conference, program_gender')
             .order('school')
             .range(from, from + batchSize - 1);
           
@@ -184,6 +188,12 @@ export default function CoachDirectory() {
     return coaches.filter(coach => {
       const school = coach.schools;
       if (!school) return false;
+
+      // Gender filter — coach's school must match selected program_gender.
+      // Treat null/undefined as 'W' (back-compat with pre-migration data).
+      if (genderFilter !== 'ALL' && (school.program_gender || 'W') !== genderFilter) {
+        return false;
+      }
       
       // Search query (coach name or school name)
       if (searchQuery) {
@@ -224,7 +234,7 @@ export default function CoachDirectory() {
       
       return true;
     });
-  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, matchesSearch]);
+  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, matchesSearch]);
 
   // Group by school for display
   const groupedBySchool = useMemo(() => {
@@ -260,7 +270,7 @@ export default function CoachDirectory() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive]);
+  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -599,6 +609,31 @@ export default function CoachDirectory() {
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
+          {/* Gender pills */}
+          <div className="flex items-center gap-2 text-sm mb-3 flex-wrap">
+            <span className="text-gray-600 mr-1">Program:</span>
+            {[
+              { key: 'W', label: "Women's" },
+              { key: 'M', label: "Men's" },
+              { key: 'ALL', label: 'Both' },
+            ].map(opt => {
+              const active = genderFilter === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => setGenderFilter(opt.key)}
+                  className={`px-3 py-1.5 rounded-full border transition ${
+                    active
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Search - always visible */}
           <div className="flex gap-2">
             <div className="flex-1">
@@ -768,7 +803,10 @@ export default function CoachDirectory() {
                 <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-white">
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-semibold text-lg truncate">{school.school}</h3>
+                      <h3 className="font-semibold text-lg truncate flex items-center gap-2">
+                        <span className="truncate">{school.school}</span>
+                        <GenderBadge gender={school.program_gender} size="xs" />
+                      </h3>
                       <p className="text-blue-100 text-sm truncate">
                         {school.city}, {school.state} • {school.division}
                       </p>

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import AdminLayout from '../components/AdminLayout';
+import GenderBadge from '../components/GenderBadge';
+import { programGenderLabel } from '../lib/lookups';
 import * as XLSX from 'xlsx';
 
 /**
@@ -13,7 +15,13 @@ import * as XLSX from 'xlsx';
  * Two modes:
  * - Add New Coaches: Import coaches that don't exist yet
  * - Update Existing Coaches: Update contact info for existing coaches
- * 
+ *
+ * Gender:
+ * Import is scoped to ONE program_gender per session. Admin picks 'W' or 'M'
+ * at the top; school matching, school-row dropdowns, and inserts all operate
+ * within that gender so men's coaches never end up FK'd to women's schools
+ * (and vice versa).
+ *
  * Performance optimized with pagination for large imports
  */
 
@@ -24,8 +32,12 @@ export default function ImportCoaches({ session }) {
   
   // Import mode: 'add' or 'update'
   const [importMode, setImportMode] = useState('add');
+
+  // Program gender for this import session: 'W' (default, back-compat) or 'M'.
+  // Determines which schools are loaded and used for matching.
+  const [importGender, setImportGender] = useState('W');
   
-  // Schools from database
+  // Schools from database (filtered to importGender)
   const [schools, setSchools] = useState([]);
   const [schoolsLoading, setSchoolsLoading] = useState(true);
   
@@ -64,9 +76,10 @@ export default function ImportCoaches({ session }) {
   // Filter state for preview
   const [showOnlyUnmatched, setShowOnlyUnmatched] = useState(false);
 
-  // Load schools on mount
+  // Load schools on mount (and whenever importGender changes)
   useEffect(() => {
     async function loadSchools() {
+      setSchoolsLoading(true);
       let allSchools = [];
       let from = 0;
       const batchSize = 1000;
@@ -74,7 +87,8 @@ export default function ImportCoaches({ session }) {
       while (true) {
         const { data, error } = await supabase
           .from('schools')
-          .select('id, school, city, state, division')
+          .select('id, school, city, state, division, program_gender')
+          .eq('program_gender', importGender)
           .order('school')
           .range(from, from + batchSize - 1);
         
@@ -95,9 +109,9 @@ export default function ImportCoaches({ session }) {
       setSchoolsLoading(false);
     }
     loadSchools();
-  }, []);
+  }, [importGender]);
 
-  // Load existing coaches when update mode is selected
+  // Load existing coaches when update mode is selected (filtered by importGender)
   useEffect(() => {
     async function loadExistingCoaches() {
       if (importMode !== 'update') return;
@@ -110,7 +124,8 @@ export default function ImportCoaches({ session }) {
       while (true) {
         const { data, error } = await supabase
           .from('coaches')
-          .select('id, first_name, last_name, school_id, email, phone, title, schools(school)')
+          .select('id, first_name, last_name, school_id, email, phone, title, schools!inner(school, program_gender)')
+          .eq('schools.program_gender', importGender)
           .range(from, from + batchSize - 1);
         
         if (error) {
@@ -130,7 +145,7 @@ export default function ImportCoaches({ session }) {
       setCoachesLoading(false);
     }
     loadExistingCoaches();
-  }, [importMode]);
+  }, [importMode, importGender]);
 
   // Fuzzy match school name to database
   const findSchoolMatch = useCallback((searchName) => {
@@ -802,6 +817,62 @@ export default function ImportCoaches({ session }) {
               <p className="text-sm text-amber-800">
                 <strong>Tip:</strong> This page works best on a larger screen. The preview table may require horizontal scrolling on mobile devices.
               </p>
+            </div>
+
+            {/* Program Gender Selector */}
+            <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-6">
+              <h2 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                Program Gender
+                <GenderBadge gender={importGender} size="xs" />
+              </h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Coaches imported in this session will be matched only against{' '}
+                <strong>{programGenderLabel(importGender).toLowerCase()}</strong> programs.
+                Switch genders to import for a different set of programs.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4">
+                <label className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors flex-1 ${
+                  importGender === 'W' ? 'border-rose-500 bg-rose-50' : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                  <input
+                    type="radio"
+                    name="importGender"
+                    value="W"
+                    checked={importGender === 'W'}
+                    onChange={() => {
+                      setImportGender('W');
+                      setPreview(null);
+                      setImportResult(null);
+                    }}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="font-medium text-gray-900">Women's Programs</div>
+                    <div className="text-sm text-gray-600">Import to NCAA / NAIA / JC women's soccer programs</div>
+                  </div>
+                </label>
+
+                <label className={`flex items-start gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors flex-1 ${
+                  importGender === 'M' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                  <input
+                    type="radio"
+                    name="importGender"
+                    value="M"
+                    checked={importGender === 'M'}
+                    onChange={() => {
+                      setImportGender('M');
+                      setPreview(null);
+                      setImportResult(null);
+                    }}
+                    className="mt-1"
+                  />
+                  <div>
+                    <div className="font-medium text-gray-900">Men's Programs</div>
+                    <div className="text-sm text-gray-600">Import to NCAA / NAIA / JC men's soccer programs</div>
+                  </div>
+                </label>
+              </div>
             </div>
 
             {/* Mode Toggle */}

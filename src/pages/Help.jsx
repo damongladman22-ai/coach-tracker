@@ -360,6 +360,23 @@ Parents and players see a blue "Feedback" button in the bottom corner of every p
 **To see all inactive coaches:** In Schools & Coaches, the "Show inactive coaches" toggle appears whenever a school has any. In the Coach Directory, use the filter checkbox.
 
 Anyone (parents and players too) can mark coaches inactive in the Coach Directory — same crowd-sourcing model as adding/editing coaches.`
+    },
+    {
+      id: 'a14',
+      question: "I see Women's / Men's / Both pills at the top of the school list — what do those do?",
+      answer: `The schools database now holds both NCAA women's soccer programs and NCAA men's soccer programs. Every school row is tagged with a program gender ("W" or "M"). The pills filter what you see:
+
+- **Women's** (default): only women's programs and their coaches
+- **Men's**: only men's programs and their coaches
+- **Both**: everything, with a small W or M badge on each row so you can tell them apart
+
+The same filter appears on the Coach Directory and the Schools & Coaches admin page.
+
+**Why are some schools listed twice?** Many universities (Ohio State, Stanford, etc.) field both a women's and a men's soccer program. Those are intentionally two separate rows in the database — they have different coaching staffs, different conferences in some cases, and recruit independently. The Dedup Schools tool knows about this and won't flag them as duplicates.
+
+**Live Tracker and Attendance Matrix auto-filter.** When parents or admins are logging coaches on a Girls team's game, the coach search only shows women's programs. Same for a Boys team showing men's programs. You don't have to set anything — it's derived from the team's gender.
+
+**Bulk Import is gender-scoped per session.** On the Bulk Coach Import page, pick the program gender at the top before uploading your file. Schools are then matched only against programs of that gender. Run separate import sessions for men's and women's coach lists.`
     }
   ]
 

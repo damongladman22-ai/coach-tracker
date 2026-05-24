@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Spinner } from './LoadingStates';
+import GenderBadge from './GenderBadge';
 
 /**
  * Optimized school search component
@@ -10,8 +11,14 @@ import { Spinner } from './LoadingStates';
  * - Debounced input (150ms delay)
  * - Fuzzy matching (handles typos)
  * - Mobile-optimized with large touch targets
+ *
+ * Props:
+ * - selectedSchool: currently-selected school object, or null
+ * - onSelect: callback when user picks a school
+ * - programGender (optional): 'M' or 'W' — restricts search to schools of that
+ *   program gender. Omit for legacy behavior (search across all genders).
  */
-export function SchoolSearch({ selectedSchool, onSelect }) {
+export function SchoolSearch({ selectedSchool, onSelect, programGender = null }) {
   const [query, setQuery] = useState('');
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,11 +35,15 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
         const batchSize = 1000;
         
         while (true) {
-          const { data, error } = await supabase
+          let q = supabase
             .from('schools')
-            .select('id, school, city, state, division, conference')
+            .select('id, school, city, state, division, conference, program_gender')
             .order('school')
             .range(from, from + batchSize - 1);
+          if (programGender === 'M' || programGender === 'W') {
+            q = q.eq('program_gender', programGender);
+          }
+          const { data, error } = await q;
           
           if (error) throw error;
           if (!data || data.length === 0) break;
@@ -52,7 +63,8 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
     }
 
     loadSchools();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [programGender]);
 
   // Debounce the search query
   useEffect(() => {
@@ -227,7 +239,10 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
                 onClick={() => handleSelect(school)}
                 className="w-full text-left px-4 py-4 hover:bg-gray-50 active:bg-gray-100 border-b last:border-b-0 focus:bg-gray-50 focus:outline-none"
               >
-                <div className="font-medium text-gray-900">{school.school}</div>
+                <div className="font-medium text-gray-900 flex items-center gap-2">
+                  <span>{school.school}</span>
+                  <GenderBadge gender={school.program_gender} size="xs" />
+                </div>
                 <div className="text-sm text-gray-500">
                   {school.city}, {school.state} • {school.division} • {school.conference}
                 </div>
