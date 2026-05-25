@@ -43,13 +43,34 @@ export default function CoachDirectory() {
   const [showInactive, setShowInactive] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
   const [togglingActive, setTogglingActive] = useState(null); // coach id whose active state is being toggled
-  // Gender filter: 'W' (women's), 'M' (men's), 'ALL' (both).
-  // Default depends on context:
-  // - Parent/player context (no ?context=admin): 'ALL' — they may be from
-  //   a Boys family or a Girls family, show everything by default
-  // - Admin context: 'W' — preserves existing muscle memory; admins toggle
-  //   to 'M' when working on men's data
-  const [genderFilter, setGenderFilter] = useState(isAdminContext ? 'W' : 'ALL');
+  // Gender filter: 'W' (women's) or 'M' (men's).
+  // - Admin context: defaults to 'W'; admin toggles to 'M' when working on
+  //   the other side.
+  // - Parent/player context: defaults to 'W' on first visit, but their last
+  //   selection is persisted in localStorage so they only have to pick once.
+  //   (A "Both" option was removed — a parent is either looking for boys'
+  //   or girls' coaches; combining the two creates noise without value.)
+  const [genderFilter, setGenderFilter] = useState(() => {
+    if (isAdminContext) return 'W';
+    try {
+      const stored = localStorage.getItem('coachDirectoryGenderFilter');
+      if (stored === 'M' || stored === 'W') return stored;
+    } catch (_e) {
+      // localStorage unavailable — fall through to default
+    }
+    return 'W';
+  });
+
+  // Persist parent/player gender choice (admins don't need persistence — they
+  // typically work in short focused sessions).
+  useEffect(() => {
+    if (isAdminContext) return;
+    try {
+      localStorage.setItem('coachDirectoryGenderFilter', genderFilter);
+    } catch (_e) {
+      // ignore
+    }
+  }, [genderFilter, isAdminContext]);
   
   // Debounce timer ref
   const searchTimerRef = useRef(null);
@@ -195,7 +216,7 @@ export default function CoachDirectory() {
 
       // Gender filter — coach's school must match selected program_gender.
       // Treat null/undefined as 'W' (back-compat with pre-migration data).
-      if (genderFilter !== 'ALL' && (school.program_gender || 'W') !== genderFilter) {
+      if ((school.program_gender || 'W') !== genderFilter) {
         return false;
       }
       
@@ -619,7 +640,6 @@ export default function CoachDirectory() {
             {[
               { key: 'W', label: "Women's" },
               { key: 'M', label: "Men's" },
-              { key: 'ALL', label: 'Both' },
             ].map(opt => {
               const active = genderFilter === opt.key;
               return (
