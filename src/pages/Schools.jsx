@@ -695,12 +695,14 @@ export default function Schools({ session }) {
                   >
                     Edit
                   </button>
-                  <button
-                    onClick={(e) => deleteSchool(school, e)}
-                    className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded-lg"
-                  >
-                    Delete
-                  </button>
+                  {session && (
+                    <button
+                      onClick={(e) => deleteSchool(school, e)}
+                      className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded-lg"
+                    >
+                      Delete
+                    </button>
+                  )}
                   <span className="text-gray-400 ml-2 p-2">
                     {expandedSchool === school.id ? '▼' : '▶'}
                   </span>
@@ -873,15 +875,17 @@ export default function Schools({ session }) {
                                 ? '...'
                                 : isActive ? 'Mark Inactive' : 'Mark Active'}
                             </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                deleteCoach(coach.id, school.id)
-                              }}
-                              className="text-red-600 hover:text-red-800 text-xs"
-                            >
-                              Delete
-                            </button>
+                            {session && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  deleteCoach(coach.id, school.id)
+                                }}
+                                className="text-red-600 hover:text-red-800 text-xs"
+                              >
+                                Delete
+                              </button>
+                            )}
                           </div>
                         </div>
                             )
