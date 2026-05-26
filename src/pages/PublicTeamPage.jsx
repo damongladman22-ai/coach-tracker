@@ -34,11 +34,12 @@ import { useFavorite } from '../hooks/useFavorite'
  *    /e/:eventSlug/:teamSlug page for game-day flows
  *
  * Sprint 2 changes (May 25):
- *  - Roster tab: 2/3/4-column grid of player cards (photo, jersey, name,
- *    position, grad year). Sourced from team_players, populated by AthleteOne
- *    ingest at /api/ingest-athleteone.
+ *  - Roster tab: 1-column list of players (circular photo, name, jersey/
+ *    position/grad year subtitle). Sourced from team_players, populated by
+ *    AthleteOne ingest at /api/ingest-athleteone.
  *  - Staff tab: 1-column list of coaching staff (photo, name, title, email).
  *    Sourced from team_staff.
+ *  - Roster and Staff share the same row layout for visual consistency.
  *  - Standings position badge below the season name. Pulled from
  *    teams.athleteone_metadata.standings_position. Only the position is
  *    surfaced — W/L/T remain computed from the games table so manual games
@@ -441,9 +442,9 @@ export default function PublicTeamPage() {
             )}
 
             {activeTab === 'roster' && hasRoster && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 mb-8">
+              <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100 mb-8">
                 {players.map((p) => (
-                  <PlayerCard key={p.id} player={p} />
+                  <PlayerRow key={p.id} player={p} />
                 ))}
               </div>
             )}
@@ -602,29 +603,35 @@ function TabButton({ active, onClick, children }) {
 }
 
 /**
- * PlayerCard — one cell in the Roster grid.
+ * PlayerRow — one row in the Roster list.
  *
- * Visual layout (mobile-first):
- *   - Portrait-ish aspect photo (or initials fallback) with jersey badge
- *   - Name (truncate on overflow)
- *   - Position · Class of 'YY
+ * Layout mirrors StaffRow for visual consistency between the two tabs:
+ *   - Circular photo (or initials fallback) on the left
+ *   - Name on the right, with a subtitle of "#NN · Position · 'YY"
  *
- * Photo URLs come from AthleteOne and are public CDN assets, so we can
- * just <img src> them directly. Lazy-load to keep the initial render fast
- * when there are 20+ players.
+ * Jersey/position/grad year segments are each conditional, joined by · only
+ * when present. Photo URLs come from AthleteOne and are public CDN assets,
+ * so we just <img src> them directly with lazy loading.
  */
-function PlayerCard({ player }) {
+function PlayerRow({ player }) {
   const initials =
     ((player.first_name || '').charAt(0) +
       (player.last_name || '').charAt(0)).toUpperCase() || '?'
-  const gradShort = player.grad_year
-    ? `'${String(player.grad_year).slice(-2)}`
-    : null
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim()
 
+  // Build subtitle parts, dropping any that are empty so we don't end up
+  // with leading/trailing/double separators.
+  const parts = []
+  if (player.jersey_number != null && player.jersey_number !== '') {
+    parts.push(`#${player.jersey_number}`)
+  }
+  if (player.position) parts.push(player.position)
+  if (player.grad_year) parts.push(`'${String(player.grad_year).slice(-2)}`)
+  const subtitle = parts.join(' · ') || '—'
+
   return (
-    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-      <div className="relative aspect-[3/4] bg-gray-100">
+    <div className="flex items-center gap-3 p-3">
+      <div className="flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
         {player.photo_url ? (
           <img
             src={player.photo_url}
@@ -634,32 +641,14 @@ function PlayerCard({ player }) {
             className="w-full h-full object-cover"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-400">
-            {initials}
-          </div>
-        )}
-        {player.jersey_number != null && player.jersey_number !== '' && (
-          <div className="absolute top-2 left-2 bg-slate-900/85 text-white text-xs font-bold px-2 py-0.5 rounded">
-            #{player.jersey_number}
-          </div>
+          <span className="text-sm font-bold text-gray-400">{initials}</span>
         )}
       </div>
-      <div className="p-2.5">
-        <div
-          className="font-semibold text-sm text-gray-900 truncate"
-          title={fullName}
-        >
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-sm text-gray-900 truncate">
           {player.first_name} {player.last_name}
         </div>
-        <div className="text-xs text-gray-500 mt-0.5 truncate">
-          {player.position || '—'}
-          {gradShort && (
-            <>
-              <span className="text-gray-300 mx-1">·</span>
-              <span>{gradShort}</span>
-            </>
-          )}
-        </div>
+        <div className="text-xs text-gray-500 truncate">{subtitle}</div>
       </div>
     </div>
   )
