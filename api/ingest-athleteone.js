@@ -37,6 +37,12 @@ export default async function handler(req, res) {
 
   const results = []
 
+  // Schedule cache: key = "eventId:clubId", value = the HTML body of the
+  // club-schedules endpoint. Cached so that when we sync multiple teams in
+  // one call (e.g. immediately after bulk-create), we hit AthleteOne once
+  // per club-event combo rather than once per team.
+  const scheduleCache = new Map()
+
   for (const team of teams) {
     const url = ATHLETEONE_BASE + '/' + team.athleteone_org_id + '/' + team.athleteone_event_id + '/' + team.athleteone_club_id + '/' + team.athleteone_team_id
 
@@ -135,11 +141,24 @@ export default async function handler(req, res) {
           .upsert(staffRows, { onConflict: 'team_id,athleteone_staff_id' })
       }
 
+      // === Games sync ===
+      // Only runs when this team has athleteone_sync_games=TRUE. We fetch the
+      // club-schedule endpoint (cached) and upsert games keyed on
+      // athleteone_game_id. Rows flagged manual_override=TRUE are left alone.
+      // Never deletes — even if a game disappears from AthleteOne, the row
+      // stays so its attendance is preserved. Admin can delete manually.
+      let gamesResult
+      if (team.athleteone_sync_games) {
+        gamesResult = await syncGames(supabase, team, scheduleCache)
+      } else {
+        gamesResult = 'sync disabled for this team'
+      }
+
       summary.mode = 'committed'
       summary.committed = {
         players_upserted: players.length,
         staff_upserted: staff.length,
-        games: team.athleteone_sync_games ? 'sync enabled, parser pending Sprint 2' : 'sync disabled for this team',
+        games: gamesResult,
       }
       results.push(summary)
     } catch (err) {
@@ -402,4 +421,223 @@ async function checkAdminAuth(supabase, req) {
   }
 
   return { ok: true, kind: 'jwt', email: userEmail }
+}
+
+// === Games sync helpers ============================================
+// Fetches the club-schedule HTML for the team's (event, club) tuple (using a
+// shared cache so multiple teams in one call hit AthleteOne once), parses
+// games involving the target team, and upserts them into the games table.
+//
+// Safety:
+// - Upserts keyed on athleteone_game_id (partial unique index)
+// - Never deletes — preserves attendance even if game disappears upstream
+// - Skips rows with manual_override=TRUE so admin overrides stick
+// - Scores NOT pulled (admin enters manually for completed games)
+async function syncGames(supabase, team, scheduleCache) {
+  const cacheKey = team.athleteone_event_id + ':' + team.athleteone_club_id
+  let html = scheduleCache.get(cacheKey)
+
+  if (!html) {
+    const url =
+      'https://api.athleteone.com/api/Script/get-club-schedules-by-eventID-and-clubID/' +
+      team.athleteone_event_id +
+      '/' +
+      team.athleteone_club_id
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          Referer: 'https://theecnl.com/',
+          Origin: 'https://theecnl.com',
+          Accept: '*/*',
+        },
+      })
+      if (!resp.ok) {
+        return { error: 'Schedule fetch failed: HTTP ' + resp.status }
+      }
+      html = await resp.text()
+      scheduleCache.set(cacheKey, html)
+    } catch (err) {
+      return { error: 'Schedule fetch error: ' + (err.message || String(err)) }
+    }
+  }
+
+  const games = parseGames(html, String(team.athleteone_team_id))
+
+  if (games.length === 0) {
+    return {
+      upserted: 0,
+      skipped_override: 0,
+      note: 'No games found for this team in schedule',
+    }
+  }
+
+  // Find default League game type
+  let defaultGameTypeId = null
+  const { data: gameTypes } = await supabase
+    .from('game_types')
+    .select('id, name')
+  if (gameTypes) {
+    const league = gameTypes.find((gt) => /league/i.test(gt.name || ''))
+    if (league) defaultGameTypeId = league.id
+  }
+
+  // Find which ao_game_ids have manual_override=TRUE so we skip them
+  const aoIds = games.map((g) => g.athleteone_game_id).filter((id) => id != null)
+  const overrideSet = new Set()
+  if (aoIds.length > 0) {
+    const { data: existing } = await supabase
+      .from('games')
+      .select('athleteone_game_id, manual_override')
+      .in('athleteone_game_id', aoIds)
+    if (existing) {
+      for (const e of existing) {
+        if (e.manual_override) overrideSet.add(e.athleteone_game_id)
+      }
+    }
+  }
+
+  const upsertRows = games
+    .filter((g) => !overrideSet.has(g.athleteone_game_id))
+    .map((g) => ({
+      team_id: team.id,
+      athleteone_game_id: g.athleteone_game_id,
+      game_date: g.game_date,
+      game_time: g.game_time,
+      opponent: g.opponent,
+      is_home: g.is_home,
+      location: g.location,
+      game_type_id: defaultGameTypeId,
+      source: 'athleteone',
+      timezone: 'America/New_York',
+    }))
+
+  if (upsertRows.length === 0) {
+    return {
+      upserted: 0,
+      skipped_override: overrideSet.size,
+      total_in_schedule: games.length,
+    }
+  }
+
+  const { error: upErr } = await supabase
+    .from('games')
+    .upsert(upsertRows, { onConflict: 'athleteone_game_id' })
+  if (upErr) {
+    return { error: 'Upsert failed: ' + upErr.message }
+  }
+
+  return {
+    upserted: upsertRows.length,
+    skipped_override: overrideSet.size,
+    total_in_schedule: games.length,
+  }
+}
+
+// Parse all games from the club-schedule HTML. Returns games where the target
+// team appears as one of the two participants. Determines home/away by
+// position: first <span class="individual-team-item"> in the row = home.
+function parseGames(html, ourTeamIdStr) {
+  const tbodyMatch = html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i)
+  if (!tbodyMatch) return []
+
+  const tbody = tbodyMatch[1]
+  const rows = []
+  const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+  let m
+  while ((m = trRe.exec(tbody)) !== null) {
+    rows.push(m[1])
+  }
+
+  const games = []
+  for (const row of rows) {
+    const g = parseGameRow(row, ourTeamIdStr)
+    if (g) games.push(g)
+  }
+  return games
+}
+
+function parseGameRow(rowHtml, ourTeamIdStr) {
+  // GM# — first <div> containing only digits
+  let gmId = null
+  const gmMatch = rowHtml.match(/<div[^>]*>\s*(\d+)\s*<\/div>/i)
+  if (gmMatch) gmId = parseInt(gmMatch[1], 10)
+
+  // Date — "Mon DD, YYYY"
+  let gameDate = null
+  const dateMatch = rowHtml.match(
+    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\d{1,2}),\s+(\d{4})/i
+  )
+  if (dateMatch) {
+    const months = {
+      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+    }
+    const month = months[dateMatch[1].toLowerCase().slice(0, 3)] || '01'
+    const day = String(dateMatch[2]).padStart(2, '0')
+    gameDate = dateMatch[3] + '-' + month + '-' + day
+  }
+
+  // Time — "HH:MM AM/PM"
+  let gameTime = null
+  const timeMatch = rowHtml.match(/\b(\d{1,2}):(\d{2})\s+(AM|PM)\b/i)
+  if (timeMatch) {
+    let h = parseInt(timeMatch[1], 10)
+    const min = parseInt(timeMatch[2], 10)
+    const ampm = timeMatch[3].toUpperCase()
+    if (ampm === 'PM' && h !== 12) h += 12
+    if (ampm === 'AM' && h === 12) h = 0
+    gameTime =
+      String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') + ':00'
+  }
+
+  // Team spans (first listed = home, second = away)
+  const teamSpanRe =
+    /<span\s+class="individual-team-item"([^>]*)>([^<]+)<\/span>/gi
+  const teams = []
+  let tm
+  while ((tm = teamSpanRe.exec(rowHtml)) !== null) {
+    const attrs = tm[1]
+    const text = tm[2].trim()
+    const teamId = extractAttrSimple(attrs, 'data-team-id')
+    teams.push({ team_id: teamId, name: text })
+  }
+  if (teams.length < 2) return null
+
+  const ourIdx = teams.findIndex((t) => t.team_id === ourTeamIdStr)
+  if (ourIdx < 0) return null
+
+  const opponent = teams[1 - ourIdx]
+  const isHome = ourIdx === 0
+
+  // Venue (game-complex-item span). The text may contain a nested <span> for
+  // the separator ("Rossford<span> - </span>Indoor"), so we capture all the
+  // way to the closing </td> of the cell and strip tags. The game-complex-item
+  // is always the last content in its cell, so this is safe.
+  let location = null
+  const venueMatch = rowHtml.match(
+    /<span\s+class="game-complex-item"[^>]*>([\s\S]*?)<\/td>/i
+  )
+  if (venueMatch) {
+    location = venueMatch[1]
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  return {
+    athleteone_game_id: gmId,
+    game_date: gameDate,
+    game_time: gameTime,
+    opponent: opponent.name,
+    is_home: isHome,
+    location: location,
+  }
+}
+
+function extractAttrSimple(attrs, name) {
+  const re = new RegExp(name + '="([^"]*)"', 'i')
+  const m = attrs.match(re)
+  return m ? m[1] : null
 }

@@ -62,6 +62,11 @@ export default function AthleteOneDiscover({ session }) {
   const [creating, setCreating] = useState(false)
   const [createResult, setCreateResult] = useState(null)
 
+  // Auto-sync state — tracks progress through the per-team ingest loop that
+  // runs immediately after bulk-create. We sync sequentially (not in parallel)
+  // so AthleteOne isn't hammered and the user sees clear progress.
+  const [syncProgress, setSyncProgress] = useState(null)
+
   useEffect(() => {
     loadLookups()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -255,10 +260,89 @@ export default function AthleteOneDiscover({ session }) {
         return
       }
 
+      // === Auto-sync each newly created team ===
+      // Sequential (not parallel) to avoid hammering AthleteOne and to give
+      // the user clear "syncing X of N" progress. Each call may take 2-5 sec.
+      const newTeams = created || []
+      setSyncProgress({
+        current: 0,
+        total: newTeams.length,
+        teamName: '',
+        results: [],
+        done: false,
+      })
+
+      const { data: sessData } = await supabase.auth.getSession()
+      const token = sessData?.session?.access_token
+
+      const syncResults = []
+      for (let i = 0; i < newTeams.length; i++) {
+        const t = newTeams[i]
+        setSyncProgress({
+          current: i + 1,
+          total: newTeams.length,
+          teamName: t.name,
+          results: syncResults.slice(),
+          done: false,
+        })
+
+        try {
+          const r = await fetch(
+            `/api/ingest-athleteone?teamId=${t.id}&commit=true`,
+            {
+              headers: token ? { Authorization: `Bearer ${token}` } : {},
+            }
+          )
+          const data = await r.json().catch(() => ({}))
+          const result = (data.results || [])[0]
+          if (r.ok && result && !result.error) {
+            const c = result.committed || {}
+            syncResults.push({
+              team_id: t.id,
+              name: t.name,
+              success: true,
+              players: c.players_upserted ?? 0,
+              staff: c.staff_upserted ?? 0,
+              games:
+                typeof c.games === 'object'
+                  ? c.games.upserted ?? c.games.processed ?? '—'
+                  : c.games || '—',
+            })
+          } else {
+            syncResults.push({
+              team_id: t.id,
+              name: t.name,
+              success: false,
+              error:
+                result?.error ||
+                data?.error ||
+                `HTTP ${r.status}`,
+            })
+          }
+        } catch (err) {
+          syncResults.push({
+            team_id: t.id,
+            name: t.name,
+            success: false,
+            error: err.message || 'Network error',
+          })
+        }
+      }
+
+      setSyncProgress({
+        current: newTeams.length,
+        total: newTeams.length,
+        teamName: '',
+        results: syncResults,
+        done: true,
+      })
+
+      const successCount = syncResults.filter((r) => r.success).length
       setCreateResult({
         kind: 'success',
-        text: `Created ${created.length} team${created.length === 1 ? '' : 's'}.`,
+        text: `Created ${created.length} team${created.length === 1 ? '' : 's'}. Synced ${successCount} of ${newTeams.length}.`,
         created: created,
+        syncResults: syncResults,
       })
 
       // Refresh discovery so the just-created teams flip to "Already exists"
@@ -517,6 +601,28 @@ export default function AthleteOneDiscover({ session }) {
             </button>
           </div>
 
+          {/* In-flight sync progress bar — shown while the per-team ingest
+              loop runs after bulk-create. */}
+          {syncProgress && !syncProgress.done && (
+            <div className="mt-3 rounded p-3 text-sm bg-blue-50 border border-blue-200 text-blue-800">
+              <div className="font-medium">
+                Syncing {syncProgress.current} of {syncProgress.total}
+                {syncProgress.teamName ? `: ${syncProgress.teamName}` : '…'}
+              </div>
+              <div className="mt-2 h-2 w-full bg-blue-100 rounded overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 transition-all"
+                  style={{
+                    width:
+                      syncProgress.total > 0
+                        ? `${(syncProgress.current / syncProgress.total) * 100}%`
+                        : '0%',
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
           {createResult && (
             <div
               className={`mt-3 rounded p-3 text-sm ${
@@ -529,20 +635,49 @@ export default function AthleteOneDiscover({ session }) {
             >
               {createResult.text}
               {createResult.created && createResult.created.length > 0 && (
-                <ul className="list-disc list-inside mt-2 text-xs">
-                  {createResult.created.map((c) => (
-                    <li key={c.id}>
-                      <Link
-                        to={`/admin/teams/${c.id}`}
-                        className="text-blue-600 hover:underline"
-                      >
-                        {c.name}
-                      </Link>{' '}
-                      <span className="text-gray-500">
-                        (AthleteOne #{c.athleteone_team_id})
-                      </span>
-                    </li>
-                  ))}
+                <ul className="mt-2 text-xs space-y-1">
+                  {createResult.created.map((c) => {
+                    const sr = (createResult.syncResults || []).find(
+                      (r) => r.team_id === c.id
+                    )
+                    return (
+                      <li key={c.id} className="flex items-start gap-2">
+                        <span className="mt-0.5">
+                          {sr
+                            ? sr.success
+                              ? '✓'
+                              : '✗'
+                            : '•'}
+                        </span>
+                        <div className="flex-1">
+                          <Link
+                            to={`/admin/teams/${c.id}`}
+                            className="text-blue-600 hover:underline"
+                          >
+                            {c.name}
+                          </Link>{' '}
+                          <span className="text-gray-500">
+                            (AthleteOne #{c.athleteone_team_id})
+                          </span>
+                          {sr && sr.success && (
+                            <span className="ml-2 text-gray-600">
+                              {sr.players} players · {sr.staff} staff
+                              {typeof sr.games === 'number'
+                                ? ` · ${sr.games} games`
+                                : sr.games && sr.games !== '—'
+                                ? ` · ${sr.games}`
+                                : ''}
+                            </span>
+                          )}
+                          {sr && !sr.success && (
+                            <span className="ml-2 text-red-700">
+                              sync failed: {sr.error}
+                            </span>
+                          )}
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </div>

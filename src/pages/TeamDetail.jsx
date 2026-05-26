@@ -904,13 +904,23 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => setShowConfig((v) => !v)}
-        className="text-sm text-blue-600 hover:text-blue-800"
-      >
-        {showConfig ? 'Hide configuration' : 'Show configuration'}
-      </button>
+      <div className="flex items-center gap-4 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setShowConfig((v) => !v)}
+          className="text-sm text-blue-600 hover:text-blue-800"
+        >
+          {showConfig ? 'Hide configuration' : 'Show configuration'}
+        </button>
+        {configured && (
+          <Link
+            to={`/admin/teams/${team.id}/game-dedup`}
+            className="text-sm text-blue-600 hover:text-blue-800"
+          >
+            Game dedup tool →
+          </Link>
+        )}
+      </div>
 
       {showConfig && (
         <form onSubmit={handleSaveConfig} className="mt-3 space-y-3 border-t border-gray-100 pt-3">

@@ -21,6 +21,7 @@ const AdminDashboard = lazy(() => import('./pages/AdminDashboard'))
 const Teams = lazy(() => import('./pages/Teams'))
 const TeamDetail = lazy(() => import('./pages/TeamDetail'))
 const AthleteOneDiscover = lazy(() => import('./pages/AthleteOneDiscover'))
+const GameDedup = lazy(() => import('./pages/GameDedup'))
 const Seasons = lazy(() => import('./pages/Seasons'))
 const Programs = lazy(() => import('./pages/Programs'))
 const AgeGroups = lazy(() => import('./pages/AgeGroups'))
@@ -74,6 +75,7 @@ function App() {
             <Route path="/admin/setup" element={<AdminSetup />} />
             <Route path="/admin/teams" element={session ? <Teams session={session} /> : <AdminLogin />} />
             <Route path="/admin/teams/:teamId" element={session ? <TeamDetail session={session} /> : <AdminLogin />} />
+            <Route path="/admin/teams/:teamId/game-dedup" element={session ? <GameDedup session={session} /> : <AdminLogin />} />
             <Route path="/admin/athleteone-discover" element={session ? <AthleteOneDiscover session={session} /> : <AdminLogin />} />
             <Route path="/admin/seasons" element={session ? <Seasons session={session} /> : <AdminLogin />} />
             <Route path="/admin/programs" element={session ? <Programs session={session} /> : <AdminLogin />} />
