@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   const { data: team, error: teamErr } = await supabase
     .from('teams')
     .select(
-      'id, name, athleteone_event_id, athleteone_club_id, athleteone_team_id'
+      'id, name, athleteone_org_id, athleteone_event_id, athleteone_club_id, athleteone_team_id'
     )
     .eq('id', teamId)
     .maybeSingle()
@@ -46,12 +46,18 @@ export default async function handler(req, res) {
     })
   }
 
-  // Fetch the club-schedule HTML
+  // Fetch the team-info HTML — same source as the main ingest. Has scores,
+  // explicit H/A markers, AND tournament games that aren't in the conference
+  // schedule.
   const url =
-    'https://api.athleteone.com/api/Script/get-club-schedules-by-eventID-and-clubID/' +
+    'https://api.athleteone.com/api/Script/get-individual-team-info/' +
+    team.athleteone_org_id +
+    '/' +
     team.athleteone_event_id +
     '/' +
-    team.athleteone_club_id
+    team.athleteone_club_id +
+    '/' +
+    team.athleteone_team_id
 
   let resp
   try {
@@ -73,11 +79,11 @@ export default async function handler(req, res) {
   if (!resp.ok) {
     return res
       .status(502)
-      .json({ error: 'Schedule fetch failed: HTTP ' + resp.status })
+      .json({ error: 'Team-info fetch failed: HTTP ' + resp.status })
   }
 
   const html = await resp.text()
-  const games = parseGames(html, String(team.athleteone_team_id))
+  const games = parseGamesFromTeamInfo(html, String(team.athleteone_team_id))
 
   return res.status(200).json({
     team_id: team.id,
@@ -142,98 +148,70 @@ async function checkAdminJwt(supabase, req) {
 // === Parser (DUPLICATED from ingest-athleteone.js) ==================
 // Keeping this in sync with the ingest version is important. If you find a
 // parser bug, fix it here AND in api/ingest-athleteone.js.
-function parseGames(html, ourTeamIdStr) {
-  const tbodyMatch = html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i)
-  if (!tbodyMatch) return []
-
-  const tbody = tbodyMatch[1]
-  const rows = []
+function parseGamesFromTeamInfo(html, ourTeamIdStr) {
+  const games = []
   const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
   let m
-  while ((m = trRe.exec(tbody)) !== null) {
-    rows.push(m[1])
-  }
+  while ((m = trRe.exec(html)) !== null) {
+    const tr = m[1]
+    const gmMatch = tr.match(/#(\d{6,7})/)
+    const dateMatch = tr.match(
+      /<div[^>]*>([A-Z][a-z]{2}\s+\d{1,2},\s+\d{4})<\/div>/
+    )
+    if (!gmMatch || !dateMatch) continue
 
-  const games = []
-  for (const row of rows) {
-    const g = parseGameRow(row, ourTeamIdStr)
-    if (g) games.push(g)
+    const haMatch = tr.match(/<div[^>]*>([AH])<\/div>/)
+    const isHome = haMatch && haMatch[1] === 'H'
+
+    const timeMatch = tr.match(/<div[^>]*>(\d{1,2}:\d{2}\s+[AP]M)<\/div>/)
+
+    const oppMatch = tr.match(
+      /<span\s+class="individual-team-item"[^>]*data-team-id="(\d+)"[^>]*>([^<]+)<\/span>/i
+    )
+
+    const venueMatch = tr.match(
+      /<span\s+class="game-complex-item"[^>]*>([\s\S]*?)<\/span>/i
+    )
+
+    const scoreMatch = tr.match(
+      /(Win|Loss|Draw)_Icon\.png[^>]*\/>\s*<span>(\d+)\s*-\s*(\d+)<\/span>/i
+    )
+
+    games.push({
+      athleteone_game_id: parseInt(gmMatch[1], 10),
+      game_date: parseTeamInfoDate(dateMatch[1]),
+      game_time: timeMatch ? parseTeamInfoTime(timeMatch[1]) : null,
+      opponent: oppMatch ? oppMatch[2].trim() : null,
+      opponent_team_id: oppMatch ? oppMatch[1] : null,
+      is_home: isHome,
+      location: venueMatch
+        ? venueMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+        : null,
+      our_score: scoreMatch ? parseInt(scoreMatch[2], 10) : null,
+      opponent_score: scoreMatch ? parseInt(scoreMatch[3], 10) : null,
+      athleteone_result: scoreMatch ? scoreMatch[1].toLowerCase() : null,
+    })
   }
   return games
 }
 
-function parseGameRow(rowHtml, ourTeamIdStr) {
-  let gmId = null
-  const gmMatch = rowHtml.match(/<div[^>]*>\s*(\d+)\s*<\/div>/i)
-  if (gmMatch) gmId = parseInt(gmMatch[1], 10)
-
-  let gameDate = null
-  const dateMatch = rowHtml.match(
-    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\d{1,2}),\s+(\d{4})/i
-  )
-  if (dateMatch) {
-    const months = {
-      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-    }
-    const month = months[dateMatch[1].toLowerCase().slice(0, 3)] || '01'
-    const day = String(dateMatch[2]).padStart(2, '0')
-    gameDate = dateMatch[3] + '-' + month + '-' + day
+function parseTeamInfoDate(s) {
+  const months = {
+    Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+    Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12',
   }
-
-  let gameTime = null
-  const timeMatch = rowHtml.match(/\b(\d{1,2}):(\d{2})\s+(AM|PM)\b/i)
-  if (timeMatch) {
-    let h = parseInt(timeMatch[1], 10)
-    const min = parseInt(timeMatch[2], 10)
-    const ampm = timeMatch[3].toUpperCase()
-    if (ampm === 'PM' && h !== 12) h += 12
-    if (ampm === 'AM' && h === 12) h = 0
-    gameTime =
-      String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') + ':00'
-  }
-
-  const teamSpanRe =
-    /<span\s+class="individual-team-item"([^>]*)>([^<]+)<\/span>/gi
-  const teams = []
-  let tm
-  while ((tm = teamSpanRe.exec(rowHtml)) !== null) {
-    const attrs = tm[1]
-    const text = tm[2].trim()
-    const teamId = extractAttrSimple(attrs, 'data-team-id')
-    teams.push({ team_id: teamId, name: text })
-  }
-  if (teams.length < 2) return null
-
-  const ourIdx = teams.findIndex((t) => t.team_id === ourTeamIdStr)
-  if (ourIdx < 0) return null
-
-  const opponent = teams[1 - ourIdx]
-  const isHome = ourIdx === 0
-
-  let location = null
-  const venueMatch = rowHtml.match(
-    /<span\s+class="game-complex-item"[^>]*>([\s\S]*?)<\/td>/i
-  )
-  if (venueMatch) {
-    location = venueMatch[1]
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-  }
-
-  return {
-    athleteone_game_id: gmId,
-    game_date: gameDate,
-    game_time: gameTime,
-    opponent: opponent.name,
-    is_home: isHome,
-    location: location,
-  }
+  const m = s.match(/([A-Z][a-z]{2})\s+(\d{1,2}),\s+(\d{4})/)
+  if (!m) return null
+  return m[3] + '-' + (months[m[1]] || '01') + '-' + String(m[2]).padStart(2, '0')
 }
 
-function extractAttrSimple(attrs, name) {
-  const re = new RegExp(name + '="([^"]*)"', 'i')
-  const m = attrs.match(re)
-  return m ? m[1] : null
+function parseTeamInfoTime(s) {
+  const m = s.match(/(\d{1,2}):(\d{2})\s+([AP]M)/i)
+  if (!m) return null
+  let h = parseInt(m[1], 10)
+  const min = parseInt(m[2], 10)
+  const ampm = m[3].toUpperCase()
+  if (ampm === 'PM' && h !== 12) h += 12
+  if (ampm === 'AM' && h === 12) h = 0
+  return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') + ':00'
 }

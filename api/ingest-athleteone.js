@@ -37,12 +37,6 @@ export default async function handler(req, res) {
 
   const results = []
 
-  // Schedule cache: key = "eventId:clubId", value = the HTML body of the
-  // club-schedules endpoint. Cached so that when we sync multiple teams in
-  // one call (e.g. immediately after bulk-create), we hit AthleteOne once
-  // per club-event combo rather than once per team.
-  const scheduleCache = new Map()
-
   for (const team of teams) {
     const url = ATHLETEONE_BASE + '/' + team.athleteone_org_id + '/' + team.athleteone_event_id + '/' + team.athleteone_club_id + '/' + team.athleteone_team_id
 
@@ -142,14 +136,16 @@ export default async function handler(req, res) {
       }
 
       // === Games sync ===
-      // Only runs when this team has athleteone_sync_games=TRUE. We fetch the
-      // club-schedule endpoint (cached) and upsert games keyed on
-      // athleteone_game_id. Rows flagged manual_override=TRUE are left alone.
-      // Never deletes — even if a game disappears from AthleteOne, the row
-      // stays so its attendance is preserved. Admin can delete manually.
+      // Only runs when this team has athleteone_sync_games=TRUE. Parses games
+      // directly from the team-info HTML we already fetched above — no extra
+      // network call needed, and team-info includes scores + accurate home/
+      // away markers + ALL games (incl. tournaments that aren't in the
+      // conference schedule). Rows flagged manual_override=TRUE are skipped.
+      // Never deletes — even if a game disappears upstream, the row stays so
+      // its attendance is preserved.
       let gamesResult
       if (team.athleteone_sync_games) {
-        gamesResult = await syncGames(supabase, team, scheduleCache)
+        gamesResult = await syncGames(supabase, team, html)
       } else {
         gamesResult = 'sync disabled for this team'
       }
@@ -424,52 +420,30 @@ async function checkAdminAuth(supabase, req) {
 }
 
 // === Games sync helpers ============================================
-// Fetches the club-schedule HTML for the team's (event, club) tuple (using a
-// shared cache so multiple teams in one call hit AthleteOne once), parses
-// games involving the target team, and upserts them into the games table.
+// Parses games + scores directly from the team-info HTML (which is already
+// fetched in the main loop for roster/staff/standings), then upserts them.
+//
+// Why team-info over club-schedule:
+//  - Includes scores (Win/Loss/Draw + actual goal counts)
+//  - Explicit H/A markers (more reliable than position-based)
+//  - Includes ALL games (incl. tournaments outside the conference schedule)
 //
 // Safety:
-// - Upserts keyed on athleteone_game_id (partial unique index)
-// - Never deletes — preserves attendance even if game disappears upstream
-// - Skips rows with manual_override=TRUE so admin overrides stick
-// - Scores NOT pulled (admin enters manually for completed games)
-async function syncGames(supabase, team, scheduleCache) {
-  const cacheKey = team.athleteone_event_id + ':' + team.athleteone_club_id
-  let html = scheduleCache.get(cacheKey)
-
-  if (!html) {
-    const url =
-      'https://api.athleteone.com/api/Script/get-club-schedules-by-eventID-and-clubID/' +
-      team.athleteone_event_id +
-      '/' +
-      team.athleteone_club_id
-    try {
-      const resp = await fetch(url, {
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          Referer: 'https://theecnl.com/',
-          Origin: 'https://theecnl.com',
-          Accept: '*/*',
-        },
-      })
-      if (!resp.ok) {
-        return { error: 'Schedule fetch failed: HTTP ' + resp.status }
-      }
-      html = await resp.text()
-      scheduleCache.set(cacheKey, html)
-    } catch (err) {
-      return { error: 'Schedule fetch error: ' + (err.message || String(err)) }
-    }
-  }
-
-  const games = parseGames(html, String(team.athleteone_team_id))
+//  - Upserts keyed on athleteone_game_id (regular unique index, ON CONFLICT
+//    works against it)
+//  - Never deletes — preserves attendance even if a game disappears upstream
+//  - Skips rows with manual_override=TRUE so admin overrides stick
+async function syncGames(supabase, team, teamInfoHtml) {
+  const games = parseGamesFromTeamInfo(
+    teamInfoHtml,
+    String(team.athleteone_team_id)
+  )
 
   if (games.length === 0) {
     return {
       upserted: 0,
       skipped_override: 0,
-      note: 'No games found for this team in schedule',
+      note: 'No games found for this team in team-info HTML',
     }
   }
 
@@ -508,6 +482,8 @@ async function syncGames(supabase, team, scheduleCache) {
       opponent: g.opponent,
       is_home: g.is_home,
       location: g.location,
+      our_score: g.our_score,
+      opponent_score: g.opponent_score,
       game_type_id: defaultGameTypeId,
       source: 'athleteone',
       timezone: 'America/New_York',
@@ -517,7 +493,7 @@ async function syncGames(supabase, team, scheduleCache) {
     return {
       upserted: 0,
       skipped_override: overrideSet.size,
-      total_in_schedule: games.length,
+      total_parsed: games.length,
     }
   }
 
@@ -528,116 +504,111 @@ async function syncGames(supabase, team, scheduleCache) {
     return { error: 'Upsert failed: ' + upErr.message }
   }
 
+  // Counts for diagnostic output
+  const scoredCount = games.filter((g) => g.our_score != null).length
+
   return {
     upserted: upsertRows.length,
     skipped_override: overrideSet.size,
-    total_in_schedule: games.length,
+    total_parsed: games.length,
+    with_scores: scoredCount,
   }
 }
 
-// Parse all games from the club-schedule HTML. Returns games where the target
-// team appears as one of the two participants. Determines home/away by
-// position: first <span class="individual-team-item"> in the row = home.
-function parseGames(html, ourTeamIdStr) {
-  const tbodyMatch = html.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i)
-  if (!tbodyMatch) return []
-
-  const tbody = tbodyMatch[1]
-  const rows = []
+/**
+ * Parse games from the team-info HTML.
+ *
+ * Structure (per game row):
+ *   <tr>
+ *     <td>
+ *       <div>...<div>A or H</div>            <!-- home/away marker
+ *               <div>Sep 06, 2025</div>      <!-- date
+ *               <div>11:00 AM</div>          <!-- time
+ *               <div>#965399</div>           <!-- GM#
+ *           <span class="individual-team-item" data-team-id="...">opponent name</span>
+ *           <span class="game-complex-item">venue</span>
+ *       ...
+ *     </td>
+ *     <td>
+ *       <img src=".../{Win|Loss|Draw}_Icon.png"/>
+ *       <span>X - Y</span>                    <!-- our_score - opp_score
+ *     </td>
+ *   </tr>
+ *
+ * Filters out non-game rows (staff/player listings) by requiring both a GM#
+ * and a date pattern in the same row.
+ */
+function parseGamesFromTeamInfo(html, ourTeamIdStr) {
+  const games = []
   const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
   let m
-  while ((m = trRe.exec(tbody)) !== null) {
-    rows.push(m[1])
-  }
+  while ((m = trRe.exec(html)) !== null) {
+    const tr = m[1]
+    const gmMatch = tr.match(/#(\d{6,7})/)
+    const dateMatch = tr.match(
+      /<div[^>]*>([A-Z][a-z]{2}\s+\d{1,2},\s+\d{4})<\/div>/
+    )
+    if (!gmMatch || !dateMatch) continue
 
-  const games = []
-  for (const row of rows) {
-    const g = parseGameRow(row, ourTeamIdStr)
-    if (g) games.push(g)
+    const haMatch = tr.match(/<div[^>]*>([AH])<\/div>/)
+    const isHome = haMatch && haMatch[1] === 'H'
+
+    const timeMatch = tr.match(
+      /<div[^>]*>(\d{1,2}:\d{2}\s+[AP]M)<\/div>/
+    )
+
+    // Opponent: the lone individual-team-item span in this view (vs the
+    // club-schedule which had two). The opponent's data-team-id is captured
+    // for downstream use (currently informational; could be wired into a
+    // future opponent-team lookup table).
+    const oppMatch = tr.match(
+      /<span\s+class="individual-team-item"[^>]*data-team-id="(\d+)"[^>]*>([^<]+)<\/span>/i
+    )
+
+    const venueMatch = tr.match(
+      /<span\s+class="game-complex-item"[^>]*>([\s\S]*?)<\/span>/i
+    )
+
+    // Score (optional — only present for played games)
+    const scoreMatch = tr.match(
+      /(Win|Loss|Draw)_Icon\.png[^>]*\/>\s*<span>(\d+)\s*-\s*(\d+)<\/span>/i
+    )
+
+    games.push({
+      athleteone_game_id: parseInt(gmMatch[1], 10),
+      game_date: parseTeamInfoDate(dateMatch[1]),
+      game_time: timeMatch ? parseTeamInfoTime(timeMatch[1]) : null,
+      opponent: oppMatch ? oppMatch[2].trim() : null,
+      opponent_team_id: oppMatch ? oppMatch[1] : null,
+      is_home: isHome,
+      location: venueMatch
+        ? venueMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+        : null,
+      our_score: scoreMatch ? parseInt(scoreMatch[2], 10) : null,
+      opponent_score: scoreMatch ? parseInt(scoreMatch[3], 10) : null,
+      athleteone_result: scoreMatch ? scoreMatch[1].toLowerCase() : null,
+    })
   }
   return games
 }
 
-function parseGameRow(rowHtml, ourTeamIdStr) {
-  // GM# — first <div> containing only digits
-  let gmId = null
-  const gmMatch = rowHtml.match(/<div[^>]*>\s*(\d+)\s*<\/div>/i)
-  if (gmMatch) gmId = parseInt(gmMatch[1], 10)
-
-  // Date — "Mon DD, YYYY"
-  let gameDate = null
-  const dateMatch = rowHtml.match(
-    /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\s+(\d{1,2}),\s+(\d{4})/i
-  )
-  if (dateMatch) {
-    const months = {
-      jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
-      jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
-    }
-    const month = months[dateMatch[1].toLowerCase().slice(0, 3)] || '01'
-    const day = String(dateMatch[2]).padStart(2, '0')
-    gameDate = dateMatch[3] + '-' + month + '-' + day
+function parseTeamInfoDate(s) {
+  const months = {
+    Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
+    Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12',
   }
-
-  // Time — "HH:MM AM/PM"
-  let gameTime = null
-  const timeMatch = rowHtml.match(/\b(\d{1,2}):(\d{2})\s+(AM|PM)\b/i)
-  if (timeMatch) {
-    let h = parseInt(timeMatch[1], 10)
-    const min = parseInt(timeMatch[2], 10)
-    const ampm = timeMatch[3].toUpperCase()
-    if (ampm === 'PM' && h !== 12) h += 12
-    if (ampm === 'AM' && h === 12) h = 0
-    gameTime =
-      String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') + ':00'
-  }
-
-  // Team spans (first listed = home, second = away)
-  const teamSpanRe =
-    /<span\s+class="individual-team-item"([^>]*)>([^<]+)<\/span>/gi
-  const teams = []
-  let tm
-  while ((tm = teamSpanRe.exec(rowHtml)) !== null) {
-    const attrs = tm[1]
-    const text = tm[2].trim()
-    const teamId = extractAttrSimple(attrs, 'data-team-id')
-    teams.push({ team_id: teamId, name: text })
-  }
-  if (teams.length < 2) return null
-
-  const ourIdx = teams.findIndex((t) => t.team_id === ourTeamIdStr)
-  if (ourIdx < 0) return null
-
-  const opponent = teams[1 - ourIdx]
-  const isHome = ourIdx === 0
-
-  // Venue (game-complex-item span). The text may contain a nested <span> for
-  // the separator ("Rossford<span> - </span>Indoor"), so we capture all the
-  // way to the closing </td> of the cell and strip tags. The game-complex-item
-  // is always the last content in its cell, so this is safe.
-  let location = null
-  const venueMatch = rowHtml.match(
-    /<span\s+class="game-complex-item"[^>]*>([\s\S]*?)<\/td>/i
-  )
-  if (venueMatch) {
-    location = venueMatch[1]
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-  }
-
-  return {
-    athleteone_game_id: gmId,
-    game_date: gameDate,
-    game_time: gameTime,
-    opponent: opponent.name,
-    is_home: isHome,
-    location: location,
-  }
+  const m = s.match(/([A-Z][a-z]{2})\s+(\d{1,2}),\s+(\d{4})/)
+  if (!m) return null
+  return m[3] + '-' + (months[m[1]] || '01') + '-' + String(m[2]).padStart(2, '0')
 }
 
-function extractAttrSimple(attrs, name) {
-  const re = new RegExp(name + '="([^"]*)"', 'i')
-  const m = attrs.match(re)
-  return m ? m[1] : null
+function parseTeamInfoTime(s) {
+  const m = s.match(/(\d{1,2}):(\d{2})\s+([AP]M)/i)
+  if (!m) return null
+  let h = parseInt(m[1], 10)
+  const min = parseInt(m[2], 10)
+  const ampm = m[3].toUpperCase()
+  if (ampm === 'PM' && h !== 12) h += 12
+  if (ampm === 'AM' && h === 12) h = 0
+  return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0') + ':00'
 }
