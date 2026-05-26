@@ -3,16 +3,47 @@ import { createClient } from '@supabase/supabase-js'
 const ATHLETEONE_BASE = 'https://api.athleteone.com/api/Script/get-individual-team-info'
 
 export default async function handler(req, res) {
-  const authHeader = req.headers.authorization || ''
-  const expected = 'Bearer ' + process.env.INGEST_SECRET
-  if (!process.env.INGEST_SECRET || authHeader !== expected) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-
   const supabase = createClient(
     process.env.VITE_SUPABASE_URL,
     process.env.SUPABASE_SERVICE_ROLE_KEY
   )
+
+  // Auth — accept either INGEST_SECRET (cron/curl) or a Supabase admin JWT
+  // (browser UI). The service-role client is used both for verifying
+  // Supabase JWTs and for the actual writes below.
+  const authHeader = req.headers.authorization || ''
+  const token = authHeader.replace(/^Bearer\s+/i, '')
+  if (!token) {
+    return res.status(401).json({ error: 'Missing authorization' })
+  }
+
+  let authorized = false
+
+  // Path 1: INGEST_SECRET (cron / curl invocations)
+  if (process.env.INGEST_SECRET && token === process.env.INGEST_SECRET) {
+    authorized = true
+  }
+
+  // Path 2: Supabase admin JWT (admin clicked Refresh in the UI). Verify the
+  // JWT, look up the user's email in allowed_admins. Only admins listed there
+  // can trigger the ingest from the browser.
+  if (!authorized) {
+    const { data: userData, error: userError } =
+      await supabase.auth.getUser(token)
+    if (!userError && userData?.user?.email) {
+      const email = userData.user.email.toLowerCase()
+      const { data: adminRow } = await supabase
+        .from('allowed_admins')
+        .select('email')
+        .ilike('email', email)
+        .maybeSingle()
+      if (adminRow) authorized = true
+    }
+  }
+
+  if (!authorized) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
 
   const commit = String(req.query.commit || '').toLowerCase() === 'true'
   const teamFilter = req.query.teamId ? parseInt(req.query.teamId, 10) : null
