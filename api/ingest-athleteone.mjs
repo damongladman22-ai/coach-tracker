@@ -4,9 +4,6 @@
  * Fetches per-team data from api.athleteone.com via theecnl.com's public
  * API and upserts into PitchSide's team_players, team_staff, and team
  * metadata. Games sync is gated per-team by teams.athleteone_sync_games.
- *
- * In dry-run mode, includes a `standings_debug` block so we can see the
- * raw HTML structure around standings and iterate on parsing.
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -99,8 +96,6 @@ export default async function handler(req, res) {
       };
 
       if (!commit) {
-        // Add diagnostic info to help debug standings parsing
-        summary.parsed.standings_debug = buildStandingsDebug(html);
         summary.mode = 'dry-run (no DB writes)';
         results.push(summary);
         continue;
@@ -196,103 +191,84 @@ function parseTeamInfo(html) {
   };
 }
 
+/**
+ * The standings section in get-individual-team-info has this structure:
+ *
+ *   <h3>Standings</h3>
+ *   <table>
+ *     <thead><tr><th>PLACE</th><th>WINS</th><th>LOSSES</th><th>DRAWS</th></tr></thead>
+ *     <tbody><tr><td>1st</td><td>15</td><td>4</td><td>6</td></tr></tbody>
+ *   </table>
+ *
+ * We parse the first data row's 4 cells: place, wins, losses, draws.
+ */
 function parseStandings(html) {
   const out = {
     record_w: null,
     record_l: null,
     record_t: null,
     standings_position: null,
-    standings_total: null,
-    last_five: null,
+    standings_total: null, // not exposed in this endpoint
+    last_five: null,        // not exposed in this endpoint
     parse_warnings: [],
     synced_at: new Date().toISOString(),
   };
 
-  const standingsSection = html.match(
-    /<h3[^>]*>\s*Standings\s*<\/h3>([\s\S]*?)(?=<h3|$)/i
-  );
-  const scope = standingsSection ? standingsSection[1] : html;
-  if (!standingsSection) {
+  // Find the Standings <h3>
+  const headingIdx = html.search(/<h3[^>]*>\s*Standings\s*<\/h3>/i);
+  if (headingIdx === -1) {
     out.parse_warnings.push('No <h3>Standings</h3> heading found');
+    return out;
   }
 
-  const recordMatch = scope.match(/(\d+)\s*-\s*(\d+)\s*-\s*(\d+)/);
-  if (recordMatch) {
-    out.record_w = parseInt(recordMatch[1], 10);
-    out.record_l = parseInt(recordMatch[2], 10);
-    out.record_t = parseInt(recordMatch[3], 10);
+  // Scope to the area immediately after the heading
+  const window = html.substring(headingIdx, headingIdx + 4000);
+
+  // Find the standings table
+  const tableMatch = window.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
+  if (!tableMatch) {
+    out.parse_warnings.push('No <table> found after Standings heading');
+    return out;
+  }
+  const tableHtml = tableMatch[1];
+
+  // Get the tbody
+  const tbodyMatch = tableHtml.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i);
+  if (!tbodyMatch) {
+    out.parse_warnings.push('No <tbody> in Standings table');
+    return out;
+  }
+  const tbodyHtml = tbodyMatch[1];
+
+  // First data row
+  const trMatch = tbodyHtml.match(/<tr[^>]*>([\s\S]*?)<\/tr>/i);
+  if (!trMatch) {
+    out.parse_warnings.push('No data row in Standings tbody');
+    return out;
+  }
+  const trHtml = trMatch[1];
+
+  // Extract all <td> cells
+  const cells = [...trHtml.matchAll(/<td[^>]*>([\s\S]*?)<\/td>/gi)]
+    .map((m) => stripTags(m[1]).trim());
+
+  if (cells.length < 4) {
+    out.parse_warnings.push(
+      `Expected 4 standings cells (place/wins/losses/draws), got ${cells.length}`
+    );
+    return out;
   }
 
-  const placeOfMatch = scope.match(/(\d+)(?:st|nd|rd|th)\s+of\s+(\d+)/i);
-  if (placeOfMatch) {
-    out.standings_position = parseInt(placeOfMatch[1], 10);
-    out.standings_total = parseInt(placeOfMatch[2], 10);
-  } else {
-    const placeMatch = scope.match(/(?:Place|Rank|Position)[:\s]+(\d+)/i);
-    if (placeMatch) out.standings_position = parseInt(placeMatch[1], 10);
-  }
+  // PLACE (e.g. "1st", "12th")
+  const placeMatch = cells[0].match(/^(\d+)/);
+  if (placeMatch) out.standings_position = parseInt(placeMatch[1], 10);
 
-  const last5Match = scope.match(/Last\s*5[^<]{0,40}?([WLDT]{3,5})/i);
-  if (last5Match) out.last_five = last5Match[1];
+  // WINS / LOSSES / DRAWS
+  if (/^\d+$/.test(cells[1])) out.record_w = parseInt(cells[1], 10);
+  if (/^\d+$/.test(cells[2])) out.record_l = parseInt(cells[2], 10);
+  if (/^\d+$/.test(cells[3])) out.record_t = parseInt(cells[3], 10);
 
   return out;
-}
-
-// Diagnostic: returns the raw HTML structure near anything standings-related,
-// so we can iterate on the parser without re-deploying.
-function buildStandingsDebug(html) {
-  const debug = {};
-
-  // 1) All <h3> headings in document order
-  const h3s = [...html.matchAll(/<h3[^>]*>([\s\S]*?)<\/h3>/gi)]
-    .map((m) => stripTags(m[1]).trim());
-  debug.all_h3_headings = h3s;
-
-  // 2) HTML excerpt around <h3>Standings</h3> heading
-  const standingsIdx = html.search(/<h3[^>]*>\s*Standings\s*<\/h3>/i);
-  if (standingsIdx !== -1) {
-    const start = Math.max(0, standingsIdx - 100);
-    const end = Math.min(html.length, standingsIdx + 3000);
-    debug.standings_section_excerpt = html.substring(start, end);
-  } else {
-    debug.standings_section_excerpt = null;
-  }
-
-  // 3) HTML excerpts around any case-insensitive mention of "Record"
-  debug.record_excerpts = [];
-  const recordPattern = /Record/gi;
-  let m;
-  let count = 0;
-  while ((m = recordPattern.exec(html)) !== null && count < 3) {
-    const start = Math.max(0, m.index - 100);
-    const end = Math.min(html.length, m.index + 600);
-    debug.record_excerpts.push(html.substring(start, end));
-    count++;
-  }
-
-  // 4) Excerpt near "Place" or "Rank"
-  const placeIdx = html.search(/\b(Place|Rank)\b/i);
-  if (placeIdx !== -1) {
-    const start = Math.max(0, placeIdx - 100);
-    const end = Math.min(html.length, placeIdx + 600);
-    debug.place_rank_excerpt = html.substring(start, end);
-  }
-
-  // 5) Look for typical W-L-T patterns anywhere in document and show context
-  debug.wlt_pattern_hits = [];
-  const wltPattern = /(\d+)\s*-\s*(\d+)\s*-\s*(\d+)/g;
-  let wltCount = 0;
-  while ((m = wltPattern.exec(html)) !== null && wltCount < 5) {
-    const start = Math.max(0, m.index - 80);
-    const end = Math.min(html.length, m.index + 200);
-    debug.wlt_pattern_hits.push({
-      match: m[0],
-      context: html.substring(start, end),
-    });
-    wltCount++;
-  }
-
-  return debug;
 }
 
 function parseRosterRows(html, tableId, kind) {
