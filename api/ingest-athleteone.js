@@ -22,6 +22,7 @@ export default async function handler(req, res) {
 
   const commit = String(req.query.commit || '').toLowerCase() === 'true'
   const teamFilter = req.query.teamId ? parseInt(req.query.teamId, 10) : null
+  const listOnly = String(req.query.list_only || '').toLowerCase() === 'true'
 
   let q = supabase
     .from('teams')
@@ -33,6 +34,17 @@ export default async function handler(req, res) {
   if (teamsErr) return res.status(500).json({ error: teamsErr.message })
   if (!teams || teams.length === 0) {
     return res.status(200).json({ message: 'No teams with AthleteOne IDs set', teams_processed: 0 })
+  }
+
+  // list_only mode: return the team list (id + name) without syncing. Used by
+  // the nightly GitHub Actions workflow to fetch the list of teams it should
+  // iterate through, since each per-team sync fits well within Vercel Hobby's
+  // 10s function timeout but the full bulk loop would not.
+  if (listOnly) {
+    return res.status(200).json({
+      teams: teams.map((t) => ({ id: t.id, name: t.name })),
+      count: teams.length,
+    })
   }
 
   const results = []
@@ -344,9 +356,14 @@ async function checkAdminAuth(supabase, req) {
 
   if (!token) return { ok: false, reason: 'no-token' }
 
-  // Path 1: INGEST_SECRET (cron / curl)
+  // Path 1: INGEST_SECRET (manual cron / curl)
   if (process.env.INGEST_SECRET && token === process.env.INGEST_SECRET) {
     return { ok: true, kind: 'secret' }
+  }
+
+  // Path 1b: CRON_SECRET (Vercel Cron / GitHub Actions nightly sync)
+  if (process.env.CRON_SECRET && token === process.env.CRON_SECRET) {
+    return { ok: true, kind: 'cron' }
   }
 
   if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {

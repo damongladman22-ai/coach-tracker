@@ -1,0 +1,107 @@
+name: Nightly AthleteOne Sync
+
+# Runs nightly at 07:00 UTC = 3 AM Eastern (EDT) / 2 AM Eastern (EST).
+# Calls the ingest endpoint once per AthleteOne-synced team, which keeps
+# each invocation well within Vercel Hobby's 10s function timeout.
+#
+# To run manually (e.g. for testing): Actions tab > Nightly AthleteOne Sync >
+# "Run workflow" button.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      INGEST_URL: https://coach-tracker-zeta.vercel.app/api/ingest-athleteone
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+
+    steps:
+      - name: Verify secret is set
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET is not set in repository secrets"
+            exit 1
+          fi
+          echo "Secret is configured."
+
+      - name: Fetch list of teams to sync
+        id: teams
+        run: |
+          set -euo pipefail
+          response=$(curl -sS -w "\n%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            "${INGEST_URL}?list_only=true")
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1)
+
+          if [ "$status" != "200" ]; then
+            echo "::error::list_only request failed with status $status"
+            echo "$body"
+            exit 1
+          fi
+
+          echo "$body" | jq .
+          echo "team_ids=$(echo "$body" | jq -c '[.teams[].id]')" >> "$GITHUB_OUTPUT"
+          echo "team_count=$(echo "$body" | jq '.count')" >> "$GITHUB_OUTPUT"
+
+      - name: Sync each team
+        run: |
+          set -uo pipefail
+          team_ids='${{ steps.teams.outputs.team_ids }}'
+          team_count='${{ steps.teams.outputs.team_count }}'
+          echo "About to sync $team_count team(s)."
+
+          success=0
+          fail=0
+          fail_details=""
+
+          for team_id in $(echo "$team_ids" | jq -r '.[]'); do
+            echo ""
+            echo "=========================================="
+            echo "Syncing team_id=$team_id"
+            echo "=========================================="
+            start=$(date +%s)
+
+            response=$(curl -sS -w "\n%{http_code}" \
+              --max-time 30 \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "${INGEST_URL}?teamId=${team_id}&commit=true" || echo -e "\nCURL_FAILED")
+
+            elapsed=$(($(date +%s) - start))
+            body=$(echo "$response" | sed '$d')
+            status=$(echo "$response" | tail -n1)
+
+            if [ "$status" = "200" ]; then
+              # Pull just the committed summary for the log
+              echo "$body" | jq '.results[0].committed // .results[0].error // .results[0]' 2>/dev/null || echo "$body"
+              echo "[OK] team_id=$team_id (${elapsed}s)"
+              success=$((success + 1))
+            else
+              echo "[FAIL] team_id=$team_id status=$status (${elapsed}s)"
+              echo "$body"
+              fail=$((fail + 1))
+              fail_details="$fail_details\n  team_id=$team_id status=$status"
+            fi
+          done
+
+          echo ""
+          echo "=========================================="
+          echo "Summary: $success succeeded, $fail failed (of $team_count total)"
+          echo "=========================================="
+
+          if [ "$fail" -gt 0 ]; then
+            echo "::warning::$fail team(s) failed to sync:$fail_details"
+          fi
+
+          # Exit non-zero only if EVERY team failed — that's a real problem
+          # worth notifying. Partial failures are warned but don't fail the job.
+          if [ "$success" = "0" ] && [ "$fail" -gt 0 ]; then
+            echo "::error::All team syncs failed"
+            exit 1
+          fi
