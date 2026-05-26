@@ -135,17 +135,23 @@ export default async function handler(req, res) {
           .upsert(staffRows, { onConflict: 'team_id,athleteone_staff_id' })
       }
 
-      // === Games sync ===
-      // Only runs when this team has athleteone_sync_games=TRUE. Parses games
-      // directly from the team-info HTML we already fetched above — no extra
-      // network call needed, and team-info includes scores + accurate home/
-      // away markers + ALL games (incl. tournaments that aren't in the
-      // conference schedule). Rows flagged manual_override=TRUE are skipped.
-      // Never deletes — even if a game disappears upstream, the row stays so
-      // its attendance is preserved.
+      // === Events + Games sync ===
+      // Only runs when this team has athleteone_sync_games=TRUE. We first
+      // parse the team's event list from the hidden "Events" tab of team-info
+      // HTML (find-or-create rows in the events table, upgrading any matching
+      // manual events to source='athleteone'). Then we sync games, tagging
+      // each game with its narrowest containing event by date-range overlap.
+      let eventsResult = null
       let gamesResult
       if (team.athleteone_sync_games) {
-        gamesResult = await syncGames(supabase, team, html)
+        const parsedEvents = parseEventsFromTeamInfo(html)
+        eventsResult = await syncEvents(supabase, parsedEvents)
+        gamesResult = await syncGames(
+          supabase,
+          team,
+          html,
+          eventsResult.events
+        )
       } else {
         gamesResult = 'sync disabled for this team'
       }
@@ -154,6 +160,7 @@ export default async function handler(req, res) {
       summary.committed = {
         players_upserted: players.length,
         staff_upserted: staff.length,
+        events: eventsResult,
         games: gamesResult,
       }
       results.push(summary)
@@ -433,7 +440,7 @@ async function checkAdminAuth(supabase, req) {
 //    works against it)
 //  - Never deletes — preserves attendance even if a game disappears upstream
 //  - Skips rows with manual_override=TRUE so admin overrides stick
-async function syncGames(supabase, team, teamInfoHtml) {
+async function syncGames(supabase, team, teamInfoHtml, events) {
   const games = parseGamesFromTeamInfo(
     teamInfoHtml,
     String(team.athleteone_team_id)
@@ -445,6 +452,33 @@ async function syncGames(supabase, team, teamInfoHtml) {
       skipped_override: 0,
       note: 'No games found for this team in team-info HTML',
     }
+  }
+
+  // Pre-sort events by date-range width (narrowest first). A showcase like
+  // "ECNL South Carolina" (3 days) wins over the league season (~11 months)
+  // when both contain a given game date.
+  const sortedEvents = (events || [])
+    .map((e) => ({
+      id: e.id,
+      start_date: e.start_date,
+      end_date: e.end_date,
+      _width: dateDaysBetween(e.start_date, e.end_date),
+    }))
+    .sort((a, b) => a._width - b._width)
+
+  function findEventIdForGame(gameDate) {
+    if (!gameDate) return null
+    for (const e of sortedEvents) {
+      if (
+        e.start_date &&
+        e.end_date &&
+        gameDate >= e.start_date &&
+        gameDate <= e.end_date
+      ) {
+        return e.id
+      }
+    }
+    return null
   }
 
   // Find default League game type
@@ -487,6 +521,7 @@ async function syncGames(supabase, team, teamInfoHtml) {
       game_type_id: defaultGameTypeId,
       source: 'athleteone',
       timezone: 'America/New_York',
+      event_id: findEventIdForGame(g.game_date),
     }))
 
   if (upsertRows.length === 0) {
@@ -506,13 +541,246 @@ async function syncGames(supabase, team, teamInfoHtml) {
 
   // Counts for diagnostic output
   const scoredCount = games.filter((g) => g.our_score != null).length
+  const linkedCount = upsertRows.filter((r) => r.event_id != null).length
 
   return {
     upserted: upsertRows.length,
     skipped_override: overrideSet.size,
     total_parsed: games.length,
     with_scores: scoredCount,
+    linked_to_event: linkedCount,
   }
+}
+
+/**
+ * Parse the team's event list from the hidden "Events" tab of team-info HTML.
+ *
+ * Structure inside <table id="events-table-content">:
+ *   <span class="individual-team-item" data-event-id="{EID}" ...>EVENT NAME</span>
+ *   ...
+ *   <div>DATE_RANGE</div>
+ *
+ * DATE_RANGE examples:
+ *   "Oct 11 - Oct 13, 2025"     (same year)
+ *   "Aug 01 - Jul 01, 2026"     (crosses year boundary -> start is 2025)
+ *
+ * Note: data-event-id can repeat across rows for the same team (multiple
+ * sub-events all roll up to the league event_id). We dedup downstream by
+ * (LOWER(event_name), start_date), not by athleteone_event_id.
+ */
+function parseEventsFromTeamInfo(html) {
+  const events = []
+
+  // The events-table-content section contains a nested <table> per event card,
+  // which confuses a naive lazy match on the outer </table>. Instead, find the
+  // start of the section and cap the search region using sibling section IDs
+  // (players-table-content, staffs-table-content) that always come after.
+  const startMatch = html.match(/id="events-table-content"/i)
+  if (!startMatch) return events
+  const startIdx = startMatch.index
+
+  let endIdx = html.length
+  for (const marker of ['id="players-table-content"', 'id="staffs-table-content"']) {
+    const i = html.indexOf(marker, startIdx)
+    if (i > startIdx && i < endIdx) endIdx = i
+  }
+
+  const section = html.substring(startIdx, endIdx)
+
+  // Match each span+date pair within the events section. The non-greedy
+  // `[\s\S]{0,400}?` bridges the gap between the event-name span and the
+  // following date-range div without crossing into a sibling event card.
+  const eventRe = /<span\s+class="individual-team-item"\s+data-event-id="(\d+)"[^>]*>([^<]+)<\/span>[\s\S]{0,400}?<div[^>]*>([A-Z][a-z]{2}\s+\d{1,2}\s*-\s*[A-Z][a-z]{2}\s+\d{1,2},\s+\d{4})<\/div>/gi
+
+  let m
+  while ((m = eventRe.exec(section)) !== null) {
+    const aoEventId = parseInt(m[1], 10)
+    const eventName = normalizeEventName(m[2])
+    const range = parseEventDateRange(m[3])
+    if (!eventName || !range) continue
+
+    events.push({
+      athleteone_event_id: aoEventId,
+      event_name: eventName,
+      start_date: range.start,
+      end_date: range.end,
+    })
+  }
+
+  return events
+}
+
+// Normalize event names so unicode dash variants ("2025-26" vs "2025–26") and
+// stray whitespace don't fool the case-insensitive dedup lookup.
+function normalizeEventName(s) {
+  if (!s) return null
+  const out = s
+    .replace(/[\u2010-\u2015]/g, '-')   // unicode dashes -> ASCII hyphen
+    .replace(/\s+/g, ' ')
+    .trim()
+  return out.length > 0 ? out : null
+}
+
+// Parse "Aug 01 - Jul 01, 2026" or "Oct 11 - Oct 13, 2025" into ISO date strings.
+// When start month > end month, start year is inferred to be (end year - 1).
+function parseEventDateRange(s) {
+  const months = {
+    Jan: 1, Feb: 2, Mar: 3, Apr: 4, May: 5, Jun: 6,
+    Jul: 7, Aug: 8, Sep: 9, Oct: 10, Nov: 11, Dec: 12,
+  }
+  const m = s.match(
+    /([A-Z][a-z]{2})\s+(\d{1,2})\s*-\s*([A-Z][a-z]{2})\s+(\d{1,2}),\s+(\d{4})/
+  )
+  if (!m) return null
+
+  const startMon = months[m[1]]
+  const startDay = parseInt(m[2], 10)
+  const endMon = months[m[3]]
+  const endDay = parseInt(m[4], 10)
+  const endYear = parseInt(m[5], 10)
+
+  if (!startMon || !endMon) return null
+
+  const startYear = startMon > endMon ? endYear - 1 : endYear
+
+  const toIso = (y, mo, d) =>
+    y + '-' + String(mo).padStart(2, '0') + '-' + String(d).padStart(2, '0')
+
+  return {
+    start: toIso(startYear, startMon, startDay),
+    end: toIso(endYear, endMon, endDay),
+  }
+}
+
+// Find-or-create rows in events table for each parsed event.
+// Behavior:
+//   - Lookup by (LOWER(event_name), start_date) — matches the unique index
+//   - If existing event has source='manual', upgrade to 'athleteone' and set
+//     athleteone_event_id (so your manually-created events get linked, not
+//     duplicated)
+//   - If existing event has source='athleteone' but no athleteone_event_id,
+//     backfill the id
+//   - Otherwise leave existing row alone
+//   - If no match, INSERT new event with source='athleteone'
+//
+// Returns: { events: [{id, event_name, start_date, end_date}], created, upgraded,
+//            backfilled, total_parsed }
+async function syncEvents(supabase, parsedEvents) {
+  const result = {
+    events: [],
+    created: 0,
+    upgraded: 0,
+    backfilled: 0,
+    total_parsed: parsedEvents.length,
+  }
+
+  if (parsedEvents.length === 0) return result
+
+  for (const ev of parsedEvents) {
+    // Lookup candidates by start_date, then filter by lowered name in JS
+    // (Supabase JS doesn't expose LOWER() in a where clause).
+    const { data: candidates, error: selErr } = await supabase
+      .from('events')
+      .select('id, event_name, start_date, end_date, source, athleteone_event_id')
+      .eq('start_date', ev.start_date)
+
+    if (selErr) {
+      // Skip this event but keep going with others
+      continue
+    }
+
+    const lcName = ev.event_name.toLowerCase()
+    const existing = (candidates || []).find(
+      (c) => (c.event_name || '').toLowerCase() === lcName
+    )
+
+    if (existing) {
+      // Upgrade manual to athleteone if needed
+      if (existing.source === 'manual') {
+        await supabase
+          .from('events')
+          .update({
+            source: 'athleteone',
+            athleteone_event_id: ev.athleteone_event_id,
+          })
+          .eq('id', existing.id)
+        result.upgraded += 1
+      } else if (
+        existing.athleteone_event_id == null &&
+        ev.athleteone_event_id != null
+      ) {
+        await supabase
+          .from('events')
+          .update({ athleteone_event_id: ev.athleteone_event_id })
+          .eq('id', existing.id)
+        result.backfilled += 1
+      }
+      result.events.push({
+        id: existing.id,
+        event_name: existing.event_name,
+        start_date: existing.start_date,
+        end_date: existing.end_date,
+      })
+      continue
+    }
+
+    // No match — create new event row
+    const slug = generateEventSlug(ev.event_name, ev.start_date)
+    const { data: inserted, error: insErr } = await supabase
+      .from('events')
+      .insert({
+        event_name: ev.event_name,
+        start_date: ev.start_date,
+        end_date: ev.end_date,
+        slug: slug,
+        source: 'athleteone',
+        athleteone_event_id: ev.athleteone_event_id,
+      })
+      .select('id, event_name, start_date, end_date')
+      .single()
+
+    if (insErr || !inserted) {
+      // Likely a race or slug collision; try a fallback slug then re-lookup
+      const fallbackSlug = slug + '-' + Date.now().toString(36).slice(-4)
+      const retry = await supabase
+        .from('events')
+        .insert({
+          event_name: ev.event_name,
+          start_date: ev.start_date,
+          end_date: ev.end_date,
+          slug: fallbackSlug,
+          source: 'athleteone',
+          athleteone_event_id: ev.athleteone_event_id,
+        })
+        .select('id, event_name, start_date, end_date')
+        .single()
+      if (retry.error || !retry.data) continue
+      result.events.push(retry.data)
+      result.created += 1
+      continue
+    }
+    result.events.push(inserted)
+    result.created += 1
+  }
+
+  return result
+}
+
+function generateEventSlug(name, startDate) {
+  const base = (name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  const year = (startDate || '').substring(0, 4)
+  return base + (year ? '-' + year : '')
+}
+
+function dateDaysBetween(startIso, endIso) {
+  if (!startIso || !endIso) return 999999
+  const s = new Date(startIso + 'T00:00:00Z').getTime()
+  const e = new Date(endIso + 'T00:00:00Z').getTime()
+  if (isNaN(s) || isNaN(e)) return 999999
+  return Math.max(0, Math.round((e - s) / 86400000))
 }
 
 /**
