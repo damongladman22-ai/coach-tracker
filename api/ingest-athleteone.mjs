@@ -222,10 +222,10 @@ function parseStandings(html) {
   }
 
   // Scope to the area immediately after the heading
-  const window = html.substring(headingIdx, headingIdx + 4000);
+  const scope = html.substring(headingIdx, headingIdx + 4000);
 
   // Find the standings table
-  const tableMatch = window.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
+  const tableMatch = scope.match(/<table[^>]*>([\s\S]*?)<\/table>/i);
   if (!tableMatch) {
     out.parse_warnings.push('No <table> found after Standings heading');
     return out;
