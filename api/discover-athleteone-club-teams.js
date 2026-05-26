@@ -249,6 +249,24 @@ function parseName(name) {
   else if (/\bNPL\b/i.test(name)) out.league = 'NPL'
   else if (/\bOVPL\b/i.test(name)) out.league = 'OVPL'
 
+  // Conference detection within a league (e.g. ECNL RL has GLA, OV, MW, etc.).
+  // Pattern: a 2–4 letter all-caps code sitting between the league name and the
+  // gender/year token (e.g. "ECNL RL GLA G12", "ECNL RL OV B11").
+  // We allow this only inside ECNL RL for now, since that's where conference
+  // splits exist in the source data. Add more leagues here if needed.
+  out.conference = null
+  if (out.league === 'ECNL RL') {
+    const conf = name.match(/\bECNL\s+RL\s+([A-Z]{2,4})\s+[GB]\d/i)
+    if (conf) {
+      const code = conf[1].toUpperCase()
+      // Guard: don't treat "G" or "B" prefixes as a conference (those are gender),
+      // and skip anything that looks year-like.
+      if (!/^[GB]$/i.test(code) && !/^\d/.test(code)) {
+        out.conference = code
+      }
+    }
+  }
+
   // Gender + year. Accepts "G13", "B11", "G08/07", or "G2013".
   const gy = name.match(/\b([GB])(\d{4}|\d{2})(?:\s*\/\s*(\d{2}))?\b/)
   if (gy) {
@@ -277,7 +295,10 @@ function parseName(name) {
   }
 
   if (out.suggested_age_label && out.gender && out.league) {
-    out.suggested_pitchside_name = `${out.suggested_age_label} ${out.gender} ${out.league}`
+    const leaguePart = out.conference
+      ? `${out.league} ${out.conference}`
+      : out.league
+    out.suggested_pitchside_name = `${out.suggested_age_label} ${out.gender} ${leaguePart}`
   } else if (out.suggested_age_label && out.gender) {
     out.suggested_pitchside_name = `${out.suggested_age_label} ${out.gender}`
   }
