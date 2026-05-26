@@ -9,40 +9,15 @@ export default async function handler(req, res) {
   )
 
   // Auth — accept either INGEST_SECRET (cron/curl) or a Supabase admin JWT
-  // (browser UI). The service-role client is used both for verifying
-  // Supabase JWTs and for the actual writes below.
-  const authHeader = req.headers.authorization || ''
-  const token = authHeader.replace(/^Bearer\s+/i, '')
-  if (!token) {
-    return res.status(401).json({ error: 'Missing authorization' })
-  }
-
-  let authorized = false
-
-  // Path 1: INGEST_SECRET (cron / curl invocations)
-  if (process.env.INGEST_SECRET && token === process.env.INGEST_SECRET) {
-    authorized = true
-  }
-
-  // Path 2: Supabase admin JWT (admin clicked Refresh in the UI). Verify the
-  // JWT, look up the user's email in allowed_admins. Only admins listed there
-  // can trigger the ingest from the browser.
-  if (!authorized) {
-    const { data: userData, error: userError } =
-      await supabase.auth.getUser(token)
-    if (!userError && userData?.user?.email) {
-      const email = userData.user.email.toLowerCase()
-      const { data: adminRow } = await supabase
-        .from('allowed_admins')
-        .select('email')
-        .ilike('email', email)
-        .maybeSingle()
-      if (adminRow) authorized = true
-    }
-  }
-
-  if (!authorized) {
-    return res.status(401).json({ error: 'Unauthorized' })
+  // (browser UI). Diagnostic version: on failure, returns a `reason` and
+  // `detail` so we can see exactly which step rejected the request.
+  const auth = await checkAdminAuth(supabase, req)
+  if (!auth.ok) {
+    return res.status(401).json({
+      error: `Unauthorized: ${auth.reason}${auth.detail ? ' — ' + auth.detail : ''}`,
+      reason: auth.reason,
+      detail: auth.detail,
+    })
   }
 
   const commit = String(req.query.commit || '').toLowerCase() === 'true'
@@ -320,4 +295,111 @@ function stripTags(s) {
 
 function normalize(s) {
   return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '')
+}
+
+/**
+ * checkAdminAuth — diagnostic version.
+ *
+ * Returns one of:
+ *   { ok: true,  kind: 'secret' }                         INGEST_SECRET match
+ *   { ok: true,  kind: 'jwt', email }                     admin JWT validated
+ *   { ok: false, reason: 'no-token' }                     no Authorization header
+ *   { ok: false, reason: 'env-missing', detail }          Supabase env vars not set
+ *   { ok: false, reason: 'jwt-verify-threw', detail }     getUser threw
+ *   { ok: false, reason: 'jwt-invalid', detail }          getUser returned an error
+ *   { ok: false, reason: 'no-user-in-jwt' }               getUser returned no user
+ *   { ok: false, reason: 'no-email-in-jwt', detail }      user has no email
+ *   { ok: false, reason: 'admin-query-failed', detail }   couldn't query allowed_admins
+ *   { ok: false, reason: 'not-in-allowed-admins', detail } user email not whitelisted
+ *
+ * The detail field is safe to surface in the 401 response — it won't expose
+ * secrets, only the user's own email and the list of admin emails (which the
+ * user has access to via /admin/admins anyway).
+ */
+async function checkAdminAuth(supabase, req) {
+  const authHeader = req.headers.authorization || ''
+  const token = authHeader.replace(/^Bearer\s+/i, '')
+
+  if (!token) return { ok: false, reason: 'no-token' }
+
+  // Path 1: INGEST_SECRET (cron / curl)
+  if (process.env.INGEST_SECRET && token === process.env.INGEST_SECRET) {
+    return { ok: true, kind: 'secret' }
+  }
+
+  if (!process.env.VITE_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return {
+      ok: false,
+      reason: 'env-missing',
+      detail: 'VITE_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set in Vercel',
+    }
+  }
+
+  // Path 2: Supabase admin JWT
+  let userData, userError
+  try {
+    const result = await supabase.auth.getUser(token)
+    userData = result.data
+    userError = result.error
+  } catch (err) {
+    return {
+      ok: false,
+      reason: 'jwt-verify-threw',
+      detail: err.message || String(err),
+    }
+  }
+
+  if (userError) {
+    return {
+      ok: false,
+      reason: 'jwt-invalid',
+      detail: userError.message || String(userError),
+    }
+  }
+  if (!userData?.user) return { ok: false, reason: 'no-user-in-jwt' }
+  if (!userData.user.email) {
+    return {
+      ok: false,
+      reason: 'no-email-in-jwt',
+      detail: `user.id=${userData.user.id}`,
+    }
+  }
+
+  const userEmail = userData.user.email.toLowerCase()
+
+  // Fetch all allowed_admins and compare in JS (case-insensitive). Bulletproof
+  // against PostgREST ilike quirks and casing mismatches in the stored data.
+  let admins, adminErr
+  try {
+    const result = await supabase.from('allowed_admins').select('email')
+    admins = result.data
+    adminErr = result.error
+  } catch (err) {
+    return {
+      ok: false,
+      reason: 'admin-query-failed',
+      detail: err.message || String(err),
+    }
+  }
+
+  if (adminErr) {
+    return {
+      ok: false,
+      reason: 'admin-query-failed',
+      detail: adminErr.message || String(adminErr),
+    }
+  }
+
+  const match = (admins || []).find(
+    (a) => (a.email || '').toLowerCase() === userEmail
+  )
+  if (!match) {
+    return {
+      ok: false,
+      reason: 'not-in-allowed-admins',
+      detail: `user=${userEmail}; admins_count=${admins?.length || 0}`,
+    }
+  }
+
+  return { ok: true, kind: 'jwt', email: userEmail }
 }
