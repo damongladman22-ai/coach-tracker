@@ -31,10 +31,10 @@ import { getActiveSeasonId } from '../lib/season'
  *   16 = ECNL RL Boys
  */
 const COMPETITIONS = [
-  { org_id: 9, label: 'ECNL Girls', gender: 'Girls' },
-  { org_id: 12, label: 'ECNL Boys', gender: 'Boys' },
-  { org_id: 13, label: 'ECNL RL Girls', gender: 'Girls' },
-  { org_id: 16, label: 'ECNL RL Boys', gender: 'Boys' },
+  { org_id: 9, label: 'ECNL Girls', gender: 'Girls', default_event_id: '3931' },
+  { org_id: 12, label: 'ECNL Boys', gender: 'Boys', default_event_id: '3887' },
+  { org_id: 13, label: 'ECNL RL Girls', gender: 'Girls', default_event_id: '3951' },
+  { org_id: 16, label: 'ECNL RL Boys', gender: 'Boys', default_event_id: '3899' },
 ]
 
 export default function AthleteOneDiscover({ session }) {
@@ -102,11 +102,19 @@ export default function AthleteOneDiscover({ session }) {
     setLookupsLoaded(true)
   }
 
-  // When the AthleteOne competition changes, re-guess the matching PitchSide
-  // program so admin doesn't have to manually re-pick every time.
+  // When the AthleteOne competition changes, also (a) update the eventId to
+  // the known default for that competition (or clear it if unknown — admin
+  // must look it up on theecnl.com), and (b) re-guess the matching PitchSide
+  // program so the admin doesn't have to repick.
   const handleCompetitionChange = (newOrgId) => {
     const num = parseInt(newOrgId, 10)
     setOrgId(num)
+    const comp = COMPETITIONS.find((c) => c.org_id === num)
+    setEventId(comp?.default_event_id || '')
+    // Also clear any prior discovery results — they were for the old comp.
+    setTeams([])
+    setError(null)
+    setDidDiscover(false)
     const guess = guessProgramForOrg(num, programs)
     if (guess) setProgramId(String(guess.id))
   }
@@ -412,11 +420,25 @@ export default function AthleteOneDiscover({ session }) {
               inputMode="numeric"
               value={eventId}
               onChange={(e) => setEventId(e.target.value.replace(/[^\d]/g, ''))}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                !eventId
+                  ? 'border-amber-300 bg-amber-50'
+                  : 'border-gray-300'
+              }`}
             />
-            <p className="text-xs text-gray-400 mt-0.5">
-              Season-specific. For ECNL Girls 2025-26 = <code>3931</code>.
-            </p>
+            {!eventId ? (
+              <p className="text-xs text-amber-700 mt-0.5">
+                Event ID required. Find it on theecnl.com → Standings →{' '}
+                {competition?.label} → 2025-26 (the number in the URL).
+              </p>
+            ) : (
+              <p className="text-xs text-gray-400 mt-0.5">
+                Season-specific. 2025-26 known: ECNL Girls={' '}
+                <code>3931</code>, ECNL Boys=<code>3887</code>, ECNL RL Girls={' '}
+                <code>3951</code> (or <code>3939</code> for GLA conference),
+                ECNL RL Boys=<code>3899</code>.
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">
