@@ -16,20 +16,34 @@ import { useFavorite } from '../hooks/useFavorite'
  * Public Team Page at /t/:teamSlug
  *
  * The "team identity" hub for parents/players. Shows:
- *  - Identity (name, age group, gender, program, season)
- *  - Season record (W/L/D/GF/GA/GD)
+ *  - Identity (name, age group, gender, program, season, standings position)
+ *  - Season record (W/L/D/GF/GA/GD) — computed locally from games table
  *  - Stats (games, schools, coaches)
- *  - Two tabs: Games (chronological newest-first) and Events (grouped by event)
+ *  - Up to four tabs: Games, Events, Roster, Staff
+ *      Games + Events are always shown.
+ *      Roster + Staff appear only when AthleteOne ingest has populated them.
  *  - Top colleges that have watched this team
  *
  * Defaults to the team in the active season for the given slug.
  *
- * Sprint 2 changes:
+ * Sprint 2 changes (May 24):
  *  - Old Upcoming/Past split replaced with Games + Events tabs
  *  - Game rows show prominent video thumbnails (replacing the small VideoBadge pill)
  *  - Subtle "N colleges" indicator on game rows where coaches have logged attendance
  *  - Events tab gives a per-event scorecard view, drilling into the existing
  *    /e/:eventSlug/:teamSlug page for game-day flows
+ *
+ * Sprint 2 changes (May 25):
+ *  - Roster tab: 2/3/4-column grid of player cards (photo, jersey, name,
+ *    position, grad year). Sourced from team_players, populated by AthleteOne
+ *    ingest at /api/ingest-athleteone.
+ *  - Staff tab: 1-column list of coaching staff (photo, name, title, email).
+ *    Sourced from team_staff.
+ *  - Standings position badge below the season name. Pulled from
+ *    teams.athleteone_metadata.standings_position. Only the position is
+ *    surfaced — W/L/T remain computed from the games table so manual games
+ *    (friendlies, tournaments) are included in the team record. The
+ *    AthleteOne-supplied W/L/T is intentionally not displayed here.
  */
 export default function PublicTeamPage() {
   const { teamSlug } = useParams()
@@ -38,7 +52,9 @@ export default function PublicTeamPage() {
   const [team, setTeam] = useState(null)
   const [games, setGames] = useState([])
   const [attendance, setAttendance] = useState([])
-  const [activeTab, setActiveTab] = useState('games') // 'games' | 'events'
+  const [players, setPlayers] = useState([])
+  const [staff, setStaff] = useState([])
+  const [activeTab, setActiveTab] = useState('games') // 'games' | 'events' | 'roster' | 'staff'
   const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
   const [isFavorite, setFavorite] = useFavorite(team?.id)
 
@@ -85,19 +101,42 @@ export default function PublicTeamPage() {
       .order('game_date')
     setGames(gamesData || [])
 
+    // Roster + Staff from AthleteOne sync (only active rows).
+    // Parallel with attendance below to keep load() snappy.
+    const rosterPromise = supabase
+      .from('team_players')
+      .select('*')
+      .eq('team_id', teamData.id)
+      .eq('active', true)
+      .order('jersey_number', { ascending: true, nullsFirst: false })
+    const staffPromise = supabase
+      .from('team_staff')
+      .select('*')
+      .eq('team_id', teamData.id)
+      .eq('active', true)
+      .order('athleteone_staff_id', { ascending: true, nullsFirst: false })
+
     // All attendance for those games
+    let attendancePromise = Promise.resolve({ data: [] })
     if (gamesData && gamesData.length > 0) {
       const gameIds = gamesData.map((g) => g.id)
-      const { data: attData } = await supabase
+      attendancePromise = supabase
         .from('attendance')
         .select(
           'id, game_id, coach_id, coaches(id, first_name, last_name, schools(id, school, city, state, division, conference))'
         )
         .in('game_id', gameIds)
-      setAttendance(attData || [])
-    } else {
-      setAttendance([])
     }
+
+    const [
+      { data: playersData },
+      { data: staffData },
+      { data: attData },
+    ] = await Promise.all([rosterPromise, staffPromise, attendancePromise])
+
+    setPlayers(playersData || [])
+    setStaff(staffData || [])
+    setAttendance(attData || [])
 
     setLoading(false)
   }
@@ -219,6 +258,16 @@ export default function PublicTeamPage() {
     return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
   }
 
+  // Standings position pulled from AthleteOne ingest. Stored as a number
+  // (1, 2, 3, ...) in the JSONB metadata column. Rendered as "1st in
+  // conference" with ordinal suffix.
+  const standingsPosition = team?.athleteone_metadata?.standings_position
+
+  // Only show Roster/Staff tabs when we actually have data — non-AthleteOne
+  // teams (or teams not yet synced) won't see empty tabs.
+  const hasRoster = players.length > 0
+  const hasStaff = staff.length > 0
+
   return (
     <PullToRefresh onRefresh={async () => { await load() }}>
       <div className="min-h-screen bg-gray-50">
@@ -271,6 +320,12 @@ export default function PublicTeamPage() {
                       <p className="text-xs text-gray-400 mt-0.5">
                         {team.seasons?.name}
                       </p>
+                      {standingsPosition != null && (
+                        <p className="text-xs text-amber-700 font-medium mt-1 flex items-center gap-1">
+                          <span aria-hidden="true">🏆</span>
+                          <span>{ordinal(standingsPosition)} in conference</span>
+                        </p>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -304,64 +359,101 @@ export default function PublicTeamPage() {
               )
             })()}
 
-            {/* Tabs + tab content */}
-            {games.length === 0 ? (
-              <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500 mb-8">
-                No games scheduled yet.
-              </div>
-            ) : (
-              <>
-                <div className="mb-4 border-b border-gray-200 flex gap-1">
-                  <TabButton
-                    active={activeTab === 'games'}
-                    onClick={() => setActiveTab('games')}
-                  >
-                    Games <span className="text-gray-400 ml-1">({games.length})</span>
-                  </TabButton>
-                  <TabButton
-                    active={activeTab === 'events'}
-                    onClick={() => setActiveTab('events')}
-                  >
-                    Events <span className="text-gray-400 ml-1">({eventGroups.length})</span>
-                  </TabButton>
-                </div>
+            {/* Tab strip. Games + Events are always present; Roster + Staff
+                appear only when their data has been ingested from AthleteOne.
+                overflow-x-auto handles narrow screens with all four tabs. */}
+            <div className="mb-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
+              <TabButton
+                active={activeTab === 'games'}
+                onClick={() => setActiveTab('games')}
+              >
+                Games <span className="text-gray-400 ml-1">({games.length})</span>
+              </TabButton>
+              <TabButton
+                active={activeTab === 'events'}
+                onClick={() => setActiveTab('events')}
+              >
+                Events <span className="text-gray-400 ml-1">({eventGroups.length})</span>
+              </TabButton>
+              {hasRoster && (
+                <TabButton
+                  active={activeTab === 'roster'}
+                  onClick={() => setActiveTab('roster')}
+                >
+                  Roster <span className="text-gray-400 ml-1">({players.length})</span>
+                </TabButton>
+              )}
+              {hasStaff && (
+                <TabButton
+                  active={activeTab === 'staff'}
+                  onClick={() => setActiveTab('staff')}
+                >
+                  Staff <span className="text-gray-400 ml-1">({staff.length})</span>
+                </TabButton>
+              )}
+            </div>
 
-                {activeTab === 'games' ? (
-                  <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100 mb-8">
-                    {sortedGames.map((g) => (
-                      <GameCard
-                        key={g.id}
-                        game={g}
-                        teamSlug={teamSlug}
-                        teamName={team?.name}
-                        formatDate={formatDate}
-                        formatTime={formatTime}
-                        videos={videosByGame[g.id] || []}
-                        schoolsCount={schoolsByGame[g.id] || 0}
-                      />
-                    ))}
+            {/* Tab content. Each tab handles its own empty state. */}
+            {activeTab === 'games' && (
+              games.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500 mb-8">
+                  No games scheduled yet.
+                </div>
+              ) : (
+                <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100 mb-8">
+                  {sortedGames.map((g) => (
+                    <GameCard
+                      key={g.id}
+                      game={g}
+                      teamSlug={teamSlug}
+                      teamName={team?.name}
+                      formatDate={formatDate}
+                      formatTime={formatTime}
+                      videos={videosByGame[g.id] || []}
+                      schoolsCount={schoolsByGame[g.id] || 0}
+                    />
+                  ))}
+                </div>
+              )
+            )}
+
+            {activeTab === 'events' && (
+              eventGroups.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500 mb-8">
+                  No event-based games this season.
+                  <div className="text-xs text-gray-400 mt-1">
+                    Standalone games appear in the Games tab.
                   </div>
-                ) : eventGroups.length === 0 ? (
-                  <div className="bg-white rounded-lg shadow-md p-8 text-center text-gray-500 mb-8">
-                    No event-based games this season.
-                    <div className="text-xs text-gray-400 mt-1">
-                      Standalone games appear in the Games tab.
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3 mb-8">
-                    {eventGroups.map((group) => (
-                      <EventCard
-                        key={group.event.id}
-                        event={group.event}
-                        games={group.games}
-                        attendance={group.attendance}
-                        teamSlug={teamSlug}
-                      />
-                    ))}
-                  </div>
-                )}
-              </>
+                </div>
+              ) : (
+                <div className="space-y-3 mb-8">
+                  {eventGroups.map((group) => (
+                    <EventCard
+                      key={group.event.id}
+                      event={group.event}
+                      games={group.games}
+                      attendance={group.attendance}
+                      teamSlug={teamSlug}
+                    />
+                  ))}
+                </div>
+              )
+            )}
+
+            {activeTab === 'roster' && hasRoster && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 mb-8">
+                {players.map((p) => (
+                  <PlayerCard key={p.id} player={p} />
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'staff' && hasStaff && (
+              <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100 mb-8">
+                {staff.map((s) => (
+                  <StaffRow key={s.id} person={s} />
+                ))}
+              </div>
             )}
 
             {/* Top colleges */}
@@ -483,7 +575,7 @@ function StarIcon({ filled }) {
 }
 
 /**
- * Tab button used in the Games | Events tab strip on the team page.
+ * Tab button used in the Games | Events | Roster | Staff tab strip.
  * Sized for mobile tap targets (44px+ via py-3 + line-height).
  */
 function TabButton({ active, onClick, children }) {
@@ -491,7 +583,7 @@ function TabButton({ active, onClick, children }) {
     <button
       type="button"
       onClick={onClick}
-      className={`relative px-4 py-3 text-sm font-medium transition-colors ${
+      className={`relative px-4 py-3 text-sm font-medium transition-colors whitespace-nowrap ${
         active
           ? 'text-cyan-700'
           : 'text-gray-600 hover:text-gray-900'
@@ -506,6 +598,117 @@ function TabButton({ active, onClick, children }) {
         />
       )}
     </button>
+  )
+}
+
+/**
+ * PlayerCard — one cell in the Roster grid.
+ *
+ * Visual layout (mobile-first):
+ *   - Portrait-ish aspect photo (or initials fallback) with jersey badge
+ *   - Name (truncate on overflow)
+ *   - Position · Class of 'YY
+ *
+ * Photo URLs come from AthleteOne and are public CDN assets, so we can
+ * just <img src> them directly. Lazy-load to keep the initial render fast
+ * when there are 20+ players.
+ */
+function PlayerCard({ player }) {
+  const initials =
+    ((player.first_name || '').charAt(0) +
+      (player.last_name || '').charAt(0)).toUpperCase() || '?'
+  const gradShort = player.grad_year
+    ? `'${String(player.grad_year).slice(-2)}`
+    : null
+  const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim()
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="relative aspect-[3/4] bg-gray-100">
+        {player.photo_url ? (
+          <img
+            src={player.photo_url}
+            alt={fullName}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center text-2xl font-bold text-gray-400">
+            {initials}
+          </div>
+        )}
+        {player.jersey_number != null && player.jersey_number !== '' && (
+          <div className="absolute top-2 left-2 bg-slate-900/85 text-white text-xs font-bold px-2 py-0.5 rounded">
+            #{player.jersey_number}
+          </div>
+        )}
+      </div>
+      <div className="p-2.5">
+        <div
+          className="font-semibold text-sm text-gray-900 truncate"
+          title={fullName}
+        >
+          {player.first_name} {player.last_name}
+        </div>
+        <div className="text-xs text-gray-500 mt-0.5 truncate">
+          {player.position || '—'}
+          {gradShort && (
+            <>
+              <span className="text-gray-300 mx-1">·</span>
+              <span>{gradShort}</span>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * StaffRow — one row in the Staff list.
+ *
+ * Photo (or initials) on the left, name + title stacked on the right.
+ * If an email is available it surfaces as a mailto link beneath the title.
+ */
+function StaffRow({ person }) {
+  const initials =
+    ((person.first_name || '').charAt(0) +
+      (person.last_name || '').charAt(0)).toUpperCase() || '?'
+  const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim()
+
+  return (
+    <div className="flex items-center gap-3 p-3">
+      <div className="flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+        {person.photo_url ? (
+          <img
+            src={person.photo_url}
+            alt={fullName}
+            loading="lazy"
+            decoding="async"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <span className="text-sm font-bold text-gray-400">{initials}</span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="font-semibold text-sm text-gray-900 truncate">
+          {person.first_name} {person.last_name}
+        </div>
+        <div className="text-xs text-gray-500 truncate">
+          {person.title || '—'}
+        </div>
+        {person.email && (
+          <a
+            href={`mailto:${person.email}`}
+            className="text-xs text-cyan-700 hover:underline truncate block"
+          >
+            {person.email}
+          </a>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -797,4 +1000,17 @@ function parseGameDate(s) {
   if (!s) return new Date()
   const [y, m, d] = s.split('-')
   return new Date(y, m - 1, d)
+}
+
+/**
+ * ordinal — turns a number into "1st", "2nd", "3rd", "4th", etc.
+ * Handles teens correctly (11th, 12th, 13th).
+ */
+function ordinal(n) {
+  const num = Number(n)
+  if (!Number.isFinite(num)) return String(n)
+  const suffixes = ['th', 'st', 'nd', 'rd']
+  const v = num % 100
+  const suffix = suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]
+  return `${num}${suffix}`
 }
