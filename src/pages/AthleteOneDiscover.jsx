@@ -212,41 +212,23 @@ export default function AthleteOneDiscover({ session }) {
   }
 
   const handleCreate = async () => {
-    console.log('[handleCreate] CLICKED')
     setCreateResult(null)
     const toCreate = teams.filter((t) => t.ui.selected && !t.already_exists)
-    console.log(
-      '[handleCreate] toCreate count:',
-      toCreate.length,
-      'sample names:',
-      toCreate.slice(0, 3).map((t) => t.ui.name)
-    )
     if (toCreate.length === 0) {
-      console.log('[handleCreate] EARLY RETURN: nothing selected')
       setCreateResult({ kind: 'warn', text: 'Nothing selected to create.' })
       return
     }
-    console.log('[handleCreate] seasonId:', seasonId, 'programId:', programId)
     if (!seasonId) {
-      console.log('[handleCreate] EARLY RETURN: no season')
       setCreateResult({ kind: 'error', text: 'Pick a season first.' })
       return
     }
     if (!programId) {
-      console.log('[handleCreate] EARLY RETURN: no program')
       setCreateResult({ kind: 'error', text: 'Pick a program first.' })
       return
     }
     // Validate each team has an age group set
     const missingAge = toCreate.filter((t) => !t.ui.age_group_id)
-    console.log(
-      '[handleCreate] missingAge count:',
-      missingAge.length,
-      'missing teams:',
-      missingAge.map((t) => t.ui.name)
-    )
     if (missingAge.length > 0) {
-      console.log('[handleCreate] EARLY RETURN: missing age groups')
       setCreateResult({
         kind: 'error',
         text: `${missingAge.length} team(s) missing an age group. Pick one in each row before creating.`,
@@ -254,11 +236,9 @@ export default function AthleteOneDiscover({ session }) {
       return
     }
 
-    console.log('[handleCreate] passed validation, entering try block')
     setCreating(true)
     try {
       const clubIdLocal = await getCurrentClubId()
-      console.log('[handleCreate] clubIdLocal:', clubIdLocal)
 
       // Defense-in-depth: even though the discover endpoint marks teams
       // already_exists=true, that check can fail-soft (returning null) if the
@@ -268,12 +248,6 @@ export default function AthleteOneDiscover({ session }) {
         .map((t) => parseInt(t.athleteone_team_id, 10))
         .filter(Number.isFinite)
       const proposedSlugs = toCreate.map((t) => slugify(t.ui.name))
-      console.log(
-        '[handleCreate] dedup pre-check inputs — aoTeamIds:',
-        aoTeamIds,
-        'proposedSlugs:',
-        proposedSlugs
-      )
 
       const [byAo, bySlug] = await Promise.all([
         supabase
@@ -290,55 +264,22 @@ export default function AthleteOneDiscover({ session }) {
           .eq('season_id', seasonId)
           .in('slug', proposedSlugs),
       ])
-      console.log('[handleCreate] dedup byAo result:', byAo)
-      console.log('[handleCreate] dedup bySlug result:', bySlug)
 
       const aoIdsInDb = new Set(
         (byAo.data || []).map((r) => r.athleteone_team_id)
       )
       const slugsInDb = new Set((bySlug.data || []).map((r) => r.slug))
-      console.log(
-        '[handleCreate] dedup sets — aoIdsInDb:',
-        Array.from(aoIdsInDb),
-        'slugsInDb:',
-        Array.from(slugsInDb)
-      )
 
       const reallyToCreate = toCreate.filter((t) => {
         const aid = parseInt(t.athleteone_team_id, 10)
-        if (aoIdsInDb.has(aid)) {
-          console.log(
-            '[handleCreate] filtered out (ao_id in db):',
-            t.ui.name,
-            'ao_id=',
-            aid
-          )
-          return false
-        }
-        if (slugsInDb.has(slugify(t.ui.name))) {
-          console.log(
-            '[handleCreate] filtered out (slug in db):',
-            t.ui.name,
-            'slug=',
-            slugify(t.ui.name)
-          )
-          return false
-        }
+        if (aoIdsInDb.has(aid)) return false
+        if (slugsInDb.has(slugify(t.ui.name))) return false
         return true
       })
 
       const skippedCount = toCreate.length - reallyToCreate.length
-      console.log(
-        '[handleCreate] reallyToCreate count:',
-        reallyToCreate.length,
-        'skippedCount:',
-        skippedCount
-      )
 
       if (reallyToCreate.length === 0) {
-        console.log(
-          '[handleCreate] EARLY RETURN inside try: all teams filtered out by dedup'
-        )
         setCreateResult({
           kind: 'warn',
           text:
@@ -364,21 +305,13 @@ export default function AthleteOneDiscover({ session }) {
         athleteone_team_id: parseInt(t.athleteone_team_id, 10),
         athleteone_sync_games: syncGamesDefault,
       }))
-      console.log('[handleCreate] insert rows:', rows)
 
       const { data: created, error: insertErr } = await supabase
         .from('teams')
         .insert(rows)
         .select('id, name, slug, athleteone_team_id')
-      console.log(
-        '[handleCreate] insert result — created:',
-        created,
-        'error:',
-        insertErr
-      )
 
       if (insertErr) {
-        console.log('[handleCreate] insertErr details:', insertErr)
         setCreateResult({
           kind: 'error',
           text: insertErr.message,
@@ -479,13 +412,12 @@ export default function AthleteOneDiscover({ session }) {
       // Refresh discovery so the just-created teams flip to "Already exists"
       await handleDiscover()
     } catch (err) {
-      console.error('[handleCreate] CAUGHT exception:', err)
+      console.error('[handleCreate] failed:', err)
       setCreateResult({
         kind: 'error',
         text: err.message || 'Bulk create failed.',
       })
     } finally {
-      console.log('[handleCreate] FINALLY block — setCreating(false)')
       setCreating(false)
     }
   }
