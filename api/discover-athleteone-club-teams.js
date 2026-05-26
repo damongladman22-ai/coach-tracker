@@ -167,7 +167,7 @@ function parseClubTeams(html, clubIdStr) {
   // The span tags wrap text spanning newlines and have attributes in varied
   // order in some places. We're permissive about attribute order by capturing
   // the whole opening tag and then extracting attrs individually.
-  const spanRe = /<span\s+class="individual-team-item"\b([^>]*)>([^<]+)<\/span>/gi
+  const spanRe = /<span\s+class="individual-team-item"([^>]*)>([^<]+)<\/span>/gi
 
   const found = new Map() // team_id -> team object
 
