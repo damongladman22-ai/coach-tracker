@@ -28,6 +28,7 @@ export default function AdminLayout({ session, title, children }) {
     { to: '/admin', label: 'Dashboard' },
     { to: '/admin/seasons', label: 'Seasons' },
     { to: '/admin/teams', label: 'Teams' },
+    { to: '/admin/athleteone-discover', label: 'Discover Teams' },
     { to: '/admin/events', label: 'Events' },
     { to: '/admin/schools', label: 'Schools' },
     { to: '/directory?context=admin', label: 'Directory' },
