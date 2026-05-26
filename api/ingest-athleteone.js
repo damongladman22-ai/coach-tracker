@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
   let q = supabase
     .from('teams')
-    .select('id, name, athleteone_org_id, athleteone_event_id, athleteone_team_id, athleteone_club_id, athleteone_sync_games')
+    .select('id, name, club_id, season_id, athleteone_org_id, athleteone_event_id, athleteone_team_id, athleteone_club_id, athleteone_sync_games')
     .not('athleteone_team_id', 'is', null)
   if (teamFilter) q = q.eq('id', teamFilter)
 
@@ -145,7 +145,7 @@ export default async function handler(req, res) {
       let gamesResult
       if (team.athleteone_sync_games) {
         const parsedEvents = parseEventsFromTeamInfo(html)
-        eventsResult = await syncEvents(supabase, parsedEvents)
+        eventsResult = await syncEvents(supabase, team, parsedEvents)
         gamesResult = await syncGames(
           supabase,
           team,
@@ -654,7 +654,8 @@ function parseEventDateRange(s) {
 
 // Find-or-create rows in events table for each parsed event.
 // Behavior:
-//   - Lookup by (LOWER(event_name), start_date) — matches the unique index
+//   - Lookup by (club_id, start_date, LOWER(event_name)) — scopes to this
+//     team's club so we never accidentally collide with another club's events.
 //   - If existing event has source='manual', upgrade to 'athleteone' and set
 //     athleteone_event_id (so your manually-created events get linked, not
 //     duplicated)
@@ -663,29 +664,40 @@ function parseEventDateRange(s) {
 //   - Otherwise leave existing row alone
 //   - If no match, INSERT new event with source='athleteone'
 //
-// Returns: { events: [{id, event_name, start_date, end_date}], created, upgraded,
-//            backfilled, total_parsed }
-async function syncEvents(supabase, parsedEvents) {
+// Errors are accumulated into result.errors (instead of swallowed silently)
+// so the caller can see why a sync failed.
+async function syncEvents(supabase, team, parsedEvents) {
   const result = {
     events: [],
     created: 0,
     upgraded: 0,
     backfilled: 0,
     total_parsed: parsedEvents.length,
+    errors: [],
   }
 
   if (parsedEvents.length === 0) return result
 
+  // Both fields are NOT NULL on events table; bail early if the team is
+  // missing either (would be a data-integrity issue worth surfacing).
+  if (!team.club_id || !team.season_id) {
+    result.errors.push(
+      `team ${team.id} missing club_id (${team.club_id}) or season_id (${team.season_id})`
+    )
+    return result
+  }
+
   for (const ev of parsedEvents) {
-    // Lookup candidates by start_date, then filter by lowered name in JS
-    // (Supabase JS doesn't expose LOWER() in a where clause).
+    // Lookup candidates scoped to this club + start_date, filter by lowered
+    // name in JS (Supabase JS doesn't expose LOWER() in a where clause).
     const { data: candidates, error: selErr } = await supabase
       .from('events')
-      .select('id, event_name, start_date, end_date, source, athleteone_event_id')
+      .select('id, event_name, start_date, end_date, source, athleteone_event_id, club_id')
+      .eq('club_id', team.club_id)
       .eq('start_date', ev.start_date)
 
     if (selErr) {
-      // Skip this event but keep going with others
+      result.errors.push(`select "${ev.event_name}": ${selErr.message}`)
       continue
     }
 
@@ -695,25 +707,32 @@ async function syncEvents(supabase, parsedEvents) {
     )
 
     if (existing) {
-      // Upgrade manual to athleteone if needed
       if (existing.source === 'manual') {
-        await supabase
+        const { error: upErr } = await supabase
           .from('events')
           .update({
             source: 'athleteone',
             athleteone_event_id: ev.athleteone_event_id,
           })
           .eq('id', existing.id)
-        result.upgraded += 1
+        if (upErr) {
+          result.errors.push(`upgrade "${ev.event_name}": ${upErr.message}`)
+        } else {
+          result.upgraded += 1
+        }
       } else if (
         existing.athleteone_event_id == null &&
         ev.athleteone_event_id != null
       ) {
-        await supabase
+        const { error: upErr } = await supabase
           .from('events')
           .update({ athleteone_event_id: ev.athleteone_event_id })
           .eq('id', existing.id)
-        result.backfilled += 1
+        if (upErr) {
+          result.errors.push(`backfill "${ev.event_name}": ${upErr.message}`)
+        } else {
+          result.backfilled += 1
+        }
       }
       result.events.push({
         id: existing.id,
@@ -726,35 +745,36 @@ async function syncEvents(supabase, parsedEvents) {
 
     // No match — create new event row
     const slug = generateEventSlug(ev.event_name, ev.start_date)
+    const insertPayload = {
+      event_name: ev.event_name,
+      start_date: ev.start_date,
+      end_date: ev.end_date,
+      slug: slug,
+      source: 'athleteone',
+      athleteone_event_id: ev.athleteone_event_id,
+      club_id: team.club_id,
+      season_id: team.season_id,
+    }
     const { data: inserted, error: insErr } = await supabase
       .from('events')
-      .insert({
-        event_name: ev.event_name,
-        start_date: ev.start_date,
-        end_date: ev.end_date,
-        slug: slug,
-        source: 'athleteone',
-        athleteone_event_id: ev.athleteone_event_id,
-      })
+      .insert(insertPayload)
       .select('id, event_name, start_date, end_date')
       .single()
 
     if (insErr || !inserted) {
-      // Likely a race or slug collision; try a fallback slug then re-lookup
+      // Likely a slug collision — try once with a suffix
       const fallbackSlug = slug + '-' + Date.now().toString(36).slice(-4)
       const retry = await supabase
         .from('events')
-        .insert({
-          event_name: ev.event_name,
-          start_date: ev.start_date,
-          end_date: ev.end_date,
-          slug: fallbackSlug,
-          source: 'athleteone',
-          athleteone_event_id: ev.athleteone_event_id,
-        })
+        .insert({ ...insertPayload, slug: fallbackSlug })
         .select('id, event_name, start_date, end_date')
         .single()
-      if (retry.error || !retry.data) continue
+      if (retry.error || !retry.data) {
+        result.errors.push(
+          `insert "${ev.event_name}" (${ev.start_date}): ${insErr?.message || 'unknown'} | retry: ${retry.error?.message || 'unknown'}`
+        )
+        continue
+      }
       result.events.push(retry.data)
       result.created += 1
       continue
