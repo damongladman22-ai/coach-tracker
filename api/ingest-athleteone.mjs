@@ -5,21 +5,8 @@
  * API and upserts into PitchSide's team_players, team_staff, and team
  * metadata. Games sync is gated per-team by teams.athleteone_sync_games.
  *
- * Endpoints:
- *   GET  /api/ingest-athleteone                          → all teams, DRY RUN
- *   GET  /api/ingest-athleteone?teamId=1                 → just team id=1, DRY RUN
- *   GET  /api/ingest-athleteone?commit=true              → all teams, COMMIT
- *   GET  /api/ingest-athleteone?teamId=1&commit=true     → just team id=1, COMMIT
- *
- * Auth:
- *   Authorization: Bearer <INGEST_SECRET>
- *
- * Required Vercel env vars:
- *   VITE_SUPABASE_URL              (already in your project)
- *   SUPABASE_SERVICE_ROLE_KEY      (Supabase Dashboard → Settings → API → service_role)
- *   INGEST_SECRET                  (any long random string you mint)
- *
- * Dependencies: none beyond @supabase/supabase-js (already in your project)
+ * In dry-run mode, includes a `standings_debug` block so we can see the
+ * raw HTML structure around standings and iterate on parsing.
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -36,7 +23,6 @@ const FETCH_HEADERS = {
 };
 
 export default async function handler(req, res) {
-  // ----- Auth -----
   const authHeader = req.headers.authorization || '';
   const expected = `Bearer ${process.env.INGEST_SECRET}`;
   if (!process.env.INGEST_SECRET || authHeader !== expected) {
@@ -55,11 +41,9 @@ export default async function handler(req, res) {
     auth: { persistSession: false },
   });
 
-  // ----- Mode -----
   const commit = String(req.query.commit || '').toLowerCase() === 'true';
   const teamFilter = req.query.teamId ? parseInt(req.query.teamId, 10) : null;
 
-  // ----- Fetch teams to ingest -----
   let teamsQuery = supabase
     .from('teams')
     .select(
@@ -115,6 +99,8 @@ export default async function handler(req, res) {
       };
 
       if (!commit) {
+        // Add diagnostic info to help debug standings parsing
+        summary.parsed.standings_debug = buildStandingsDebug(html);
         summary.mode = 'dry-run (no DB writes)';
         results.push(summary);
         continue;
@@ -199,24 +185,7 @@ export default async function handler(req, res) {
 }
 
 // =====================================================================
-// HTML parsing (regex-based - no DOM library needed)
-// =====================================================================
-//
-// AthleteOne's team-info response is server-generated HTML with a stable
-// template. The rosters/staff live in:
-//   <table id="players-table-content"><tbody>...rows...</tbody></table>
-//   <table id="staffs-table-content"><tbody>...rows...</tbody></table>
-//
-// Each row's shape:
-//   <tr>
-//     <td>...
-//       <img src=".../PlayerImage/First_Last_<32hex>.ext" />
-//       <span>Last, First</span>          ← name
-//       <span>Position OR Title</span>    ← role
-//       <span>GradYear OR Email</span>    ← detail
-//       ...<span>#NN</span>               ← jersey OR athleteone ID
-//     </td>
-//   </tr>
+// HTML parsing
 // =====================================================================
 
 function parseTeamInfo(html) {
@@ -239,16 +208,14 @@ function parseStandings(html) {
     synced_at: new Date().toISOString(),
   };
 
-  // Locate the Standings section: <h3>Standings</h3> ... up until the next <h3>
   const standingsSection = html.match(
     /<h3[^>]*>\s*Standings\s*<\/h3>([\s\S]*?)(?=<h3|$)/i
   );
   const scope = standingsSection ? standingsSection[1] : html;
   if (!standingsSection) {
-    out.parse_warnings.push('No <h3>Standings</h3> heading found; scanning whole document');
+    out.parse_warnings.push('No <h3>Standings</h3> heading found');
   }
 
-  // Record (W-L-T)
   const recordMatch = scope.match(/(\d+)\s*-\s*(\d+)\s*-\s*(\d+)/);
   if (recordMatch) {
     out.record_w = parseInt(recordMatch[1], 10);
@@ -256,7 +223,6 @@ function parseStandings(html) {
     out.record_t = parseInt(recordMatch[3], 10);
   }
 
-  // Position: "3rd of 12" or "Place: 3" or "Rank: 3"
   const placeOfMatch = scope.match(/(\d+)(?:st|nd|rd|th)\s+of\s+(\d+)/i);
   if (placeOfMatch) {
     out.standings_position = parseInt(placeOfMatch[1], 10);
@@ -266,12 +232,67 @@ function parseStandings(html) {
     if (placeMatch) out.standings_position = parseInt(placeMatch[1], 10);
   }
 
-  // Last 5 (sequence of W/L/D/T characters or icons)
-  // AthleteOne sometimes renders this as a string like "WWLDL"
   const last5Match = scope.match(/Last\s*5[^<]{0,40}?([WLDT]{3,5})/i);
   if (last5Match) out.last_five = last5Match[1];
 
   return out;
+}
+
+// Diagnostic: returns the raw HTML structure near anything standings-related,
+// so we can iterate on the parser without re-deploying.
+function buildStandingsDebug(html) {
+  const debug = {};
+
+  // 1) All <h3> headings in document order
+  const h3s = [...html.matchAll(/<h3[^>]*>([\s\S]*?)<\/h3>/gi)]
+    .map((m) => stripTags(m[1]).trim());
+  debug.all_h3_headings = h3s;
+
+  // 2) HTML excerpt around <h3>Standings</h3> heading
+  const standingsIdx = html.search(/<h3[^>]*>\s*Standings\s*<\/h3>/i);
+  if (standingsIdx !== -1) {
+    const start = Math.max(0, standingsIdx - 100);
+    const end = Math.min(html.length, standingsIdx + 3000);
+    debug.standings_section_excerpt = html.substring(start, end);
+  } else {
+    debug.standings_section_excerpt = null;
+  }
+
+  // 3) HTML excerpts around any case-insensitive mention of "Record"
+  debug.record_excerpts = [];
+  const recordPattern = /Record/gi;
+  let m;
+  let count = 0;
+  while ((m = recordPattern.exec(html)) !== null && count < 3) {
+    const start = Math.max(0, m.index - 100);
+    const end = Math.min(html.length, m.index + 600);
+    debug.record_excerpts.push(html.substring(start, end));
+    count++;
+  }
+
+  // 4) Excerpt near "Place" or "Rank"
+  const placeIdx = html.search(/\b(Place|Rank)\b/i);
+  if (placeIdx !== -1) {
+    const start = Math.max(0, placeIdx - 100);
+    const end = Math.min(html.length, placeIdx + 600);
+    debug.place_rank_excerpt = html.substring(start, end);
+  }
+
+  // 5) Look for typical W-L-T patterns anywhere in document and show context
+  debug.wlt_pattern_hits = [];
+  const wltPattern = /(\d+)\s*-\s*(\d+)\s*-\s*(\d+)/g;
+  let wltCount = 0;
+  while ((m = wltPattern.exec(html)) !== null && wltCount < 5) {
+    const start = Math.max(0, m.index - 80);
+    const end = Math.min(html.length, m.index + 200);
+    debug.wlt_pattern_hits.push({
+      match: m[0],
+      context: html.substring(start, end),
+    });
+    wltCount++;
+  }
+
+  return debug;
 }
 
 function parseRosterRows(html, tableId, kind) {
@@ -285,23 +306,21 @@ function parseRosterRows(html, tableId, kind) {
 
   const rows = [];
   for (const [, rowHtml] of rowMatches) {
-    if (/<th\b/i.test(rowHtml)) continue; // skip header rows
+    if (/<th\b/i.test(rowHtml)) continue;
 
-    // Photo URL
     const imgMatch = rowHtml.match(/<img[^>]*src="([^"]+)"/i);
     const photoUrl = imgMatch ? imgMatch[1] : null;
 
-    // All <span> contents in document order
     const spanContents = [...rowHtml.matchAll(/<span[^>]*>([\s\S]*?)<\/span>/g)]
       .map((m) => stripTags(m[1]).trim())
       .filter((s) => s.length > 0);
 
-    if (spanContents.length < 2) continue; // malformed
+    if (spanContents.length < 2) continue;
 
-    const fullName = spanContents[0]; // "Last, First"
-    const middleField = spanContents[1] || ''; // position OR title
-    const lastField = spanContents[2] || ''; // grad year OR email
-    const trailing = spanContents[spanContents.length - 1] || ''; // "#NN" or "#NNNNNN"
+    const fullName = spanContents[0];
+    const middleField = spanContents[1] || '';
+    const lastField = spanContents[2] || '';
+    const trailing = spanContents[spanContents.length - 1] || '';
 
     const [lastName, firstName] = splitFullName(fullName);
     if (!lastName || !firstName) continue;
@@ -309,7 +328,6 @@ function parseRosterRows(html, tableId, kind) {
     const trailingId = trailing.replace(/^#/, '').trim();
 
     if (kind === 'player') {
-      // Photo hash → stable player ID
       let athleteOnePlayerId = null;
       if (photoUrl) {
         const hashMatch = photoUrl.match(/_([a-f0-9]{32})\.[a-zA-Z]+$/i);
@@ -332,7 +350,6 @@ function parseRosterRows(html, tableId, kind) {
         photo_url: photoUrl,
       });
     } else {
-      // staff: trailing span is the visible #ID
       const athleteOneStaffId = /^\d+$/.test(trailingId)
         ? trailingId
         : `synth:${normalize(lastName)}:${normalize(firstName)}`;
@@ -385,7 +402,7 @@ async function upsertRoster(supabase, table, idCol, teamId, rows) {
 }
 
 // =====================================================================
-// Small utilities
+// Utilities
 // =====================================================================
 
 function stripTags(s) {
