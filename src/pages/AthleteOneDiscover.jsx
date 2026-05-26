@@ -239,7 +239,64 @@ export default function AthleteOneDiscover({ session }) {
     setCreating(true)
     try {
       const clubIdLocal = await getCurrentClubId()
-      const rows = toCreate.map((t) => ({
+
+      // Defense-in-depth: even though the discover endpoint marks teams
+      // already_exists=true, that check can fail-soft (returning null) if the
+      // teams-table lookup errors. Re-check immediately before insert so we
+      // never hit the (club_id, season_id, slug) unique constraint.
+      //
+      // Two collisions to guard against:
+      //   1. SAME athleteone_team_id already in DB for this org/event/club
+      //   2. SAME (club_id, season_id, slug) — e.g. another competition's
+      //      U13 Girls team produced the same generated name
+      const aoTeamIds = toCreate
+        .map((t) => parseInt(t.athleteone_team_id, 10))
+        .filter(Number.isFinite)
+      const proposedSlugs = toCreate.map((t) => slugify(t.ui.name))
+
+      const [byAo, bySlug] = await Promise.all([
+        supabase
+          .from('teams')
+          .select('athleteone_team_id')
+          .eq('athleteone_org_id', orgId)
+          .eq('athleteone_event_id', parseInt(eventId, 10))
+          .eq('athleteone_club_id', parseInt(clubIdInput, 10))
+          .in('athleteone_team_id', aoTeamIds),
+        supabase
+          .from('teams')
+          .select('slug')
+          .eq('club_id', clubIdLocal)
+          .eq('season_id', seasonId)
+          .in('slug', proposedSlugs),
+      ])
+
+      const aoIdsInDb = new Set(
+        (byAo.data || []).map((r) => r.athleteone_team_id)
+      )
+      const slugsInDb = new Set((bySlug.data || []).map((r) => r.slug))
+
+      const reallyToCreate = toCreate.filter((t) => {
+        const aid = parseInt(t.athleteone_team_id, 10)
+        if (aoIdsInDb.has(aid)) return false
+        if (slugsInDb.has(slugify(t.ui.name))) return false
+        return true
+      })
+
+      const skippedCount = toCreate.length - reallyToCreate.length
+
+      if (reallyToCreate.length === 0) {
+        setCreateResult({
+          kind: 'warn',
+          text:
+            'All selected teams already exist in the database. ' +
+            'Click Discover Teams again to refresh the view.',
+        })
+        setCreating(false)
+        await handleDiscover()
+        return
+      }
+
+      const rows = reallyToCreate.map((t) => ({
         club_id: clubIdLocal,
         season_id: seasonId,
         program_id: parseInt(programId, 10),
@@ -346,9 +403,13 @@ export default function AthleteOneDiscover({ session }) {
       })
 
       const successCount = syncResults.filter((r) => r.success).length
+      const skippedSuffix =
+        skippedCount > 0
+          ? ` Skipped ${skippedCount} already in DB.`
+          : ''
       setCreateResult({
         kind: 'success',
-        text: `Created ${created.length} team${created.length === 1 ? '' : 's'}. Synced ${successCount} of ${newTeams.length}.`,
+        text: `Created ${created.length} team${created.length === 1 ? '' : 's'}. Synced ${successCount} of ${newTeams.length}.${skippedSuffix}`,
         created: created,
         syncResults: syncResults,
       })
