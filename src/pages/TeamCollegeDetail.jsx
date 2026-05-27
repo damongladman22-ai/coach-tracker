@@ -410,10 +410,15 @@ function CoachAttendanceCard({ coach, games }) {
 /**
  * AttendedGameRow — single row inside a coach's attendance list. Shows
  * opponent on top, date + event below, and a colored W/L/T score badge
- * on the right when a score is set. Games without scores logged yet (or
- * games we lost contact with from AthleteOne) show an em-dash badge.
+ * on the right when a score is set. Games without scores logged yet
+ * simply omit the badge — a coach came to watch but we don't know the
+ * outcome yet, and a placeholder there would read as noise.
  */
 function AttendedGameRow({ game }) {
+  // gameResult returns { label, color, score } — label is 'W'/'L'/'T'
+  // (falsy when no scores set), color is a Tailwind class string, score
+  // is the formatted score like "3-1". Same shape as PublicTeamPage uses
+  // for its inline game badges, so the visual cue is consistent.
   const r = gameResult(game)
   return (
     <li className="flex items-center justify-between gap-2 py-2">
@@ -426,41 +431,14 @@ function AttendedGameRow({ game }) {
           {game.events?.event_name ? ` · ${game.events.event_name}` : ''}
         </p>
       </div>
-      <ScoreBadge
-        result={r}
-        ourScore={game.our_score}
-        theirScore={game.opponent_score}
-      />
+      {r.label && (
+        <span
+          className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums flex-shrink-0 whitespace-nowrap ${r.color}`}
+        >
+          {r.label} {r.score}
+        </span>
+      )}
     </li>
-  )
-}
-
-/**
- * ScoreBadge — colored pill showing W/L/T plus the actual score. Colors
- * match the established palette (emerald for W, rose for L, amber for T)
- * so the cue is consistent with the rest of the app. When the game has
- * no scores logged yet, we show a muted em-dash badge instead — a coach
- * came to watch but we don't know the outcome yet.
- */
-function ScoreBadge({ result, ourScore, theirScore }) {
-  if (!result) {
-    return (
-      <span className="text-xs font-medium px-2 py-0.5 rounded text-gray-400 flex-shrink-0">
-        —
-      </span>
-    )
-  }
-  const palette = {
-    W: 'bg-emerald-100 text-emerald-700',
-    L: 'bg-rose-100 text-rose-700',
-    T: 'bg-amber-100 text-amber-700',
-  }
-  return (
-    <span
-      className={`text-xs font-semibold px-2 py-0.5 rounded ${palette[result]} flex-shrink-0 whitespace-nowrap`}
-    >
-      {result} {ourScore}-{theirScore}
-    </span>
   )
 }
 
