@@ -933,7 +933,18 @@ function GameCard({
   const [videosExpanded, setVideosExpanded] = useState(false)
   const r = gameResult(game)
   const eventSlug = game.events?.slug
-  const eventName = game.events?.event_name
+  // "at [event]" only makes sense for discrete events (showcases,
+  // tournaments). For season-long conference wrappers (>30 days), the
+  // "event" is a data parent, not a venue or context — showing it on the
+  // game card reads weirdly as "at ECNL Girls Ohio Valley 2025-26". Fall
+  // through to the game_type badge instead, same path as standalone games.
+  // The eventSlug is preserved for the action button (Open Tracker /
+  // Summary) since those links still need to route into the event.
+  const eventDurationDays = game.events
+    ? getEventDurationDays(game.events.start_date, game.events.end_date)
+    : 0
+  const isDiscreteEvent = eventDurationDays > 0 && eventDurationDays <= 30
+  const eventName = isDiscreteEvent ? game.events?.event_name : null
   const isClosed = game.is_closed
   const inEvent = !!eventSlug
   const hasVideo = videos.length > 0
