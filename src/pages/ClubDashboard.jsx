@@ -471,9 +471,6 @@ function TeamCard({ team, stats }) {
           <div className="font-semibold text-gray-900 truncate">
             {team.name}
           </div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            {team.age_groups?.name} · {team.gender} · {team.programs?.name}
-          </div>
         </div>
         <button
           type="button"
@@ -504,7 +501,7 @@ function TeamCard({ team, stats }) {
         <MiniStat value={r?.wins ?? 0} label="W" />
         <MiniStat value={r?.losses ?? 0} label="L" />
         <MiniStat value={r?.ties ?? 0} label="D" />
-        <MiniStat value={stats?.schools ?? 0} label="Colleges" />
+        <MiniStat value={formatGD(r?.gd)} label="GD" />
       </div>
 
       {/* LIVE TRACKER button — replaces the old static badge */}
@@ -617,6 +614,19 @@ function formatNextGame(next) {
 
   const dayAndTime = timeLabel ? `${dayLabel} ${timeLabel}` : dayLabel
   return `Plays ${dayAndTime} · ${versus} ${opponent}`
+}
+
+/**
+ * formatGD — render goal differential with a +/- sign prefix.
+ *   null/undefined → 0
+ *   0 → "0"
+ *   positive → "+N"
+ *   negative → "-N" (JS native)
+ */
+function formatGD(gd) {
+  if (gd == null) return 0
+  if (gd > 0) return `+${gd}`
+  return gd
 }
 
 function formatTime(t) {
