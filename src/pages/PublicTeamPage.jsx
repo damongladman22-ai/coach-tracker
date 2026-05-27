@@ -102,6 +102,10 @@ export default function PublicTeamPage() {
   // single shared player avoids stacking N panels for N thumbnails.
   const [videosExpanded, setVideosExpanded] = useState(false)
   const [playingVideoId, setPlayingVideoId] = useState(null)
+  // Sprint 4.5: full conference standings table opens in a modal when
+  // the user taps the Conference metric card. Only rendered when the
+  // AthleteOne ingest has populated team.athleteone_metadata.conference_standings.
+  const [showStandingsModal, setShowStandingsModal] = useState(false)
   const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
   const [isFavorite, setFavorite] = useFavorite(team?.id)
 
@@ -397,6 +401,17 @@ export default function PublicTeamPage() {
   // the Conference metric card.
   const standingsPosition = team?.athleteone_metadata?.standings_position
 
+  // Sprint 4.5: full conference standings table for the modal. Populated
+  // by the ingest call to AthleteOne's get-conference-standings endpoint.
+  // Array of { place, team_id, team_name, qualification, gp, wins, losses,
+  // draws, gf, ga, gd, ppg, pts }. Empty/missing when ingest hasn't run
+  // yet — Conference card stays non-tappable in that case.
+  const conferenceStandings =
+    team?.athleteone_metadata?.conference_standings || []
+  const conferenceSyncedAt = team?.athleteone_metadata?.conference_synced_at
+  const ourAthleteOneTeamId = team?.athleteone_team_id || null
+  const hasConferenceData = conferenceStandings.length > 0
+
   // Roster is its own prominent section now (Sprint 2), not a tab. Staff
   // stays as a tab — lower-traffic and the email-on-tap workflow already
   // works well there. Both still gate on data being present so teams with
@@ -480,11 +495,19 @@ export default function PublicTeamPage() {
             {/* Metric cards row — Record, GD, Conference, Head coach.
                 Record and GD always show ("—" before any games are played);
                 Conference and Head coach are conditional on data being
-                present. Grid columns scale to the actual card count. */}
+                present. Grid columns scale to the actual card count.
+                When conference standings data is populated (Sprint 4.5),
+                the Conference card becomes tappable and opens a modal
+                showing the full league table. */}
             <MetricCardsRow
               record={computeRecord(games)}
               standingsPosition={standingsPosition}
               headCoach={headCoach}
+              onConferenceClick={
+                hasConferenceData
+                  ? () => setShowStandingsModal(true)
+                  : null
+              }
             />
 
             {/* Recruiting hero panel — the "second hero" of the page,
@@ -691,6 +714,20 @@ export default function PublicTeamPage() {
         )}
       </main>
         <FeedbackButton />
+        {/* Conference standings modal (Sprint 4.5). Mounted at the page
+            root so its fixed-position overlay sits above all content.
+            Render-gated on conferenceStandings being populated AND the
+            user having opened it — keeps the DOM clean otherwise. */}
+        {showStandingsModal && hasConferenceData && (
+          <ConferenceStandingsModal
+            standings={conferenceStandings}
+            ourTeamId={ourAthleteOneTeamId}
+            syncedAt={conferenceSyncedAt}
+            teamName={team?.name}
+            ageGroupName={team?.age_groups?.name}
+            onClose={() => setShowStandingsModal(false)}
+          />
+        )}
       </div>
     </PullToRefresh>
   )
@@ -714,7 +751,7 @@ export default function PublicTeamPage() {
  *   Conf     — ordinal of standingsPosition; hidden when null
  *   Head Coach — full name; hidden when no staff member matches "head coach"
  */
-function MetricCardsRow({ record, standingsPosition, headCoach }) {
+function MetricCardsRow({ record, standingsPosition, headCoach, onConferenceClick }) {
   const cards = []
 
   // Record always shown — "—" placeholder before any games are played so
@@ -753,12 +790,18 @@ function MetricCardsRow({ record, standingsPosition, headCoach }) {
   })
 
   if (standingsPosition != null) {
+    // Sprint 4.5: Conference card becomes interactive when the full
+    // standings table is available (onConferenceClick passed from parent).
+    // Otherwise renders as a plain card. Affordance is a subtle "View
+    // table" hint + cursor change so the tap behaviour is discoverable
+    // without shouting.
     cards.push({
       key: 'standing',
       primary: ordinal(standingsPosition),
-      label: 'In conference',
+      label: onConferenceClick ? 'View league →' : 'In conference',
       color: 'text-amber-700',
       prefixIcon: '🏆',
+      onClick: onConferenceClick || null,
     })
   }
 
@@ -785,29 +828,300 @@ function MetricCardsRow({ record, standingsPosition, headCoach }) {
 
   return (
     <div className={gridClass}>
-      {cards.map((c) => (
-        <div
-          key={c.key}
-          className="bg-white rounded-lg shadow-sm p-3 sm:p-4"
-        >
-          <div
-            className={`${
-              c.compact
-                ? 'text-base sm:text-lg'
-                : 'text-xl sm:text-2xl'
-            } font-bold leading-tight tabular-nums truncate ${c.color}`}
-            title={c.primary}
-          >
-            {c.prefixIcon && (
-              <span className="mr-1" aria-hidden="true">{c.prefixIcon}</span>
+      {cards.map((c) => {
+        // Choose the wrapper element: button for interactive cards
+        // (Conference when standings modal is available), plain div
+        // otherwise. Button gets hover/active states and a focus ring
+        // for keyboard users.
+        const Wrapper = c.onClick ? 'button' : 'div'
+        const wrapperProps = c.onClick
+          ? {
+              type: 'button',
+              onClick: c.onClick,
+              className:
+                'text-left bg-white rounded-lg shadow-sm p-3 sm:p-4 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400',
+              'aria-label': `${c.label}, ${c.primary}. Opens conference standings table.`,
+            }
+          : {
+              className: 'bg-white rounded-lg shadow-sm p-3 sm:p-4',
+            }
+        return (
+          <Wrapper key={c.key} {...wrapperProps}>
+            <div
+              className={`${
+                c.compact
+                  ? 'text-base sm:text-lg'
+                  : 'text-xl sm:text-2xl'
+              } font-bold leading-tight tabular-nums truncate ${c.color}`}
+              title={c.primary}
+            >
+              {c.prefixIcon && (
+                <span className="mr-1" aria-hidden="true">{c.prefixIcon}</span>
+              )}
+              {c.primary}
+            </div>
+            <div
+              className={`text-[10px] sm:text-xs uppercase tracking-wider font-medium mt-1 truncate ${
+                c.onClick ? 'text-cyan-700' : 'text-gray-500'
+              }`}
+            >
+              {c.label}
+            </div>
+          </Wrapper>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * ConferenceStandingsModal — full-screen overlay showing the complete
+ * league table fetched from AthleteOne's get-conference-standings endpoint.
+ *
+ * Triggered from the Conference metric card on PublicTeamPage when the
+ * ingest function has populated team.athleteone_metadata.conference_standings.
+ *
+ * Layout:
+ *   Header: title + age group context + close X
+ *   Table:  POS | TEAMS | GP | W-L-T | GF-GA | GD | PPG | PTS
+ *           — POS/Team/W-L-T/Pts always visible
+ *           — secondary columns (GP/GF-GA/GD/PPG) hide on narrow viewports
+ *           — our team's row highlighted with cyan background + left border
+ *   Footer: "Last updated" timestamp + source note
+ *
+ * Dismissal:
+ *   - Close X button (top-right)
+ *   - Backdrop click (the dark area outside the card)
+ *   - Escape key (handler attached on mount)
+ *
+ * Scroll behaviour: the table itself scrolls within the modal card so
+ * the header/footer stay fixed. On mobile the whole modal can scroll if
+ * the table is tall enough (max-h on the wrapper, not on the table).
+ */
+function ConferenceStandingsModal({
+  standings,
+  ourTeamId,
+  syncedAt,
+  teamName,
+  ageGroupName,
+  onClose,
+}) {
+  // Escape key closes the modal. Cleanup on unmount so we don't leak
+  // listeners across re-renders.
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  // Body scroll lock while modal is open — without this, scrolling the
+  // table on mobile bleeds through to the underlying page.
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
+  }, [])
+
+  // Find our team's row to surface qualification status in the header
+  // sub-line ("8th · North American Cup"). Falls back gracefully when
+  // ourTeamId isn't in the standings array (e.g. mid-season team move).
+  const ourRow = ourTeamId
+    ? standings.find((r) => r.team_id === ourTeamId)
+    : null
+
+  // Friendly relative time for the "Last updated" footer. AthleteOne
+  // standings typically refresh within hours of league results being
+  // entered, so we show absolute date for older syncs.
+  const lastUpdated = useMemo(() => {
+    if (!syncedAt) return null
+    try {
+      const dt = new Date(syncedAt)
+      const diffMs = Date.now() - dt.getTime()
+      const diffHours = Math.round(diffMs / (1000 * 60 * 60))
+      if (diffHours < 1) return 'Updated just now'
+      if (diffHours < 24) return `Updated ${diffHours}h ago`
+      const diffDays = Math.round(diffHours / 24)
+      if (diffDays < 7) return `Updated ${diffDays}d ago`
+      return `Updated ${dt.toLocaleDateString()}`
+    } catch {
+      return null
+    }
+  }, [syncedAt])
+
+  // Backdrop click closes the modal. Clicks on the card itself shouldn't
+  // bubble up to the backdrop, so we stopPropagation on the inner div.
+  const onBackdropClick = (e) => {
+    if (e.target === e.currentTarget) onClose()
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="standings-modal-title"
+      onClick={onBackdropClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-6"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-gray-200">
+          <div className="min-w-0 flex-1">
+            <h2
+              id="standings-modal-title"
+              className="text-lg sm:text-xl font-bold text-gray-900"
+            >
+              Conference Standings
+            </h2>
+            {(ageGroupName || ourRow) && (
+              <p className="text-xs sm:text-sm text-gray-600 mt-0.5 truncate">
+                {ageGroupName && <span>{ageGroupName}</span>}
+                {ageGroupName && ourRow && <span> · </span>}
+                {ourRow && (
+                  <span>
+                    {ordinal(ourRow.place)} place
+                    {ourRow.qualification && ` · ${ourRow.qualification}`}
+                  </span>
+                )}
+              </p>
             )}
-            {c.primary}
           </div>
-          <div className="text-[10px] sm:text-xs uppercase tracking-wider text-gray-500 font-medium mt-1 truncate">
-            {c.label}
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close standings"
+            className="flex-shrink-0 p-2 -m-1 rounded-full hover:bg-gray-100 active:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-400"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 20 20"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M5 5l10 10M15 5L5 15"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
         </div>
-      ))}
+
+        {/* Table — scrollable when content overflows the modal */}
+        <div className="flex-1 overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+              <tr className="text-[11px] uppercase tracking-wider text-gray-600">
+                <th className="text-center px-2 sm:px-3 py-2 font-semibold w-10">
+                  #
+                </th>
+                <th className="text-left px-2 py-2 font-semibold">Team</th>
+                <th className="hidden sm:table-cell text-center px-2 py-2 font-semibold">
+                  GP
+                </th>
+                <th className="text-center px-2 py-2 font-semibold">W-L-T</th>
+                <th className="hidden sm:table-cell text-center px-2 py-2 font-semibold">
+                  GF-GA
+                </th>
+                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold">
+                  GD
+                </th>
+                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold">
+                  PPG
+                </th>
+                <th className="text-center px-2 sm:px-3 py-2 font-semibold">
+                  Pts
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {standings.map((row) => {
+                const isOurs = ourTeamId && row.team_id === ourTeamId
+                return (
+                  <tr
+                    key={row.team_id}
+                    className={`border-b border-gray-100 ${
+                      isOurs
+                        ? 'bg-cyan-50 border-l-4 border-l-cyan-500'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-semibold text-gray-700">
+                      {row.place}
+                    </td>
+                    <td className="px-2 py-2.5">
+                      <div
+                        className={`truncate ${
+                          isOurs
+                            ? 'font-bold text-cyan-900'
+                            : 'text-gray-900'
+                        }`}
+                        title={row.team_name}
+                      >
+                        {row.team_name}
+                      </div>
+                      {row.qualification && (
+                        <div className="text-[10px] text-gray-500 truncate">
+                          {row.qualification}
+                        </div>
+                      )}
+                    </td>
+                    <td className="hidden sm:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                      {row.gp ?? '—'}
+                    </td>
+                    <td className="text-center px-2 py-2.5 tabular-nums text-gray-700">
+                      {row.wins ?? 0}-{row.losses ?? 0}-{row.draws ?? 0}
+                    </td>
+                    <td className="hidden sm:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                      {(row.gf ?? 0)}-{(row.ga ?? 0)}
+                    </td>
+                    <td
+                      className={`hidden md:table-cell text-center px-2 py-2.5 tabular-nums font-medium ${
+                        row.gd > 0
+                          ? 'text-emerald-700'
+                          : row.gd < 0
+                          ? 'text-rose-700'
+                          : 'text-gray-700'
+                      }`}
+                    >
+                      {row.gd != null
+                        ? row.gd > 0
+                          ? `+${row.gd}`
+                          : `${row.gd}`
+                        : '—'}
+                    </td>
+                    <td className="hidden md:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                      {row.ppg != null ? row.ppg.toFixed(2) : '—'}
+                    </td>
+                    <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-bold text-gray-900">
+                      {row.pts ?? 0}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 sm:px-5 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3 text-[11px] sm:text-xs text-gray-500">
+          <span className="truncate">
+            {standings.length} team{standings.length === 1 ? '' : 's'}
+            {teamName && ourRow && ` · You: ${teamName}`}
+          </span>
+          {lastUpdated && (
+            <span className="flex-shrink-0">{lastUpdated}</span>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
