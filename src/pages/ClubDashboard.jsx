@@ -32,6 +32,12 @@ export default function ClubDashboard() {
   const [selectedSeason, setSelectedSeason] = useState(null)
   const [teams, setTeams] = useState([])
   const [teamStats, setTeamStats] = useState({})
+  // Cross-club recruiting buzz over the trailing 7 days (Sprint 4).
+  // Null until first load; { coaches, schools, teams, topSchools } when
+  // there's been recent attendance activity. The home page's
+  // RecruitingBuzz section hides entirely when buzz.coaches is 0, so
+  // off-season the dashboard stays clean.
+  const [buzz, setBuzz] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -142,13 +148,20 @@ export default function ClubDashboard() {
           }
         })
 
-        // Schools-per-team (existing attendance aggregation)
+        // Schools-per-team (existing attendance aggregation) + recruiting
+        // buzz over the trailing 7 days (Sprint 4). One query covers both:
+        // existing per-team school totals are computed from all rows; the
+        // buzz section filters in JS by created_at >= 7 days ago. Selecting
+        // id/created_at/coach_id alongside the existing fields adds modest
+        // payload but avoids a second round-trip.
         const allGameIds = (games || []).map((g) => g.id)
         let attRows = []
         if (allGameIds.length > 0) {
           const { data: att } = await supabase
             .from('attendance')
-            .select('game_id, coaches(school_id)')
+            .select(
+              'id, created_at, game_id, coach_id, coaches(school_id, schools(id, school))'
+            )
             .in('game_id', allGameIds)
           attRows = att || []
         }
@@ -159,6 +172,78 @@ export default function ClubDashboard() {
           if (!gameToSchools.has(a.game_id))
             gameToSchools.set(a.game_id, new Set())
           gameToSchools.get(a.game_id).add(sid)
+        })
+
+        // Buzz: trailing 7 days of attendance activity, grouped by school,
+        // with the most-watched team per school so the pill click-through
+        // can land on the contextual team × college page (not the
+        // generic directory).
+        const sevenDaysAgo = new Date()
+        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        sevenDaysAgo.setHours(0, 0, 0, 0)
+        const gameIdToTeamId = new Map()
+        ;(games || []).forEach((g) => {
+          gameIdToTeamId.set(g.id, g.team_id)
+        })
+        const recentCoachIds = new Set()
+        const recentSchoolIds = new Set()
+        const recentTeamIds = new Set()
+        const recentBySchool = new Map() // schoolId -> { name, games:Set, teamCounts:Map }
+        attRows.forEach((a) => {
+          if (!a.created_at) return
+          const ts = new Date(a.created_at)
+          if (Number.isNaN(ts.getTime()) || ts < sevenDaysAgo) return
+          const schoolId = a.coaches?.school_id
+          const schoolName = a.coaches?.schools?.school
+          const teamId = gameIdToTeamId.get(a.game_id)
+          if (!schoolId || !teamId) return
+          recentCoachIds.add(a.coach_id)
+          recentSchoolIds.add(schoolId)
+          recentTeamIds.add(teamId)
+          if (!recentBySchool.has(schoolId)) {
+            recentBySchool.set(schoolId, {
+              id: schoolId,
+              name: schoolName || `School ${schoolId}`,
+              games: new Set(),
+              teamCounts: new Map(),
+            })
+          }
+          const entry = recentBySchool.get(schoolId)
+          entry.games.add(a.game_id)
+          entry.teamCounts.set(
+            teamId,
+            (entry.teamCounts.get(teamId) || 0) + 1
+          )
+        })
+        const topSchools = Array.from(recentBySchool.values())
+          .map((s) => {
+            // Pick the team this school has watched the most at,
+            // breaking ties by the first team that hit the max count.
+            // That team becomes the deep-link target for the pill so
+            // parents land on the most-relevant contextual recruiting
+            // view (not a directory).
+            let topTeamId = null
+            let maxCount = 0
+            s.teamCounts.forEach((count, teamId) => {
+              if (count > maxCount) {
+                maxCount = count
+                topTeamId = teamId
+              }
+            })
+            return {
+              id: s.id,
+              name: s.name,
+              gameCount: s.games.size,
+              topTeamId,
+            }
+          })
+          .sort((a, b) => b.gameCount - a.gameCount)
+          .slice(0, 5)
+        setBuzz({
+          coaches: recentCoachIds.size,
+          schools: recentSchoolIds.size,
+          teams: recentTeamIds.size,
+          topSchools,
         })
 
         const stats = {}
@@ -181,6 +266,7 @@ export default function ClubDashboard() {
         setTeamStats(stats)
       } else {
         setTeamStats({})
+        setBuzz(null)
       }
     } catch (err) {
       console.error('Error loading dashboard:', err)
@@ -246,6 +332,33 @@ export default function ClubDashboard() {
     return Array.from(s)
   }, [teams])
 
+  // Live-now strip data (Sprint 4). Flatten teams that have at least one
+  // live game into a list, preserving the existing per-team live-game
+  // detection logic. Sorted by team name so the strip is stable across
+  // re-renders. Renders nothing when the array is empty — off-game-day
+  // the strip disappears entirely.
+  const liveNowItems = useMemo(() => {
+    return teams
+      .map((t) => {
+        const live = teamStats[t.id]?.liveGames || []
+        if (live.length === 0) return null
+        return { team: t, liveGames: live }
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.team.name.localeCompare(b.team.name))
+  }, [teams, teamStats])
+
+  // Lookup: team id -> slug, used by the buzz pill links to build
+  // /t/<slug>/college/<schoolId> URLs without re-querying. Only includes
+  // teams from the current season; if a school's most-watched team is
+  // missing (shouldn't happen but guard anyway) we fall back to the
+  // directory link.
+  const teamSlugById = useMemo(() => {
+    const m = new Map()
+    teams.forEach((t) => m.set(t.id, t.slug))
+    return m
+  }, [teams])
+
   return (
     <PullToRefresh
       onRefresh={async () => {
@@ -283,6 +396,26 @@ export default function ClubDashboard() {
           <ErrorMessage error={error} onRetry={() => load(selectedSeason.id)} />
         ) : (
           <>
+            {/* Live now strip (Sprint 4) — only renders when at least one
+                team is currently in a live event. Smart routing on each
+                card: single game → that game's tracker, multiple → the
+                team's event page so the parent can pick. */}
+            {liveNowItems.length > 0 && (
+              <LiveNowSection items={liveNowItems} teamStats={teamStats} />
+            )}
+
+            {/* Recruiting buzz this week (Sprint 4) — only renders when
+                there's been attendance activity in the last 7 days.
+                Three top-line numbers establish scope, top schools as
+                pills that drill into the team × college detail page
+                for the most-watched team. Hides entirely off-season. */}
+            {buzz && buzz.coaches > 0 && (
+              <RecruitingBuzzSection
+                buzz={buzz}
+                teamSlugById={teamSlugById}
+              />
+            )}
+
             {/* My Teams (favorites) — pinned above the grouped lists */}
             {favoriteTeams.length > 0 && (
               <section className="mb-6">
@@ -415,6 +548,188 @@ function ControlGroup({ label, children }) {
       <span>{label}:</span>
       {children}
     </label>
+  )
+}
+
+/**
+ * LiveNowSection — Sprint 4 home-page strip surfacing teams currently in
+ * an active event with a today's-not-closed game.
+ *
+ * Each row is a tap target to that team's live tracker:
+ *   - Single live game → /e/<eventSlug>/<teamSlug>/game/<gameId> (direct)
+ *   - Multiple live games → /e/<eventSlug>/<teamSlug> (picker)
+ *
+ * The pulsing emerald dot in the section heading matches the LIVE
+ * TRACKER button gradient on the existing team cards below, so the
+ * cross-club strip and the per-team button read as the same concept.
+ *
+ * "N logged" pill surfaces today's attendance count for the live game
+ * so parents can see momentum without tapping in. Hidden when zero —
+ * an empty pill would clutter the row.
+ */
+function LiveNowSection({ items, teamStats }) {
+  return (
+    <section className="mb-5">
+      <h2 className="text-[10px] uppercase tracking-wide font-semibold text-emerald-700 mb-2 flex items-center gap-1.5 px-1">
+        <span
+          className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"
+          aria-hidden="true"
+        />
+        Live now
+      </h2>
+      <div className="space-y-2">
+        {items.map(({ team, liveGames }) => (
+          <LiveNowCard
+            key={team.id}
+            team={team}
+            liveGames={liveGames}
+            schoolsCount={teamStats[team.id]?.schools ?? 0}
+          />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * LiveNowCard — one row inside LiveNowSection. Team name + event name +
+ * "N colleges" pill (the team's total college count for the season, not
+ * just this game — gives a quick recruiting-pressure read).
+ *
+ * Routing logic matches what TeamCard's LIVE TRACKER button does, so
+ * tapping either path lands in the same place.
+ */
+function LiveNowCard({ team, liveGames, schoolsCount }) {
+  const first = liveGames[0]
+  const href =
+    liveGames.length === 1
+      ? `/e/${first.eventSlug}/${team.slug}/game/${first.gameId}`
+      : `/e/${first.eventSlug}/${team.slug}`
+  return (
+    <Link
+      to={href}
+      className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md hover:border-emerald-200 transition-all p-3 sm:p-4"
+    >
+      <div className="min-w-0 flex-1">
+        <p className="font-medium text-gray-900 truncate text-sm sm:text-base">
+          {team.name}
+        </p>
+        <p className="text-xs text-gray-500 truncate mt-0.5">
+          {first.eventName}
+        </p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {schoolsCount > 0 && (
+          <span className="text-[11px] font-medium bg-cyan-50 text-cyan-700 px-2 py-0.5 rounded whitespace-nowrap">
+            {schoolsCount}{' '}
+            {schoolsCount === 1 ? 'college' : 'colleges'}
+          </span>
+        )}
+        <svg
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
+          className="text-gray-400"
+        >
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </div>
+    </Link>
+  )
+}
+
+/**
+ * RecruitingBuzzSection — Sprint 4 home-page card surfacing the
+ * trailing-7-days recruiting activity across all teams.
+ *
+ * Three top-line numbers (coaches · schools · teams) establish scope
+ * without becoming a dashboard. Top-5 schools below as pills, each
+ * routing into the contextual team × college detail page for whichever
+ * team that school has watched most over the window — the goal is
+ * landing parents in the contextual story, not a flat directory.
+ *
+ * Falls back to /directory?school=<id> if the most-watched team is
+ * somehow missing from the current season's team list (shouldn't
+ * happen, but defends against cross-season weirdness).
+ */
+function RecruitingBuzzSection({ buzz, teamSlugById }) {
+  return (
+    <section className="mb-5">
+      <h2 className="text-[10px] uppercase tracking-wide font-semibold text-cyan-700 mb-2 flex items-center gap-1.5 px-1">
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          aria-hidden="true"
+        >
+          <path d="m3 17 6-6 4 4 8-8" />
+          <path d="M14 7h7v7" />
+        </svg>
+        Recruiting buzz this week
+      </h2>
+      <div className="bg-gradient-to-br from-cyan-50 to-blue-50 border border-cyan-200 rounded-lg p-4 sm:p-5">
+        <div className="flex gap-6 mb-4">
+          <BuzzStat n={buzz.coaches} label={buzz.coaches === 1 ? 'Coach' : 'Coaches'} />
+          <BuzzStat n={buzz.schools} label={buzz.schools === 1 ? 'School' : 'Schools'} />
+          <BuzzStat n={buzz.teams} label={buzz.teams === 1 ? 'Team' : 'Teams'} />
+        </div>
+        {buzz.topSchools.length > 0 && (
+          <>
+            <p className="text-[10px] uppercase tracking-wide font-medium text-cyan-700 mb-2">
+              Top interest
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {buzz.topSchools.map((s) => {
+                const teamSlug = s.topTeamId
+                  ? teamSlugById.get(s.topTeamId)
+                  : null
+                const href = teamSlug
+                  ? `/t/${encodeURIComponent(teamSlug)}/college/${encodeURIComponent(s.id)}`
+                  : `/directory?school=${encodeURIComponent(s.id)}`
+                return (
+                  <Link
+                    key={s.id}
+                    to={href}
+                    className="text-xs px-2.5 py-1 bg-white border border-cyan-200 text-cyan-900 rounded-full whitespace-nowrap hover:bg-cyan-100 hover:border-cyan-300 transition-colors"
+                    title={`See which coaches from ${s.name} watched our teams`}
+                  >
+                    {s.name}
+                    <span className="text-cyan-600 font-medium ml-1">
+                      · {s.gameCount}
+                    </span>
+                  </Link>
+                )
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * BuzzStat — single number + uppercase label cell inside the buzz card.
+ * Tighter than the page-level MetricCardsRow on the team page so the
+ * three of them fit on a 380px viewport without scaling.
+ */
+function BuzzStat({ n, label }) {
+  return (
+    <div>
+      <p className="text-2xl font-bold text-cyan-900 leading-none tabular-nums">
+        {n}
+      </p>
+      <p className="text-[10px] uppercase tracking-wide font-medium text-cyan-700 mt-1.5">
+        {label}
+      </p>
+    </div>
   )
 }
 
