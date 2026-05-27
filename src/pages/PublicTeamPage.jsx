@@ -1300,7 +1300,12 @@ function EventCard({ event, games, attendance, teamSlug }) {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0]
   })()
 
-  const isRecruiting = isRecruitingType(eventGameType)
+  // Recruiting check falls back to the event name itself when game_types
+  // isn't tagged. AthleteOne ingest doesn't always tag showcase events with
+  // a game_type, but "ECNL Fall Showcase" or "Bethesda Premier Cup" in the
+  // event_name is a strong enough signal on its own.
+  const isRecruiting =
+    isRecruitingType(eventGameType) || isRecruitingType(event.event_name)
 
   const allClosed = games.length > 0 && games.every((g) => g.is_closed)
   const destHref = allClosed
@@ -1425,14 +1430,21 @@ function todayISO() {
 }
 
 /**
- * isRecruitingType — substring-match heuristic for whether a game_types
- * name represents a recruiting-flavored event (Showcase / Tournament /
- * ECNL / NPL / "recruit" in the name) vs regular league or friendly play.
+ * isRecruitingType — substring-match heuristic for whether a name
+ * represents a recruiting-flavored event (Showcase / Tournament / ECNL /
+ * NPL / "recruit" in the string) vs regular league or friendly play.
  *
- * Drives the cyan vs gray visual differentiation on EventCard. Brittle by
- * design — if Damon adds new game types, this list may need extending.
- * The clean fix is an explicit is_recruiting boolean on the game_types
- * table; this heuristic is the bridge until that exists.
+ * Called twice from EventCard — once on the dominant game_types.name and
+ * once on the event.event_name itself. Either matching is enough to flip
+ * the card to cyan styling. The event_name fallback exists because
+ * AthleteOne ingest doesn't always tag showcase events with a recruiting
+ * game_type, so we lean on the human-readable event title when that
+ * tagging is missing.
+ *
+ * Brittle by design — if Damon adds new game types or event naming
+ * conventions, this list may need extending. The clean fix is an explicit
+ * is_recruiting boolean on the game_types table; this heuristic is the
+ * bridge until that exists.
  */
 function isRecruitingType(name) {
   if (!name) return false
