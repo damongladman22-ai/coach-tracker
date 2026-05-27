@@ -497,6 +497,7 @@ export default function PublicTeamPage() {
                 featuredEvent={featuredEvent}
                 topColleges={topColleges}
                 teamSlug={teamSlug}
+                teamGender={team.gender}
               />
             )}
 
@@ -607,7 +608,7 @@ export default function PublicTeamPage() {
 
             {/* Top colleges */}
             {topColleges.length > 0 && (
-              <>
+              <div id="colleges-watching" className="scroll-mt-20">
                 <div className="mb-3">
                   <h2 className="text-xl font-semibold text-gray-800">
                     Colleges Watching This Team
@@ -667,7 +668,7 @@ export default function PublicTeamPage() {
                   </Link>
                   .
                 </p>
-              </>
+              </div>
             )}
           </>
         )}
@@ -1360,6 +1361,7 @@ function RecruitingHeroPanel({
   featuredEvent,
   topColleges,
   teamSlug,
+  teamGender,
 }) {
   // Canonical division ordering for the breakdown line. Anything not in
   // this list is dropped (e.g. "Other" rolls up to nothing rather than
@@ -1372,6 +1374,19 @@ function RecruitingHeroPanel({
 
   const hasAttendance = stats.coaches > 0
 
+  // Gender code for directory deep-links. team.gender comes in human form
+  // ("Boys" / "Girls") so translate to the W/M codes the directory expects.
+  // Falls back to undefined when the team gender is something we don't
+  // recognize, in which case the directory uses its own default.
+  const genderCode = directoryGenderCode(teamGender)
+
+  // Scroll to the "Colleges Watching This Team" section below. The id is
+  // anchored on that section; scroll-mt-20 there gives the header room.
+  const scrollToColleges = () => {
+    const el = document.getElementById('colleges-watching')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   return (
     <div className="bg-gradient-to-br from-cyan-50 to-blue-50 border border-cyan-200 rounded-lg shadow-sm p-4 sm:p-5 mb-5">
       <div className="flex items-center gap-2 mb-2">
@@ -1383,11 +1398,21 @@ function RecruitingHeroPanel({
 
       {hasAttendance ? (
         <>
-          <p className="text-xl sm:text-2xl font-bold text-cyan-900 leading-tight">
+          {/* Counts are a button that scrolls to the full colleges table
+              below. Plain link styling (no underline) keeps it visually
+              attached to the hero, but the cursor + hover state signal
+              tappability. */}
+          <button
+            type="button"
+            onClick={scrollToColleges}
+            className="text-left text-xl sm:text-2xl font-bold text-cyan-900 leading-tight hover:text-cyan-700 transition-colors"
+            aria-label="Jump to the full Colleges Watching This Team list"
+          >
             {stats.coaches} {stats.coaches === 1 ? 'coach' : 'coaches'}
             <span className="text-cyan-700 font-medium"> · </span>
             {stats.schools} {stats.schools === 1 ? 'school' : 'schools'}
-          </p>
+            <span className="text-cyan-600 text-base ml-1" aria-hidden="true"> ↓</span>
+          </button>
           {divisionItems.length > 0 && (
             <p className="text-xs sm:text-sm text-cyan-700 mt-1 mb-3">
               {divisionItems.map(([d, n]) => `${d}: ${n}`).join(' · ')}
@@ -1412,26 +1437,60 @@ function RecruitingHeroPanel({
           </p>
           <div className="flex flex-wrap gap-1.5">
             {topColleges.slice(0, 5).map((s) => (
-              <span
+              <Link
                 key={s.id}
-                className="text-xs px-2.5 py-1 bg-white border border-cyan-200 text-cyan-900 rounded-full whitespace-nowrap"
+                to={directoryHref(s.id, genderCode)}
+                className="text-xs px-2.5 py-1 bg-white border border-cyan-200 text-cyan-900 rounded-full whitespace-nowrap hover:bg-cyan-100 hover:border-cyan-300 transition-colors"
+                title={`View ${s.school} coaches in the directory`}
               >
                 {s.school}
                 <span className="text-cyan-600 font-medium ml-1">
                   · {s.games}
                 </span>
-              </span>
+              </Link>
             ))}
             {topColleges.length > 5 && (
-              <span className="text-xs px-2.5 py-1 text-cyan-700 font-medium">
+              <button
+                type="button"
+                onClick={scrollToColleges}
+                className="text-xs px-2.5 py-1 text-cyan-700 font-medium hover:text-cyan-900"
+              >
                 +{topColleges.length - 5} more
-              </span>
+              </button>
             )}
           </div>
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * directoryGenderCode — translate a team's human-readable gender into the
+ * W/M code the Coach Directory uses for its program_gender filter. The
+ * mapping is forgiving on casing/wording (catches "Girls", "girls", "G",
+ * "Boys", "Boys 04", etc.) but returns undefined for anything else, so
+ * mixed/coed/unknown teams fall through to the directory's own default
+ * instead of getting locked into an inaccurate filter.
+ */
+function directoryGenderCode(teamGender) {
+  if (!teamGender) return undefined
+  const first = String(teamGender).trim().charAt(0).toUpperCase()
+  if (first === 'G' || first === 'W') return 'W'
+  if (first === 'B' || first === 'M') return 'M'
+  return undefined
+}
+
+/**
+ * directoryHref — build a /directory deep-link locked to one school. The
+ * optional gender code pre-aligns the directory's W/M filter so the
+ * landing experience doesn't show "no coaches" because of a mismatch
+ * between the team's gender and the user's last-saved preference.
+ */
+function directoryHref(schoolId, genderCode) {
+  const params = new URLSearchParams({ school: String(schoolId) })
+  if (genderCode) params.set('gender', genderCode)
+  return `/directory?${params.toString()}`
 }
 
 /**
@@ -1461,8 +1520,18 @@ function FeaturedEventCard({ group, teamSlug }) {
     activeSchoolsCount = schoolIds.size
   }
 
+  // Whole-card click target. Active events → live tracker (where parents
+  // log coaches in real time); upcoming events → event landing (where
+  // parents can see the team's slate of games at that event).
+  const destHref = isActive
+    ? `/e/${event.slug}/${teamSlug}`
+    : `/e/${event.slug}`
+
   return (
-    <div className="bg-white rounded-md p-3 flex items-center justify-between gap-3">
+    <Link
+      to={destHref}
+      className="bg-white rounded-md p-3 flex items-center justify-between gap-3 hover:bg-gray-50 transition-colors block"
+    >
       <div className="min-w-0 flex-1">
         <span
           className={
@@ -1495,15 +1564,18 @@ function FeaturedEventCard({ group, teamSlug }) {
           )}
         </p>
       </div>
+      {/* Visual CTA badge on active events. Not a nested link (the whole
+          card is the click target); the gradient styling tells parents
+          where the card will take them. */}
       {isActive && (
-        <Link
-          to={`/e/${event.slug}/${teamSlug}`}
-          className="bg-gradient-to-r from-emerald-500 to-cyan-600 text-white text-xs font-semibold rounded-md px-3 py-2 flex-shrink-0 hover:opacity-95 active:opacity-90 whitespace-nowrap"
+        <span
+          className="bg-gradient-to-r from-emerald-500 to-cyan-600 text-white text-xs font-semibold rounded-md px-3 py-2 flex-shrink-0 whitespace-nowrap"
+          aria-hidden="true"
         >
           Live Tracker →
-        </Link>
+        </span>
       )}
-    </div>
+    </Link>
   )
 }
 

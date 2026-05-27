@@ -22,8 +22,10 @@ const US_STATES = [
 const DIVISIONS = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'Junior College'];
 
 export default function CoachDirectory() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isAdminContext = searchParams.get('context') === 'admin';
+  const urlSchoolId = searchParams.get('school');
+  const urlGender = searchParams.get('gender');
   
   const [coaches, setCoaches] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -43,14 +45,27 @@ export default function CoachDirectory() {
   const [showInactive, setShowInactive] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
   const [togglingActive, setTogglingActive] = useState(null); // coach id whose active state is being toggled
+  // School-id filter from URL. When set (e.g. /directory?school=123) the
+  // directory locks to a single school's coaches and shows a dismissable
+  // banner above results. Useful for deep-links from the team page's
+  // recruiting hero panel pills. Cleared by tapping × on the banner or by
+  // "Clear all filters", both of which also drop the URL param.
+  const [schoolIdFilter, setSchoolIdFilter] = useState(urlSchoolId || '');
+
   // Gender filter: 'W' (women's) or 'M' (men's).
-  // - Admin context: defaults to 'W'; admin toggles to 'M' when working on
-  //   the other side.
-  // - Parent/player context: defaults to 'W' on first visit, but their last
-  //   selection is persisted in localStorage so they only have to pick once.
-  //   (A "Both" option was removed — a parent is either looking for boys'
-  //   or girls' coaches; combining the two creates noise without value.)
+  // - URL ?gender=W|M (e.g. from team page deep-links): wins over both
+  //   admin defaults and localStorage. Persists like a normal selection
+  //   so the next visit reflects the override — see persistence rationale
+  //   in the useEffect below.
+  // - Admin context (no URL param): defaults to 'W'; admin toggles to 'M'
+  //   when working on the other side.
+  // - Parent/player context (no URL param): defaults to 'W' on first
+  //   visit, but their last selection is persisted in localStorage so
+  //   they only have to pick once. (A "Both" option was removed — a
+  //   parent is either looking for boys' or girls' coaches; combining
+  //   the two creates noise without value.)
   const [genderFilter, setGenderFilter] = useState(() => {
+    if (urlGender === 'M' || urlGender === 'W') return urlGender;
     if (isAdminContext) return 'W';
     try {
       const stored = localStorage.getItem('coachDirectoryGenderFilter');
@@ -214,6 +229,11 @@ export default function CoachDirectory() {
       const school = coach.schools;
       if (!school) return false;
 
+      // School-id filter (URL deep-link). Most restrictive — applied first.
+      if (schoolIdFilter && String(school.id) !== String(schoolIdFilter)) {
+        return false;
+      }
+
       // Gender filter — coach's school must match selected program_gender.
       // Treat null/undefined as 'W' (back-compat with pre-migration data).
       if ((school.program_gender || 'W') !== genderFilter) {
@@ -259,7 +279,7 @@ export default function CoachDirectory() {
       
       return true;
     });
-  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, matchesSearch]);
+  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, schoolIdFilter, matchesSearch]);
 
   // Group by school for display
   const groupedBySchool = useMemo(() => {
@@ -295,7 +315,7 @@ export default function CoachDirectory() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter]);
+  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, schoolIdFilter]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -312,7 +332,36 @@ export default function CoachDirectory() {
     setConferenceFilter('');
     setShowOnlyWithEmail(false);
     setShowInactive(false);
+    setSchoolIdFilter('');
+    // Strip the school URL param so reloads / back navigation don't bring
+    // the lock back. Preserve other params (context, gender) since those
+    // are session-state, not filters the user is clearing.
+    if (searchParams.has('school')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('school');
+      setSearchParams(next, { replace: true });
+    }
   };
+
+  // Clear just the school-id filter (× on the "Showing only" banner).
+  // Other filters and search remain so the user can keep exploring within
+  // the broader directory without losing context they set themselves.
+  const clearSchoolFilter = () => {
+    setSchoolIdFilter('');
+    if (searchParams.has('school')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('school');
+      setSearchParams(next, { replace: true });
+    }
+  };
+
+  // Look up the school object pointed at by schoolIdFilter so the banner
+  // can show its name. Schools may not have loaded yet on first render —
+  // banner falls back to the raw id in that brief window.
+  const lockedSchool = useMemo(() => {
+    if (!schoolIdFilter) return null;
+    return schools.find((s) => String(s.id) === String(schoolIdFilter)) || null;
+  }, [schoolIdFilter, schools]);
 
   // Export filtered coaches to CSV
   const exportToCSV = () => {
@@ -632,6 +681,36 @@ export default function CoachDirectory() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* School lock banner — shown when arrived via a deep link like
+            /directory?school=123. Makes it obvious that results are
+            scoped to one school, with a clear way out. */}
+        {schoolIdFilter && (
+          <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1 text-sm text-cyan-900">
+              <span className="text-cyan-700">Showing only:</span>{' '}
+              <span className="font-semibold">
+                {lockedSchool?.school || `school #${schoolIdFilter}`}
+              </span>
+              {lockedSchool?.city && lockedSchool?.state && (
+                <span className="text-cyan-700 ml-2">
+                  · {lockedSchool.city}, {lockedSchool.state}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={clearSchoolFilter}
+              aria-label="Clear school filter — show all coaches"
+              className="flex-shrink-0 inline-flex items-center gap-1 text-sm text-cyan-700 hover:text-cyan-900 font-medium px-2 py-1 rounded hover:bg-cyan-100"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+              Show all
+            </button>
+          </div>
+        )}
+
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
           {/* Gender pills */}
@@ -763,7 +842,7 @@ export default function CoachDirectory() {
             </div>
             
             {/* Clear filters */}
-            {(searchInput || searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive) && (
+            {(searchInput || searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive || schoolIdFilter) && (
               <div className="mt-4 pt-4 border-t">
                 <button
                   onClick={clearFilters}
