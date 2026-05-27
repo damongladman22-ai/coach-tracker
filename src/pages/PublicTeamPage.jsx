@@ -93,12 +93,12 @@ export default function PublicTeamPage() {
   const [players, setPlayers] = useState([])
   const [staff, setStaff] = useState([])
   const [activeTab, setActiveTab] = useState('games') // 'games' | 'events' | 'staff'
-  // Sprint 2: roster + videos became prominent sections above the tab
-  // strip rather than tabs themselves. These flags toggle the preview
-  // (top 6 / top 3) vs the expanded full list/grid. playingVideoId tracks
-  // which video the inline player below the gallery is showing — single
-  // shared player avoids stacking N panels for N thumbnails.
-  const [rosterExpanded, setRosterExpanded] = useState(false)
+  // Sprint 2: videos became a prominent section above the tab strip with
+  // a preview/expand toggle for cases where a team has lots of uploads.
+  // Roster became a section too but uses a simpler always-scroll model
+  // (horizontal scroll on all viewports — no expand state). playingVideoId
+  // tracks which video the inline player below the gallery is showing;
+  // single shared player avoids stacking N panels for N thumbnails.
   const [videosExpanded, setVideosExpanded] = useState(false)
   const [playingVideoId, setPlayingVideoId] = useState(null)
   const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
@@ -501,16 +501,10 @@ export default function PublicTeamPage() {
             )}
 
             {/* Roster preview section (Sprint 2). Horizontal-scrollable
-                strip of player cards on mobile; auto-fits to a grid on
-                wider viewports. "View all N" expands to the full grid
-                inline. Hides entirely when no roster has been ingested. */}
-            {hasRoster && (
-              <RosterSection
-                players={players}
-                expanded={rosterExpanded}
-                onToggle={() => setRosterExpanded((e) => !e)}
-              />
-            )}
+                strip of all player cards. Tap a card to learn more about
+                the player (future). Hides entirely when no roster has
+                been ingested. */}
+            {hasRoster && <RosterSection players={players} />}
 
             {/* Video gallery section (Sprint 2). Recent game videos
                 (manually uploaded — NOT from AthleteOne) across all this
@@ -862,48 +856,26 @@ function TabButton({ active, onClick, children }) {
 /**
  * RosterSection — Sprint 2 prominent roster preview above the tab strip.
  *
- * Collapsed: horizontal-scrollable row of up to 6 player cards on phones
- * (auto-fits to a wider grid on bigger viewports). A "View all N" button
- * expands the section to a full grid showing every player without
- * needing to navigate elsewhere.
- *
- * Expanded: 3-col grid on phone, scaling up to 6-col on desktop, no
- * horizontal scroll. The toggle becomes "Show less" to collapse back.
+ * Always renders as a horizontal-scrollable strip of every player on the
+ * roster. No expand/collapse toggle — horizontal scroll is the
+ * interaction on both mobile (swipe) and desktop (trackpad/scrollbar),
+ * which keeps the mental model simple and avoids a second view to
+ * manage. Sorted by jersey number (with un-numbered players last) per
+ * the load() query.
  *
  * Photos come from team_players.photo_url (AthleteOne CDN assets) with
- * initials as the fallback when no photo is set. Initials avatars use the
- * cyan-tinted palette to match the team's brand styling.
+ * initials as the fallback when no photo is set. Initials avatars use
+ * the cyan-tinted palette to match the team's brand styling.
  */
-function RosterSection({ players, expanded, onToggle }) {
-  const PREVIEW_COUNT = 6
-  const visible = expanded ? players : players.slice(0, PREVIEW_COUNT)
-  const showToggle = players.length > PREVIEW_COUNT
-
+function RosterSection({ players }) {
   return (
     <section className="mb-5">
-      <div className="flex items-baseline justify-between mb-2">
-        <h2 className="text-base font-semibold text-gray-800">
-          Roster <span className="text-gray-400 font-normal">({players.length})</span>
-        </h2>
-        {showToggle && (
-          <button
-            type="button"
-            onClick={onToggle}
-            className="text-sm text-cyan-700 font-medium hover:underline"
-          >
-            {expanded ? 'Show less' : `View all ${players.length} →`}
-          </button>
-        )}
-      </div>
-      <div
-        className={
-          expanded
-            ? 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2'
-            : 'flex gap-2 overflow-x-auto pb-1 -mx-1 px-1'
-        }
-      >
-        {visible.map((p) => (
-          <PlayerCard key={p.id} player={p} compact={!expanded} />
+      <h2 className="text-base font-semibold text-gray-800 mb-2">
+        Roster <span className="text-gray-400 font-normal">({players.length})</span>
+      </h2>
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        {players.map((p) => (
+          <PlayerCard key={p.id} player={p} />
         ))}
       </div>
     </section>
@@ -915,16 +887,19 @@ function RosterSection({ players, expanded, onToggle }) {
  *
  * Layout:
  *   [44px circular photo or initials]
- *   #JERSEY (large)
- *   Last name (truncated)
+ *   #JERSEY (medium weight)
+ *   First name
+ *   Last name
  *   POS · 'YY (small subtitle)
  *
- * Width is fixed (w-24, ~96px) so horizontal scroll feels natural on
- * mobile. The compact prop is informational right now — both states use
- * the same layout — but keeps a hook for diverging the design later if
- * the expanded grid wants larger photos or extra fields.
+ * Card is fixed width (w-28, ~112px) so horizontal scroll feels natural
+ * and every card aligns. First and last names render on separate lines
+ * so longer names stay readable rather than truncating to a single
+ * unrecognizable substring; each line still truncates individually for
+ * pathological cases (hyphenated surnames longer than the card width).
+ * The title attribute carries the full name for hover/long-press.
  */
-function PlayerCard({ player, compact }) {
+function PlayerCard({ player }) {
   const initials =
     ((player.first_name || '').charAt(0) +
       (player.last_name || '').charAt(0)).toUpperCase() || '?'
@@ -935,16 +910,10 @@ function PlayerCard({ player, compact }) {
   if (player.grad_year) subtitleParts.push(`'${String(player.grad_year).slice(-2)}`)
   const subtitle = subtitleParts.join(' · ')
 
-  // Display name — prefer last name in the card for compactness, since
-  // full name doesn't fit in a 96px wide cell. Falls back to first name or
-  // the full name when last_name is missing.
-  const displayName = player.last_name || player.first_name || fullName || '—'
-
   return (
     <div
-      className={`${
-        compact ? 'flex-shrink-0 w-24' : ''
-      } bg-white border border-gray-200 rounded-md p-2.5 text-center`}
+      className="flex-shrink-0 w-28 bg-white border border-gray-200 rounded-md p-2.5 text-center"
+      title={fullName}
     >
       <div className="w-11 h-11 mx-auto mb-1.5 rounded-full overflow-hidden bg-cyan-50 flex items-center justify-center">
         {player.photo_url ? (
@@ -964,9 +933,16 @@ function PlayerCard({ player, compact }) {
           #{player.jersey_number}
         </div>
       )}
-      <div className="text-xs text-gray-700 truncate">{displayName}</div>
+      <div className="text-xs text-gray-900 truncate leading-tight mt-0.5">
+        {player.first_name || '—'}
+      </div>
+      {player.last_name && (
+        <div className="text-xs text-gray-900 truncate leading-tight font-medium">
+          {player.last_name}
+        </div>
+      )}
       {subtitle && (
-        <div className="text-[10px] text-gray-400 truncate">{subtitle}</div>
+        <div className="text-[10px] text-gray-400 truncate mt-1">{subtitle}</div>
       )}
     </div>
   )
