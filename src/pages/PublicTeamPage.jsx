@@ -15,15 +15,13 @@ import { useFavorite } from '../hooks/useFavorite'
 /**
  * Public Team Page at /t/:teamSlug
  *
- * The "team identity" hub for parents/players. Shows:
- *  - Identity (name, age group, gender, program, season, standings position)
- *  - Season record (W/L/D/GF/GA/GD) — computed locally from games table
- *  - Recruiting hero panel — elevates the College Coach Tracker story as
- *    the second hero of the page (above the tabs)
- *  - Stats (games, schools, coaches)
- *  - Up to four tabs: Games, Events, Roster, Staff
- *      Games + Events are always shown.
- *      Roster + Staff appear only when AthleteOne ingest has populated them.
+ * The "team identity" hub for parents/players. Layout:
+ *  - Team header card (name, age/gender/program, season, favorite star)
+ *  - Metric cards row: Record · GD · Conference standing · Head coach
+ *    (Record + GD always shown; Conference + Head Coach conditional on data)
+ *  - Recruiting hero panel (College Coach Tracker elevation — second hero)
+ *  - Tab strip: Games | Events | Roster | Staff
+ *    (Roster + Staff only appear when AthleteOne ingest has populated them)
  *  - Top colleges that have watched this team
  *
  * Defaults to the team in the active season for the given slug.
@@ -42,28 +40,38 @@ import { useFavorite } from '../hooks/useFavorite'
  *  - Staff tab: 1-column list of coaching staff (photo, name, title, email).
  *    Sourced from team_staff.
  *  - Roster and Staff share the same row layout for visual consistency.
- *  - Standings position badge below the season name. Pulled from
- *    teams.athleteone_metadata.standings_position. Only the position is
- *    surfaced — W/L/T remain computed from the games table so manual games
- *    (friendlies, tournaments) are included in the team record. The
- *    AthleteOne-supplied W/L/T is intentionally not displayed here.
  *
- * Sprint 1 of Team Hub redesign (May 27):
- *  - Added RecruitingHeroPanel between the team header card and the tab
- *    strip. Three visual blocks: a coach/school summary line with division
+ * Team Hub redesign (May 27):
+ *  - Replaced the 7-stat row (GP/W/L/D/GF/GA/GD inside the team header) and
+ *    the "🏆 1st in conference" tagline with a row of 4 metric cards:
+ *      • Record — "W-L-D" e.g. "8-4-2" (always shown; "—" before any games)
+ *      • Goal diff — "+12" / "-5" / "0" with green/red/neutral color
+ *      • Conference — "1st in conference" — shown when standings_position
+ *        is populated in teams.athleteone_metadata
+ *      • Head coach — name pulled from team_staff where title starts with
+ *        "Head Coach" (case-insensitive); hidden when no head coach found
+ *    Grid is 2-col on mobile, expands to N-col on sm+ where N is the count
+ *    of visible cards (2/3/4). Static class strings so Tailwind JIT picks
+ *    them up. Cards visually anchor the team performance story before the
+ *    recruiting hero panel.
+ *  - Added RecruitingHeroPanel between the metric cards and the tab strip.
+ *    Three visual blocks: a coach/school summary line with division
  *    breakdown, an active-or-upcoming event card (active gets the LIVE
  *    tracker CTA with green-to-cyan gradient matching the home page card),
  *    and a row of top-interest school pills. The panel hides entirely when
  *    there's no recruiting story yet (zero attendance AND no upcoming
  *    event), so the page falls back to its prior layout for off-season
  *    teams without breaking flow.
- *  - Added a small game-type pill on each EventCard in the Events tab so
- *    parents can tell showcase / tournament / league events apart at a
- *    glance. Pill content is the dominant game_types.name across the
- *    event's games (handles mixed-type events by picking the most common).
- *  - The existing "Colleges Watching This Team" table below the tabs is
- *    preserved as a complementary detail view — the hero pills are a
- *    teaser, the table is the full list with division/conference/games.
+ *  - Event cards in the Events tab get stronger visual differentiation by
+ *    game type: a 4px left border (cyan for recruiting-flavored types
+ *    like Showcase / Tournament / ECNL / NPL; gray for league or friendly
+ *    play) plus a 🎓 icon on recruiting events, plus a tinted badge
+ *    matching the border color. Heuristic is intentionally brittle — see
+ *    isRecruitingType() — and can be replaced with an explicit
+ *    is_recruiting flag on game_types when that data model gets cleaned up.
+ *  - "Colleges Watching This Team" table below the tabs is preserved as a
+ *    complementary detail view — the hero pills are a teaser, the table is
+ *    the full list with division/conference/games.
  */
 export default function PublicTeamPage() {
   const { teamSlug } = useParams()
@@ -304,6 +312,21 @@ export default function PublicTeamPage() {
     return null
   }, [eventGroups])
 
+  // Head coach pulled from team_staff. Matches title starting with "head
+  // coach" (case-insensitive) — catches "Head Coach", "Head Coach (Boys)",
+  // "Head Coach - U16" without picking up "Assistant Head Coach" (which
+  // starts with "assistant"). Null when no match found, which hides the
+  // head coach metric card without breaking layout.
+  const headCoach = useMemo(() => {
+    if (!staff || staff.length === 0) return null
+    return (
+      staff.find((s) => {
+        const t = (s.title || '').toLowerCase().trim()
+        return t.startsWith('head coach')
+      }) || null
+    )
+  }, [staff])
+
   const formatDate = (s) => {
     const [y, m, d] = s.split('-')
     return new Date(y, m - 1, d).toLocaleDateString('en-US', {
@@ -321,8 +344,8 @@ export default function PublicTeamPage() {
   }
 
   // Standings position pulled from AthleteOne ingest. Stored as a number
-  // (1, 2, 3, ...) in the JSONB metadata column. Rendered as "1st in
-  // conference" with ordinal suffix.
+  // (1, 2, 3, ...) in the JSONB metadata column. Rendered as ordinal in
+  // the Conference metric card.
   const standingsPosition = team?.athleteone_metadata?.standings_position
 
   // Only show Roster/Staff tabs when we actually have data — non-AthleteOne
@@ -369,67 +392,53 @@ export default function PublicTeamPage() {
           </div>
         ) : (
           <>
-            {/* Compact team header — replaces the old Identity / Season Record /
-                Stats stack so the first game is visible above the fold on phones */}
-            {(() => {
-              const r = computeRecord(games)
-              return (
-                <div className="bg-white rounded-lg shadow-md p-4 sm:p-5 mb-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
-                        {team.name}
-                      </h1>
-                      <p className="text-sm text-gray-600 mt-1">
-                        {team.age_groups?.name} · {team.gender} ·{' '}
-                        {team.programs?.name}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {team.seasons?.name}
-                      </p>
-                      {standingsPosition != null && (
-                        <p className="text-xs text-amber-700 font-medium mt-1 flex items-center gap-1">
-                          <span aria-hidden="true">🏆</span>
-                          <span>{ordinal(standingsPosition)} in conference</span>
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setFavorite(!isFavorite)}
-                      aria-label={
-                        isFavorite
-                          ? 'Remove from My Teams'
-                          : 'Add to My Teams'
-                      }
-                      aria-pressed={isFavorite}
-                      className="flex-shrink-0 p-2 -m-2 rounded-full hover:bg-gray-100 active:bg-gray-200"
-                    >
-                      <StarIcon filled={isFavorite} />
-                    </button>
-                  </div>
-                  {r.played > 0 && (
-                    <div className="grid grid-cols-7 gap-1 sm:gap-2 pt-3 mt-3 border-t border-gray-100">
-                      <HeaderStat value={r.played} label="GP" />
-                      <HeaderStat value={r.wins} label="W" />
-                      <HeaderStat value={r.losses} label="L" />
-                      <HeaderStat value={r.ties} label="D" />
-                      <HeaderStat value={r.gf} label="GF" />
-                      <HeaderStat value={r.ga} label="GA" />
-                      <HeaderStat
-                        value={`${r.gd > 0 ? '+' : ''}${r.gd}`}
-                        label="GD"
-                      />
-                    </div>
-                  )}
+            {/* Team identity card — name, age/gender/program, season, and
+                favorite star. The 7-stat row and standings tagline that used
+                to live here moved into the metric cards row below. */}
+            <div className="bg-white rounded-lg shadow-md p-4 sm:p-5 mb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
+                    {team.name}
+                  </h1>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {team.age_groups?.name} · {team.gender} ·{' '}
+                    {team.programs?.name}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {team.seasons?.name}
+                  </p>
                 </div>
-              )
-            })()}
+                <button
+                  type="button"
+                  onClick={() => setFavorite(!isFavorite)}
+                  aria-label={
+                    isFavorite
+                      ? 'Remove from My Teams'
+                      : 'Add to My Teams'
+                  }
+                  aria-pressed={isFavorite}
+                  className="flex-shrink-0 p-2 -m-2 rounded-full hover:bg-gray-100 active:bg-gray-200"
+                >
+                  <StarIcon filled={isFavorite} />
+                </button>
+              </div>
+            </div>
 
-            {/* Recruiting hero panel — Sprint 1 addition. Sits between the
-                team header card and the tab strip. Hides entirely when
-                there's no recruiting story (zero attendance + no upcoming
-                event) so off-season teams keep their previous layout. */}
+            {/* Metric cards row — Record, GD, Conference, Head coach.
+                Record and GD always show ("—" before any games are played);
+                Conference and Head coach are conditional on data being
+                present. Grid columns scale to the actual card count. */}
+            <MetricCardsRow
+              record={computeRecord(games)}
+              standingsPosition={standingsPosition}
+              headCoach={headCoach}
+            />
+
+            {/* Recruiting hero panel — the "second hero" of the page,
+                elevating the College Coach Tracker story above the tabs.
+                Hides entirely when there's no story to tell (zero
+                attendance + no active/upcoming event). */}
             {showRecruitingHero && (
               <RecruitingHeroPanel
                 stats={stats}
@@ -610,15 +619,118 @@ export default function PublicTeamPage() {
   )
 }
 
-function HeaderStat({ value, label }) {
+/**
+ * MetricCardsRow — 2-to-4 card grid showing key team metrics.
+ *
+ * Layout:
+ *   Mobile: 2 columns regardless of card count (cards wrap to a second row
+ *           if there are 3 or 4)
+ *   sm+:    columns scale to actual card count (2/3/4)
+ *
+ * Tailwind needs static class strings for JIT, so the grid-cols class is
+ * picked from a map keyed by count rather than interpolated.
+ *
+ * Card content:
+ *   Record   — "8-4-2" (W-L-D); "—" before any games played
+ *   GD       — "+12" / "-5" / "0" with emerald/rose/gray color; "—" before
+ *              any games
+ *   Conf     — ordinal of standingsPosition; hidden when null
+ *   Head Coach — full name; hidden when no staff member matches "head coach"
+ */
+function MetricCardsRow({ record, standingsPosition, headCoach }) {
+  const cards = []
+
+  // Record always shown — "—" placeholder before any games are played so
+  // the card grid has visual weight even on a fresh team.
+  cards.push({
+    key: 'record',
+    primary: record.played > 0
+      ? `${record.wins}-${record.losses}-${record.ties}`
+      : '—',
+    label: 'Record',
+    color: 'text-gray-900',
+  })
+
+  // GD always shown. Color reflects sign: emerald for positive, rose for
+  // negative, gray-700 for zero. Pre-season placeholder is "—".
+  let gdDisplay
+  let gdColor
+  if (record.played === 0) {
+    gdDisplay = '—'
+    gdColor = 'text-gray-400'
+  } else if (record.gd > 0) {
+    gdDisplay = `+${record.gd}`
+    gdColor = 'text-emerald-700'
+  } else if (record.gd < 0) {
+    gdDisplay = `${record.gd}`
+    gdColor = 'text-rose-700'
+  } else {
+    gdDisplay = '0'
+    gdColor = 'text-gray-700'
+  }
+  cards.push({
+    key: 'gd',
+    primary: gdDisplay,
+    label: 'Goal diff',
+    color: gdColor,
+  })
+
+  if (standingsPosition != null) {
+    cards.push({
+      key: 'standing',
+      primary: ordinal(standingsPosition),
+      label: 'In conference',
+      color: 'text-amber-700',
+      prefixIcon: '🏆',
+    })
+  }
+
+  if (headCoach) {
+    const name = `${headCoach.first_name || ''} ${headCoach.last_name || ''}`.trim() || '—'
+    cards.push({
+      key: 'coach',
+      primary: name,
+      label: 'Head coach',
+      color: 'text-gray-900',
+      // Smaller font for names since they're wider than "8-4-2" / "+12"
+      compact: true,
+    })
+  }
+
+  if (cards.length === 0) return null
+
+  // Static class map so Tailwind JIT picks up every variant
+  const gridClass = {
+    2: 'grid grid-cols-2 gap-2 sm:gap-3 mb-5',
+    3: 'grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3 mb-5',
+    4: 'grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-5',
+  }[cards.length] || 'grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-5'
+
   return (
-    <div className="text-center">
-      <div className="text-base sm:text-lg font-bold text-gray-900 leading-none tabular-nums">
-        {value}
-      </div>
-      <div className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">
-        {label}
-      </div>
+    <div className={gridClass}>
+      {cards.map((c) => (
+        <div
+          key={c.key}
+          className="bg-white rounded-lg shadow-sm p-3 sm:p-4"
+        >
+          <div
+            className={`${
+              c.compact
+                ? 'text-base sm:text-lg'
+                : 'text-xl sm:text-2xl'
+            } font-bold leading-tight tabular-nums truncate ${c.color}`}
+            title={c.primary}
+          >
+            {c.prefixIcon && (
+              <span className="mr-1" aria-hidden="true">{c.prefixIcon}</span>
+            )}
+            {c.primary}
+          </div>
+          <div className="text-[10px] sm:text-xs uppercase tracking-wider text-gray-500 font-medium mt-1 truncate">
+            {c.label}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -960,7 +1072,7 @@ function GameCard({
 }
 
 /**
- * RecruitingHeroPanel — Sprint 1 "second hero" for the team page.
+ * RecruitingHeroPanel — the "second hero" of the team page.
  *
  * Elevates the College Coach Tracker story above the tabs. Three blocks
  * (each independently conditional so the panel adapts to wherever the
@@ -980,7 +1092,7 @@ function GameCard({
  *
  *   3. Top interest pills — top 5 schools by attendance count, each
  *      showing "School Name · N" (games attended). Non-interactive pills
- *      for Sprint 1; tapping behavior can be wired later once the Coach
+ *      for now; tapping behavior can be wired later once the Coach
  *      Directory has a school-filter parameter to deep-link to.
  *
  * The parent component is responsible for hiding the panel entirely when
@@ -1143,14 +1255,19 @@ function FeaturedEventCard({ group, teamSlug }) {
 /**
  * EventCard — one entry in the Events tab.
  *
- * A self-contained scorecard for the team at one event. Shows event name,
+ * Self-contained scorecard for the team at one event. Shows event name,
  * date range, location, and a row of stat pills (GP · W-L-D · GF·GA) along
  * with an optional coach-attendance pill.
  *
- * Sprint 1 addition: a small game-type pill inline with the event name
- * (e.g. "Showcase", "League Play", "Friendly"). Content comes from the
- * dominant game_types.name across the event's games — for mixed-type
- * events (rare but possible), the most common wins.
+ * Visual differentiation by game type:
+ *   - Recruiting events (Showcase / Tournament / ECNL / NPL by name match):
+ *     4px cyan left border, 🎓 icon before the event name, cyan-tinted
+ *     game-type badge
+ *   - League / friendly events: 4px gray left border, no icon, gray badge
+ *
+ * The heuristic in isRecruitingType() is intentionally brittle — substring
+ * match on game_types.name. When the data model gains an explicit
+ * is_recruiting boolean on game_types, swap that in.
  *
  * Smart routing on tap to avoid a flash from the live tracker's internal
  * redirect logic:
@@ -1169,8 +1286,9 @@ function EventCard({ event, games, attendance, teamSlug }) {
   })
   const schoolsCount = schoolIds.size
 
-  // Dominant game type across the event's games — drives the inline pill
-  // next to the event name. Skipped when no game has a game_type set.
+  // Dominant game type across the event's games — drives the visual
+  // differentiation (border, icon, badge). Skipped when no game has a
+  // game_type set; falls through to neutral styling.
   const eventGameType = (() => {
     const counts = new Map()
     games.forEach((g) => {
@@ -1182,6 +1300,8 @@ function EventCard({ event, games, attendance, teamSlug }) {
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0]
   })()
 
+  const isRecruiting = isRecruitingType(eventGameType)
+
   const allClosed = games.length > 0 && games.every((g) => g.is_closed)
   const destHref = allClosed
     ? `/e/${event.slug}/${teamSlug}/summary`
@@ -1190,16 +1310,29 @@ function EventCard({ event, games, attendance, teamSlug }) {
   return (
     <Link
       to={destHref}
-      className="block bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4"
+      className={`block bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4 border-l-4 ${
+        isRecruiting ? 'border-l-cyan-500' : 'border-l-gray-300'
+      }`}
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
+            {isRecruiting && (
+              <span className="text-base flex-shrink-0" aria-hidden="true">
+                🎓
+              </span>
+            )}
             <h3 className="font-semibold text-gray-900 truncate">
               {event.event_name}
             </h3>
             {eventGameType && (
-              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200 flex-shrink-0">
+              <span
+                className={`text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
+                  isRecruiting
+                    ? 'bg-cyan-100 text-cyan-800 border border-cyan-200'
+                    : 'bg-gray-100 text-gray-600 border border-gray-200'
+                }`}
+              >
                 {eventGameType}
               </span>
             )}
@@ -1289,6 +1422,28 @@ function todayISO() {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+/**
+ * isRecruitingType — substring-match heuristic for whether a game_types
+ * name represents a recruiting-flavored event (Showcase / Tournament /
+ * ECNL / NPL / "recruit" in the name) vs regular league or friendly play.
+ *
+ * Drives the cyan vs gray visual differentiation on EventCard. Brittle by
+ * design — if Damon adds new game types, this list may need extending.
+ * The clean fix is an explicit is_recruiting boolean on the game_types
+ * table; this heuristic is the bridge until that exists.
+ */
+function isRecruitingType(name) {
+  if (!name) return false
+  const n = name.toLowerCase()
+  return (
+    n.includes('showcase') ||
+    n.includes('tournament') ||
+    n.includes('ecnl') ||
+    n.includes('npl') ||
+    n.includes('recruit')
+  )
 }
 
 /**
