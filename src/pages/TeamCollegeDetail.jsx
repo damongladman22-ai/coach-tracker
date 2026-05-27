@@ -292,6 +292,7 @@ export default function TeamCollegeDetail() {
                     key={coach.id}
                     coach={coach}
                     games={games}
+                    teamSlug={teamSlug}
                   />
                 ))}
               </div>
@@ -327,7 +328,7 @@ export default function TeamCollegeDetail() {
  * results. Designed so a parent can scan the list and decide quickly which
  * coach to email first.
  */
-function CoachAttendanceCard({ coach, games }) {
+function CoachAttendanceCard({ coach, games, teamSlug }) {
   const initials = `${(coach.first_name || '').charAt(0)}${(coach.last_name || '').charAt(0)}`.toUpperCase()
   const isInactive = coach.is_active === false
 
@@ -399,7 +400,7 @@ function CoachAttendanceCard({ coach, games }) {
         </div>
         <ul className="divide-y divide-gray-100">
           {games.map((g) => (
-            <AttendedGameRow key={g.id} game={g} />
+            <AttendedGameRow key={g.id} game={g} teamSlug={teamSlug} />
           ))}
         </ul>
       </div>
@@ -413,31 +414,41 @@ function CoachAttendanceCard({ coach, games }) {
  * on the right when a score is set. Games without scores logged yet
  * simply omit the badge — a coach came to watch but we don't know the
  * outcome yet, and a placeholder there would read as noise.
+ *
+ * The whole row is a Link to the unified team game detail page so the
+ * recruiting narrative ("this coach watched this game") can keep
+ * drilling: tap a game to see the video, the full attendance, and the
+ * matchup context.
  */
-function AttendedGameRow({ game }) {
+function AttendedGameRow({ game, teamSlug }) {
   // gameResult returns { label, color, score } — label is 'W'/'L'/'T'
   // (falsy when no scores set), color is a Tailwind class string, score
   // is the formatted score like "3-1". Same shape as PublicTeamPage uses
   // for its inline game badges, so the visual cue is consistent.
   const r = gameResult(game)
   return (
-    <li className="flex items-center justify-between gap-2 py-2">
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium text-gray-900 truncate">
-          vs {game.opponent || '—'}
-        </p>
-        <p className="text-xs text-gray-500 truncate">
-          {formatGameDate(game.game_date)}
-          {game.events?.event_name ? ` · ${game.events.event_name}` : ''}
-        </p>
-      </div>
-      {r.label && (
-        <span
-          className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums flex-shrink-0 whitespace-nowrap ${r.color}`}
-        >
-          {r.label} {r.score}
-        </span>
-      )}
+    <li>
+      <Link
+        to={`/t/${encodeURIComponent(teamSlug)}/game/${encodeURIComponent(game.id)}`}
+        className="flex items-center justify-between gap-2 py-2 -mx-1 px-1 rounded hover:bg-gray-50 transition-colors"
+      >
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-gray-900 truncate">
+            vs {game.opponent || '—'}
+          </p>
+          <p className="text-xs text-gray-500 truncate">
+            {formatGameDate(game.game_date)}
+            {game.events?.event_name ? ` · ${game.events.event_name}` : ''}
+          </p>
+        </div>
+        {r.label && (
+          <span
+            className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums flex-shrink-0 whitespace-nowrap ${r.color}`}
+          >
+            {r.label} {r.score}
+          </span>
+        )}
+      </Link>
     </li>
   )
 }

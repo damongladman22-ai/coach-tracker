@@ -1197,6 +1197,7 @@ function GameCard({
   videos = [],
   schoolsCount = 0,
 }) {
+  const navigate = useNavigate()
   const r = gameResult(game)
   const eventSlug = game.events?.slug
   // "at [event]" only makes sense for discrete events (showcases,
@@ -1225,13 +1226,16 @@ function GameCard({
     )
   })()
 
-  // Action button — present only for games attached to an event
+  // Action button — present only for games attached to an event. We
+  // stopPropagation on its click so the card-level navigation below
+  // doesn't fight the button's own destination.
   let action = null
   if (inEvent) {
     if (isPast || isClosed) {
       action = (
         <Link
           to={`/e/${eventSlug}/${teamSlug}/summary`}
+          onClick={(e) => e.stopPropagation()}
           className="text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-3 py-2 rounded-lg text-center block whitespace-nowrap"
         >
           Summary
@@ -1241,6 +1245,7 @@ function GameCard({
       action = (
         <Link
           to={`/e/${eventSlug}/${teamSlug}`}
+          onClick={(e) => e.stopPropagation()}
           className="text-xs font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-3 py-2 rounded-lg text-center block whitespace-nowrap"
         >
           Open Tracker
@@ -1249,8 +1254,28 @@ function GameCard({
     }
   }
 
+  // Whole-card click navigates to the unified game detail page. Cursor
+  // + hover state signal tappability; role/tabIndex/keyDown give
+  // keyboard parity. The action button above is the exception — its
+  // click stopPropagation peels off so it can route to live tracker /
+  // summary instead of the read-only game detail.
+  const detailHref = `/t/${encodeURIComponent(teamSlug)}/game/${encodeURIComponent(game.id)}`
+  const goToDetail = () => navigate(detailHref)
+
   return (
-    <div className="p-4 flex items-start gap-3">
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={goToDetail}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          goToDetail()
+        }
+      }}
+      className="p-4 flex items-start gap-3 cursor-pointer hover:bg-gray-50 transition-colors focus:outline-none focus:bg-gray-50"
+      title={`View game details vs ${game.opponent || 'opponent'}`}
+    >
       <div className="min-w-0 flex-1">
         {/* Line 1: date + result + status badges + coach indicator + video icon */}
         <div className="flex items-center gap-2 flex-wrap">

@@ -12,6 +12,7 @@ import ClubDashboard from './pages/ClubDashboard'
 import EventLanding from './pages/EventLanding'
 import PublicTeamPage from './pages/PublicTeamPage'
 import TeamCollegeDetail from './pages/TeamCollegeDetail'
+import TeamGameDetail from './pages/TeamGameDetail'
 import CoachDirectory from './pages/CoachDirectory'
 import Help from './pages/Help'
 
@@ -102,6 +103,7 @@ function App() {
             <Route path="/help" element={<Help />} />
             <Route path="/t/:teamSlug" element={<PublicTeamPage />} />
             <Route path="/t/:teamSlug/college/:schoolId" element={<TeamCollegeDetail />} />
+            <Route path="/t/:teamSlug/game/:gameId" element={<TeamGameDetail />} />
             <Route path="/e/:eventSlug/:teamSlug" element={<TeamGames />} />
             <Route path="/e/:eventSlug/:teamSlug/game/:gameId" element={<GameAttendance />} />
             <Route path="/e/:eventSlug/:teamSlug/summary" element={<ParentSummary />} />
