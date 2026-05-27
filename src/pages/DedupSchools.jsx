@@ -12,6 +12,7 @@ export default function DedupSchools({ session }) {
   const [filter, setFilter] = useState('all') // 'all', 'exact', 'fuzzy'
   const [selectedPair, setSelectedPair] = useState(null)
   const [coachCounts, setCoachCounts] = useState({})
+  const [bulkProgress, setBulkProgress] = useState(null) // { current, total, errors[] } while bulk-merging
   const [dismissedPairs, setDismissedPairs] = useState(() => {
     // Load dismissed pairs from localStorage on init
     const saved = localStorage.getItem('dismissedSchoolPairs')
@@ -370,6 +371,106 @@ export default function DedupSchools({ session }) {
     }
   }
 
+  /**
+   * Pick which of two records becomes the keeper when bulk-merging.
+   * Strategy: more coaches wins (preserves more relational data).
+   * Tiebreak: lower id wins (older record).
+   *
+   * Returns [keeper, toDelete].
+   */
+  const pickKeeper = (a, b, counts) => {
+    const aC = counts[a.id] || 0
+    const bC = counts[b.id] || 0
+    if (aC > bC) return [a, b]
+    if (bC > aC) return [b, a]
+    return a.id < b.id ? [a, b] : [b, a]
+  }
+
+  /**
+   * Bulk-merge every exact-match pair found in this run.
+   * Uses the same smart-merge logic as the per-pair Keep button, but runs
+   * inline (no per-pair state updates or per-pair data refresh) so 200+
+   * merges complete in a single sweep. Errors are collected and reported
+   * at the end; the loop does not stop on individual failures.
+   */
+  const bulkMergeExactMatches = async () => {
+    const exactPairs = duplicates.filter(d => d.matchType === 'exact')
+    if (exactPairs.length === 0) return
+
+    const confirmed = window.confirm(
+      `This will merge ${exactPairs.length} exact-match school pair${exactPairs.length === 1 ? '' : 's'}.\n\n` +
+      `For each pair:\n` +
+      ` • The record with more coaches attached becomes the keeper (older id wins on ties)\n` +
+      ` • Non-null city / state / type / conference / division fields are copied to the keeper if missing\n` +
+      ` • All coaches from the duplicate are reassigned to the keeper\n` +
+      ` • The duplicate is deleted\n\n` +
+      `This cannot be undone. Continue?`
+    )
+    if (!confirmed) return
+
+    const errors = []
+    setBulkProgress({ current: 0, total: exactPairs.length, errors: [] })
+
+    for (let i = 0; i < exactPairs.length; i++) {
+      const { school1, school2 } = exactPairs[i]
+      const [keeper, toDelete] = pickKeeper(school1, school2, coachCounts)
+
+      try {
+        // Smart-merge non-null fields from dupe into keeper
+        const fieldsToMerge = {}
+        if (!keeper.city && toDelete.city) fieldsToMerge.city = toDelete.city
+        if (!keeper.state && toDelete.state) fieldsToMerge.state = toDelete.state
+        if (!keeper.type && toDelete.type) fieldsToMerge.type = toDelete.type
+        if (!keeper.conference && toDelete.conference) fieldsToMerge.conference = toDelete.conference
+        if (!keeper.division && toDelete.division) fieldsToMerge.division = toDelete.division
+
+        if (Object.keys(fieldsToMerge).length > 0) {
+          const { error: mErr } = await supabase
+            .from('schools')
+            .update(fieldsToMerge)
+            .eq('id', keeper.id)
+          if (mErr) throw mErr
+        }
+
+        // Reassign coaches
+        const { error: cErr } = await supabase
+          .from('coaches')
+          .update({ school_id: keeper.id })
+          .eq('school_id', toDelete.id)
+        if (cErr) throw cErr
+
+        // Delete duplicate
+        const { error: dErr } = await supabase
+          .from('schools')
+          .delete()
+          .eq('id', toDelete.id)
+        if (dErr) throw dErr
+      } catch (err) {
+        console.error(`Bulk merge failed for pair "${school1.school}" / "${school2.school}":`, err)
+        errors.push({
+          pair: `${school1.school} / ${school2.school}`,
+          message: err.message || String(err),
+        })
+      }
+
+      setBulkProgress({ current: i + 1, total: exactPairs.length, errors: [...errors] })
+    }
+
+    // Refresh data once at the end (recomputes duplicates, coach counts, etc.)
+    await fetchData()
+    setBulkProgress(null)
+
+    const successCount = exactPairs.length - errors.length
+    if (errors.length === 0) {
+      showToast(`Merged all ${successCount} exact-match pairs`)
+    } else {
+      showToast(
+        `Merged ${successCount} pair${successCount === 1 ? '' : 's'}; ${errors.length} failed (see browser console)`,
+        'error'
+      )
+    }
+  }
+
   const dismissPair = (school1Id, school2Id) => {
     const pairKey = [school1Id, school2Id].sort().join('-')
     // Add to persistent dismissed list
@@ -448,6 +549,51 @@ export default function DedupSchools({ session }) {
           </div>
         )}
       </div>
+
+      {/* Bulk merge banner — appears when there are exact matches to clean up */}
+      {exactCount > 0 && !bulkProgress && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex-1">
+            <div className="font-semibold text-amber-900">
+              {exactCount} exact-match pair{exactCount === 1 ? '' : 's'} ready for bulk merge
+            </div>
+            <div className="text-sm text-amber-700 mt-1">
+              Same school, same state, same gender. The record with more coaches becomes the keeper; the other is merged in and deleted.
+            </div>
+          </div>
+          <button
+            onClick={bulkMergeExactMatches}
+            className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-semibold whitespace-nowrap"
+          >
+            Merge All {exactCount} Exact Matches
+          </button>
+        </div>
+      )}
+
+      {/* Bulk merge progress UI */}
+      {bulkProgress && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="font-semibold text-blue-900">
+              Merging exact matches… {bulkProgress.current} / {bulkProgress.total}
+            </div>
+            <div className="text-sm text-blue-700">
+              {Math.round((bulkProgress.current / bulkProgress.total) * 100)}%
+            </div>
+          </div>
+          <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
+            <div
+              className="bg-blue-600 h-2 rounded-full transition-all"
+              style={{ width: `${(bulkProgress.current / bulkProgress.total) * 100}%` }}
+            ></div>
+          </div>
+          {bulkProgress.errors.length > 0 && (
+            <div className="text-sm text-red-700 mt-2">
+              {bulkProgress.errors.length} pair{bulkProgress.errors.length === 1 ? '' : 's'} failed so far (continuing — see browser console)
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="bg-white rounded-lg shadow-md p-4 mb-6">
