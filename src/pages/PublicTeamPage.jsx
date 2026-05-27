@@ -1102,11 +1102,11 @@ function VideoGalleryItem({ video, game, onPlay, isPlaying }) {
         type="button"
         onClick={onPlay}
         aria-label={`Play video from game vs ${game.opponent || 'TBD'}`}
-        className={`relative w-full rounded-md overflow-hidden block hover:opacity-90 active:opacity-80 ${
+        className={`relative w-full aspect-video rounded-md overflow-hidden block bg-slate-200 hover:opacity-90 active:opacity-80 ${
           isPlaying ? 'ring-2 ring-cyan-500' : ''
         }`}
       >
-        <VideoThumbnail videoId={video.id} size="md" />
+        <VideoThumbnail videoId={video.id} size="fill" />
         <div
           className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none"
           aria-hidden="true"

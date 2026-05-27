@@ -61,8 +61,17 @@ function fetchThumbnailUrl(videoId) {
  *
  * Props:
  *  - videoId
- *  - size: 'sm' (60x40) | 'md' (120x68) | 'lg' (160x90). Default 'md'.
- *  - className: optional extra classes
+ *  - size: 'sm' (60x40) | 'md' (120x68) | 'lg' (160x90) | 'fill'.
+ *    Default 'md'. The fixed sizes set width/height inline and are
+ *    intended for inline use next to other content.
+ *
+ *    The 'fill' variant takes no intrinsic dimensions — the inner img
+ *    fills its parent container with object-cover. The parent must
+ *    establish both width and height (e.g. a wrapper with w-full and
+ *    aspect-video for a 16:9 cell). Use this for grid/gallery layouts
+ *    where the cell width is dictated by the layout, not the
+ *    thumbnail's intrinsic size.
+ *  - className: optional extra classes (passed to the rendered element)
  */
 export default function VideoThumbnail({ videoId, size = 'md', className = '' }) {
   const [url, setUrl] = useState(() => urlCache.get(videoId) || null)
@@ -86,19 +95,27 @@ export default function VideoThumbnail({ videoId, size = 'md', className = '' })
     }
   }, [videoId])
 
-  const sizeClasses = {
-    sm: 'w-15 h-10', // 60×40
-    md: 'w-30 h-17', // 120×68
-    lg: 'w-40 h-23', // 160×90
-  }
-  const dimensionStyle =
-    size === 'sm'
+  const isFill = size === 'fill'
+
+  // Fixed sizes carry inline width/height; fill mode delegates sizing to
+  // the parent container so the thumbnail can stretch to fit a grid cell.
+  const dimensionStyle = isFill
+    ? undefined
+    : size === 'sm'
       ? { width: 60, height: 40 }
       : size === 'lg'
         ? { width: 160, height: 90 }
         : { width: 120, height: 68 }
 
-  const container = `bg-slate-200 rounded overflow-hidden flex items-center justify-center flex-shrink-0 ${className}`
+  // Container styling diverges by mode:
+  //   - Fixed: flex-shrink-0 so neighboring flex children don't squash it,
+  //     own rounded corners.
+  //   - Fill: stretches to fill parent; parent owns the rounding (typical
+  //     pattern is the parent button has rounded-md overflow-hidden, so
+  //     we'd round here too and clip).
+  const container = isFill
+    ? `bg-slate-200 overflow-hidden flex items-center justify-center w-full h-full ${className}`
+    : `bg-slate-200 rounded overflow-hidden flex items-center justify-center flex-shrink-0 ${className}`
 
   if (loading) {
     return (
@@ -124,6 +141,17 @@ export default function VideoThumbnail({ videoId, size = 'md', className = '' })
           <path d="m22 8-6 4 6 4V8Z" />
         </svg>
       </div>
+    )
+  }
+
+  if (isFill) {
+    return (
+      <img
+        src={url}
+        alt=""
+        loading="lazy"
+        className={`object-cover w-full h-full ${className}`}
+      />
     )
   }
 
