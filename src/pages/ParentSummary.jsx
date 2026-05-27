@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { isValidEmail } from '../lib/validation';
 import { 
@@ -302,6 +302,12 @@ function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToas
  */
 export default function ParentSummary() {
   const { eventSlug, teamSlug } = useParams();
+  const [searchParams] = useSearchParams();
+  // ?from=<teamSlug> carries the team the user came from (e.g. via the
+  // game detail page's "Event Summary" button). We use it to show an
+  // explicit "Back to team" affordance in addition to the breadcrumb
+  // team-name link, matching the pattern on EventLanding and TeamGames.
+  const fromTeamSlug = searchParams.get('from');
   
   // Page data
   const [eventTeam, setEventTeam] = useState(null);
@@ -651,6 +657,23 @@ export default function ParentSummary() {
       <div className="op-header shadow-lg">
         <div className="op-gradient-border"></div>
         <div className="max-w-4xl mx-auto px-4 py-4">
+          {/* Back to team — shown when arrived via ?from=<teamSlug>
+              (e.g. from the game detail page's "Event Summary" button).
+              The breadcrumb team-name link below is also a back path,
+              but its styling reads as navigation hierarchy, not as a
+              return-to-where-you-came-from action. Both work; the
+              explicit affordance reduces friction. */}
+          {fromTeamSlug && (
+            <Link
+              to={`/t/${fromTeamSlug}`}
+              className="inline-flex items-center gap-1 text-sm text-cyan-300 hover:text-cyan-100 font-medium mb-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+              Back to team
+            </Link>
+          )}
           <div className="flex justify-between items-start gap-2">
             <div className="flex-1 min-w-0">
               {/* Breadcrumb navigation */}
