@@ -1156,19 +1156,19 @@ function StaffRow({ person }) {
  * GameCard — one row in the Games tab.
  *
  * Layout (mobile-first):
- *   [content lines]                    [thumbnail (if video)]
- *                                      [action button (if applicable)]
+ *   [content lines]                                 [action button]
  *
  * Content lines:
- *   1. Date + result badge + status + "N colleges" indicator
+ *   1. Date + result badge + status + "N colleges" indicator + video icon
  *   2. Time · vs/at opponent
  *   3. Event context (or game type) + location
  *
- * Right column:
- *  - VideoThumbnail (md size) when videos exist — tap toggles inline panel.
- *  - Action button (Live Tracker / Summary) underneath, when game is in an event.
- *
- * Tapping the thumbnail expands the same GameVideosPanel used previously.
+ * Right column: just the action button (Live Tracker / Summary) for games
+ * attached to an event. Video playback used to live here as a thumbnail
+ * with an expandable panel, but with the Video gallery section above the
+ * tab strip handling that prominently, the inline thumbnail was duplicative
+ * and made rows visually uneven. A small camera icon on line 1 now signals
+ * "this game has video — find it in the Videos section above."
  */
 function GameCard({
   game,
@@ -1179,7 +1179,6 @@ function GameCard({
   videos = [],
   schoolsCount = 0,
 }) {
-  const [videosExpanded, setVideosExpanded] = useState(false)
   const r = gameResult(game)
   const eventSlug = game.events?.slug
   // "at [event]" only makes sense for discrete events (showcases,
@@ -1233,110 +1232,96 @@ function GameCard({
   }
 
   return (
-    <div>
-      <div className="p-4 flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          {/* Line 1: date + result + status badges + coach indicator */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-gray-900 text-sm">
-              {formatDate(game.game_date)}
+    <div className="p-4 flex items-start gap-3">
+      <div className="min-w-0 flex-1">
+        {/* Line 1: date + result + status badges + coach indicator + video icon */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-gray-900 text-sm">
+            {formatDate(game.game_date)}
+          </span>
+          {r.label && (
+            <span
+              className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
+            >
+              {r.label} {r.score}
             </span>
-            {r.label && (
-              <span
-                className={`text-xs font-bold px-2 py-0.5 rounded tabular-nums ${r.color}`}
+          )}
+          {isClosed && !r.label && (
+            <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
+              Closed
+            </span>
+          )}
+          {!isPast && !isClosed && (
+            <span className="text-xs text-blue-600 font-medium">
+              Upcoming
+            </span>
+          )}
+          {schoolsCount > 0 && (
+            <span
+              className="text-xs text-purple-700 font-medium"
+              title={`${schoolsCount} ${
+                schoolsCount === 1 ? 'college' : 'colleges'
+              } attended`}
+            >
+              {schoolsCount} {schoolsCount === 1 ? 'college' : 'colleges'}
+            </span>
+          )}
+          {hasVideo && (
+            <span
+              className="text-xs text-slate-500 inline-flex items-center gap-1"
+              title={`${videos.length} video${
+                videos.length === 1 ? '' : 's'
+              } available — see Videos section above`}
+              aria-label={`${videos.length} video${
+                videos.length === 1 ? '' : 's'
+              } available`}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
               >
-                {r.label} {r.score}
-              </span>
-            )}
-            {isClosed && !r.label && (
-              <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">
-                Closed
-              </span>
-            )}
-            {!isPast && !isClosed && (
-              <span className="text-xs text-blue-600 font-medium">
-                Upcoming
-              </span>
-            )}
-            {schoolsCount > 0 && (
-              <span
-                className="text-xs text-purple-700 font-medium"
-                title={`${schoolsCount} ${
-                  schoolsCount === 1 ? 'college' : 'colleges'
-                } attended`}
-              >
-                {schoolsCount} {schoolsCount === 1 ? 'college' : 'colleges'}
-              </span>
-            )}
-          </div>
-          {/* Line 2: time · vs/at opponent */}
-          <div className="text-sm text-gray-700 mt-0.5">
-            {game.game_time && <>{formatTime(game.game_time)} · </>}
-            {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
-          </div>
-          {/* Line 3: event context (or game type) + location */}
-          <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
-            {eventName ? (
-              <span className="truncate">
-                <span className="text-gray-400">at</span> {eventName}
-              </span>
-            ) : (
-              game.game_types?.name && (
-                <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
-                  {game.game_types.name}
+                <rect x="2" y="6" width="14" height="12" rx="2" />
+                <path d="m22 8-6 4 6 4V8Z" />
+              </svg>
+              {videos.length > 1 && (
+                <span className="font-medium tabular-nums">
+                  {videos.length}
                 </span>
-              )
-            )}
-            {game.location && (
-              <span className="text-gray-400">📍 {game.location}</span>
-            )}
-          </div>
+              )}
+            </span>
+          )}
         </div>
-
-        {/* Right column: thumbnail + action stacked vertically */}
-        {(hasVideo || action) && (
-          <div className="flex-shrink-0 flex flex-col items-stretch gap-2">
-            {hasVideo && (
-              <button
-                type="button"
-                onClick={() => setVideosExpanded((e) => !e)}
-                aria-expanded={videosExpanded}
-                aria-label={`${videos.length} video${
-                  videos.length === 1 ? '' : 's'
-                } available — tap to ${videosExpanded ? 'collapse' : 'expand'}`}
-                className="relative rounded-md overflow-hidden block hover:opacity-90 active:opacity-80"
-              >
-                <VideoThumbnail videoId={videos[0].id} size="md" />
-                <div
-                  className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none"
-                  aria-hidden="true"
-                >
-                  <svg
-                    width="22"
-                    height="22"
-                    viewBox="0 0 24 24"
-                    fill="white"
-                  >
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                </div>
-                {videos.length > 1 && (
-                  <div
-                    className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] font-medium px-1.5 py-0.5 rounded pointer-events-none"
-                    aria-hidden="true"
-                  >
-                    {videos.length}
-                  </div>
-                )}
-              </button>
-            )}
-            {action}
-          </div>
-        )}
+        {/* Line 2: time · vs/at opponent */}
+        <div className="text-sm text-gray-700 mt-0.5">
+          {game.game_time && <>{formatTime(game.game_time)} · </>}
+          {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
+        </div>
+        {/* Line 3: event context (or game type) + location */}
+        <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+          {eventName ? (
+            <span className="truncate">
+              <span className="text-gray-400">at</span> {eventName}
+            </span>
+          ) : (
+            game.game_types?.name && (
+              <span className="bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
+                {game.game_types.name}
+              </span>
+            )
+          )}
+          {game.location && (
+            <span className="text-gray-400">📍 {game.location}</span>
+          )}
+        </div>
       </div>
-      {videosExpanded && hasVideo && (
-        <GameVideosPanel videos={videos} game={game} teamName={teamName} />
-      )}
+
+      {/* Right column: action button (only when game is in an event) */}
+      {action && <div className="flex-shrink-0">{action}</div>}
     </div>
   )
 }
