@@ -1587,6 +1587,23 @@ function EventCard({ event, games, attendance, teamSlug }) {
     !isLongRunning &&
     (isRecruitingType(eventGameType) || isRecruitingType(event.event_name))
 
+  // Badge label policy:
+  //  - Recruiting events: override the underlying game_type. AthleteOne
+  //    often tags showcase/tournament games as "League" which would read
+  //    contradictorily next to the cyan styling. Use "Tournament" when
+  //    the event name says so, otherwise "Showcase" as the generic
+  //    recruiting label.
+  //  - Non-recruiting events: show the actual game_type when set; hide
+  //    the badge when no game_type is on the games (no useful label to
+  //    show).
+  let badgeLabel = null
+  if (isRecruiting) {
+    const nameLower = (event.event_name || '').toLowerCase()
+    badgeLabel = nameLower.includes('tournament') ? 'Tournament' : 'Showcase'
+  } else if (eventGameType) {
+    badgeLabel = eventGameType
+  }
+
   const allClosed = games.length > 0 && games.every((g) => g.is_closed)
   const destHref = allClosed
     ? `/e/${event.slug}/${teamSlug}/summary`
@@ -1610,7 +1627,7 @@ function EventCard({ event, games, attendance, teamSlug }) {
             <h3 className="font-semibold text-gray-900 truncate">
               {event.event_name}
             </h3>
-            {eventGameType && (
+            {badgeLabel && (
               <span
                 className={`text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded flex-shrink-0 ${
                   isRecruiting
@@ -1618,7 +1635,7 @@ function EventCard({ event, games, attendance, teamSlug }) {
                     : 'bg-gray-100 text-gray-600 border border-gray-200'
                 }`}
               >
-                {eventGameType}
+                {badgeLabel}
               </span>
             )}
           </div>
