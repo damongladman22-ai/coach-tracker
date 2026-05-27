@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getActiveSeasonId } from '../lib/season'
@@ -1000,6 +1000,23 @@ function VideoSection({
     ? videos.find((v) => v.id === playingVideoId)
     : null
 
+  // Player slot ref + scroll-into-view on playingVideoId change. Without
+  // this, tapping a thumbnail on mobile updates the player below the
+  // gallery silently — the player slot is below the fold so users don't
+  // see anything happen. Effect-based timing (not handler-based) lets
+  // React commit the new player content and the browser paint before we
+  // measure, otherwise the scroll can aim at a stale position.
+  const playerSlotRef = useRef(null)
+  useEffect(() => {
+    if (!playingVideoId) return
+    const el = playerSlotRef.current
+    if (!el) return
+    const tid = setTimeout(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+    return () => clearTimeout(tid)
+  }, [playingVideoId])
+
   return (
     <section className="mb-5">
       <div className="flex items-baseline justify-between mb-2">
@@ -1035,9 +1052,14 @@ function VideoSection({
       </div>
 
       {/* Inline player slot — single shared area below the gallery rather
-          than per-thumbnail panels, so we don't stack N players. */}
+          than per-thumbnail panels, so we don't stack N players. Ref +
+          effect above scrolls this into view on play so mobile users
+          don't have to hunt for it below the fold. */}
       {playing && (
-        <div className="mt-4 bg-white rounded-lg shadow-md p-3 sm:p-4">
+        <div
+          ref={playerSlotRef}
+          className="mt-4 bg-white rounded-lg shadow-md p-3 sm:p-4 scroll-mt-4"
+        >
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="min-w-0 flex-1">
               <div className="text-sm font-semibold text-gray-900 truncate">
