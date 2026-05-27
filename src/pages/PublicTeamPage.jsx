@@ -20,8 +20,10 @@ import { useFavorite } from '../hooks/useFavorite'
  *  - Metric cards row: Record · GD · Conference standing · Head coach
  *    (Record + GD always shown; Conference + Head Coach conditional on data)
  *  - Recruiting hero panel (College Coach Tracker elevation — second hero)
- *  - Tab strip: Games | Events | Roster | Staff
- *    (Roster + Staff only appear when AthleteOne ingest has populated them)
+ *  - Roster section: horizontal-scrollable player cards with "View all"
+ *  - Video section: thumbnail gallery with inline player below
+ *  - Tab strip: Games | Events | Staff
+ *    (Staff only appears when AthleteOne ingest has populated it)
  *  - Top colleges that have watched this team
  *
  * Defaults to the team in the active season for the given slug.
@@ -52,8 +54,7 @@ import { useFavorite } from '../hooks/useFavorite'
  *        "Head Coach" (case-insensitive); hidden when no head coach found
  *    Grid is 2-col on mobile, expands to N-col on sm+ where N is the count
  *    of visible cards (2/3/4). Static class strings so Tailwind JIT picks
- *    them up. Cards visually anchor the team performance story before the
- *    recruiting hero panel.
+ *    them up.
  *  - Added RecruitingHeroPanel between the metric cards and the tab strip.
  *    Three visual blocks: a coach/school summary line with division
  *    breakdown, an active-or-upcoming event card (active gets the LIVE
@@ -69,6 +70,15 @@ import { useFavorite } from '../hooks/useFavorite'
  *    matching the border color. Heuristic is intentionally brittle — see
  *    isRecruitingType() — and can be replaced with an explicit
  *    is_recruiting flag on game_types when that data model gets cleaned up.
+ *  - Roster moved out of the tab strip into its own prominent section
+ *    above the tabs (RosterSection). Horizontal-scrollable preview of 6
+ *    player cards on phones, "View all" expands to a full grid. Photos
+ *    from team_players.photo_url; initials fallback in cyan-tinted circle.
+ *  - Video gallery added as its own section above the tab strip
+ *    (VideoSection). Manual uploads only (not from AthleteOne). 3-thumb
+ *    preview with "View all" expanding to a full grid. Tap any thumbnail
+ *    to play inline below the gallery — a single shared player slot, not
+ *    stacked per-thumbnail panels, so video real estate stays generous.
  *  - "Colleges Watching This Team" table below the tabs is preserved as a
  *    complementary detail view — the hero pills are a teaser, the table is
  *    the full list with division/conference/games.
@@ -82,7 +92,15 @@ export default function PublicTeamPage() {
   const [attendance, setAttendance] = useState([])
   const [players, setPlayers] = useState([])
   const [staff, setStaff] = useState([])
-  const [activeTab, setActiveTab] = useState('games') // 'games' | 'events' | 'roster' | 'staff'
+  const [activeTab, setActiveTab] = useState('games') // 'games' | 'events' | 'staff'
+  // Sprint 2: roster + videos became prominent sections above the tab
+  // strip rather than tabs themselves. These flags toggle the preview
+  // (top 6 / top 3) vs the expanded full list/grid. playingVideoId tracks
+  // which video the inline player below the gallery is showing — single
+  // shared player avoids stacking N panels for N thumbnails.
+  const [rosterExpanded, setRosterExpanded] = useState(false)
+  const [videosExpanded, setVideosExpanded] = useState(false)
+  const [playingVideoId, setPlayingVideoId] = useState(null)
   const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
   const [isFavorite, setFavorite] = useFavorite(team?.id)
 
@@ -337,6 +355,26 @@ export default function PublicTeamPage() {
     )
   }, [staff])
 
+  // Flat list of videos across all games for the Videos section. Each entry
+  // carries a back-reference to its game so the gallery can show "vs
+  // Opponent · May 24" beneath the thumbnail and route the inline player
+  // when one is tapped. Sorted newest game first; within a game the order
+  // is whatever videosByGame supplied (most recent upload first via the
+  // realtime hook). Recomputes whenever games or videosByGame changes.
+  const allVideos = useMemo(() => {
+    if (!games.length) return []
+    const flat = []
+    games.forEach((g) => {
+      const vids = videosByGame[g.id] || []
+      vids.forEach((v) => flat.push({ ...v, game: g }))
+    })
+    return flat.sort((a, b) => {
+      const aDate = parseGameDate(a.game.game_date)
+      const bDate = parseGameDate(b.game.game_date)
+      return bDate - aDate
+    })
+  }, [games, videosByGame])
+
   const formatDate = (s) => {
     const [y, m, d] = s.split('-')
     return new Date(y, m - 1, d).toLocaleDateString('en-US', {
@@ -358,10 +396,13 @@ export default function PublicTeamPage() {
   // the Conference metric card.
   const standingsPosition = team?.athleteone_metadata?.standings_position
 
-  // Only show Roster/Staff tabs when we actually have data — non-AthleteOne
-  // teams (or teams not yet synced) won't see empty tabs.
+  // Roster is its own prominent section now (Sprint 2), not a tab. Staff
+  // stays as a tab — lower-traffic and the email-on-tap workflow already
+  // works well there. Both still gate on data being present so teams with
+  // no AthleteOne sync don't see empty containers.
   const hasRoster = players.length > 0
   const hasStaff = staff.length > 0
+  const hasVideos = allVideos.length > 0
 
   // Hero panel visibility — show when there's any recruiting story to tell.
   // Either logged attendance OR an active/upcoming event. Off-season teams
@@ -459,9 +500,39 @@ export default function PublicTeamPage() {
               />
             )}
 
-            {/* Tab strip. Games + Events are always present; Roster + Staff
-                appear only when their data has been ingested from AthleteOne.
-                overflow-x-auto handles narrow screens with all four tabs. */}
+            {/* Roster preview section (Sprint 2). Horizontal-scrollable
+                strip of player cards on mobile; auto-fits to a grid on
+                wider viewports. "View all N" expands to the full grid
+                inline. Hides entirely when no roster has been ingested. */}
+            {hasRoster && (
+              <RosterSection
+                players={players}
+                expanded={rosterExpanded}
+                onToggle={() => setRosterExpanded((e) => !e)}
+              />
+            )}
+
+            {/* Video gallery section (Sprint 2). Recent game videos
+                (manually uploaded — NOT from AthleteOne) across all this
+                team's games. Tap a thumbnail to play it inline below the
+                gallery; one shared player slot rather than stacking per
+                thumbnail. "View all N" expands to a full grid. */}
+            {hasVideos && (
+              <VideoSection
+                videos={allVideos}
+                expanded={videosExpanded}
+                onToggle={() => setVideosExpanded((e) => !e)}
+                playingVideoId={playingVideoId}
+                onPlay={(vid) => setPlayingVideoId(vid)}
+                onClose={() => setPlayingVideoId(null)}
+                teamName={team?.name}
+              />
+            )}
+
+            {/* Tab strip. Games + Events are always present; Staff appears
+                only when AthleteOne has populated it. Roster moved out to
+                its own section above (Sprint 2). overflow-x-auto handles
+                narrow screens when all three tabs are present. */}
             <div className="mb-4 border-b border-gray-200 flex gap-1 overflow-x-auto">
               <TabButton
                 active={activeTab === 'games'}
@@ -475,14 +546,6 @@ export default function PublicTeamPage() {
               >
                 Events <span className="text-gray-400 ml-1">({eventGroups.length})</span>
               </TabButton>
-              {hasRoster && (
-                <TabButton
-                  active={activeTab === 'roster'}
-                  onClick={() => setActiveTab('roster')}
-                >
-                  Roster <span className="text-gray-400 ml-1">({players.length})</span>
-                </TabButton>
-              )}
               {hasStaff && (
                 <TabButton
                   active={activeTab === 'staff'}
@@ -538,14 +601,6 @@ export default function PublicTeamPage() {
                   ))}
                 </div>
               )
-            )}
-
-            {activeTab === 'roster' && hasRoster && (
-              <div className="bg-white rounded-lg shadow-md divide-y divide-gray-100 mb-8">
-                {players.map((p) => (
-                  <PlayerRow key={p.id} player={p} />
-                ))}
-              </div>
             )}
 
             {activeTab === 'staff' && hasStaff && (
@@ -805,35 +860,93 @@ function TabButton({ active, onClick, children }) {
 }
 
 /**
- * PlayerRow — one row in the Roster list.
+ * RosterSection — Sprint 2 prominent roster preview above the tab strip.
  *
- * Layout mirrors StaffRow for visual consistency between the two tabs:
- *   - Circular photo (or initials fallback) on the left
- *   - Name on the right, with a subtitle of "#NN · Position · 'YY"
+ * Collapsed: horizontal-scrollable row of up to 6 player cards on phones
+ * (auto-fits to a wider grid on bigger viewports). A "View all N" button
+ * expands the section to a full grid showing every player without
+ * needing to navigate elsewhere.
  *
- * Jersey/position/grad year segments are each conditional, joined by · only
- * when present. Photo URLs come from AthleteOne and are public CDN assets,
- * so we just <img src> them directly with lazy loading.
+ * Expanded: 3-col grid on phone, scaling up to 6-col on desktop, no
+ * horizontal scroll. The toggle becomes "Show less" to collapse back.
+ *
+ * Photos come from team_players.photo_url (AthleteOne CDN assets) with
+ * initials as the fallback when no photo is set. Initials avatars use the
+ * cyan-tinted palette to match the team's brand styling.
  */
-function PlayerRow({ player }) {
+function RosterSection({ players, expanded, onToggle }) {
+  const PREVIEW_COUNT = 6
+  const visible = expanded ? players : players.slice(0, PREVIEW_COUNT)
+  const showToggle = players.length > PREVIEW_COUNT
+
+  return (
+    <section className="mb-5">
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="text-base font-semibold text-gray-800">
+          Roster <span className="text-gray-400 font-normal">({players.length})</span>
+        </h2>
+        {showToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="text-sm text-cyan-700 font-medium hover:underline"
+          >
+            {expanded ? 'Show less' : `View all ${players.length} →`}
+          </button>
+        )}
+      </div>
+      <div
+        className={
+          expanded
+            ? 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2'
+            : 'flex gap-2 overflow-x-auto pb-1 -mx-1 px-1'
+        }
+      >
+        {visible.map((p) => (
+          <PlayerCard key={p.id} player={p} compact={!expanded} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/**
+ * PlayerCard — single tile in the RosterSection.
+ *
+ * Layout:
+ *   [44px circular photo or initials]
+ *   #JERSEY (large)
+ *   Last name (truncated)
+ *   POS · 'YY (small subtitle)
+ *
+ * Width is fixed (w-24, ~96px) so horizontal scroll feels natural on
+ * mobile. The compact prop is informational right now — both states use
+ * the same layout — but keeps a hook for diverging the design later if
+ * the expanded grid wants larger photos or extra fields.
+ */
+function PlayerCard({ player, compact }) {
   const initials =
     ((player.first_name || '').charAt(0) +
       (player.last_name || '').charAt(0)).toUpperCase() || '?'
   const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim()
 
-  // Build subtitle parts, dropping any that are empty so we don't end up
-  // with leading/trailing/double separators.
-  const parts = []
-  if (player.jersey_number != null && player.jersey_number !== '') {
-    parts.push(`#${player.jersey_number}`)
-  }
-  if (player.position) parts.push(player.position)
-  if (player.grad_year) parts.push(`'${String(player.grad_year).slice(-2)}`)
-  const subtitle = parts.join(' · ') || '—'
+  const subtitleParts = []
+  if (player.position) subtitleParts.push(player.position)
+  if (player.grad_year) subtitleParts.push(`'${String(player.grad_year).slice(-2)}`)
+  const subtitle = subtitleParts.join(' · ')
+
+  // Display name — prefer last name in the card for compactness, since
+  // full name doesn't fit in a 96px wide cell. Falls back to first name or
+  // the full name when last_name is missing.
+  const displayName = player.last_name || player.first_name || fullName || '—'
 
   return (
-    <div className="flex items-center gap-3 p-3">
-      <div className="flex-shrink-0 w-12 h-12 rounded-full overflow-hidden bg-gray-100 flex items-center justify-center">
+    <div
+      className={`${
+        compact ? 'flex-shrink-0 w-24' : ''
+      } bg-white border border-gray-200 rounded-md p-2.5 text-center`}
+    >
+      <div className="w-11 h-11 mx-auto mb-1.5 rounded-full overflow-hidden bg-cyan-50 flex items-center justify-center">
         {player.photo_url ? (
           <img
             src={player.photo_url}
@@ -843,14 +956,174 @@ function PlayerRow({ player }) {
             className="w-full h-full object-cover"
           />
         ) : (
-          <span className="text-sm font-bold text-gray-400">{initials}</span>
+          <span className="text-sm font-bold text-cyan-700">{initials}</span>
         )}
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="font-semibold text-sm text-gray-900 truncate">
-          {player.first_name} {player.last_name}
+      {player.jersey_number != null && player.jersey_number !== '' && (
+        <div className="text-sm font-semibold text-gray-900 leading-tight">
+          #{player.jersey_number}
         </div>
-        <div className="text-xs text-gray-500 truncate">{subtitle}</div>
+      )}
+      <div className="text-xs text-gray-700 truncate">{displayName}</div>
+      {subtitle && (
+        <div className="text-[10px] text-gray-400 truncate">{subtitle}</div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * VideoSection — Sprint 2 prominent video gallery above the tab strip.
+ *
+ * Collapsed: 3-thumbnail preview row showing the most recent videos
+ * (across all games, newest first). A "View all N" button expands the
+ * grid to show every video without leaving the page.
+ *
+ * Expanded: 2-col grid on phone, scaling up to 4-col on desktop.
+ *
+ * Tap a thumbnail to play it inline — a single GameVideosPanel-style
+ * player appears beneath the gallery showing the selected video. The
+ * playingVideoId state lives on the parent so the player slot persists
+ * across collapsed/expanded transitions, and a close button hides it.
+ *
+ * Videos are MANUAL uploads — not from AthleteOne. The gallery shows the
+ * opponent, date, and parent event (when present) beneath each thumbnail
+ * so parents can scan "what game is this?" without playing.
+ */
+function VideoSection({
+  videos,
+  expanded,
+  onToggle,
+  playingVideoId,
+  onPlay,
+  onClose,
+  teamName,
+}) {
+  const PREVIEW_COUNT = 3
+  const visible = expanded ? videos : videos.slice(0, PREVIEW_COUNT)
+  const showToggle = videos.length > PREVIEW_COUNT
+  const playing = playingVideoId
+    ? videos.find((v) => v.id === playingVideoId)
+    : null
+
+  return (
+    <section className="mb-5">
+      <div className="flex items-baseline justify-between mb-2">
+        <h2 className="text-base font-semibold text-gray-800">
+          Videos <span className="text-gray-400 font-normal">({videos.length})</span>
+        </h2>
+        {showToggle && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="text-sm text-cyan-700 font-medium hover:underline"
+          >
+            {expanded ? 'Show less' : `View all ${videos.length} →`}
+          </button>
+        )}
+      </div>
+      <div
+        className={
+          expanded
+            ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3'
+            : 'grid grid-cols-1 sm:grid-cols-3 gap-3'
+        }
+      >
+        {visible.map((v) => (
+          <VideoGalleryItem
+            key={v.id}
+            video={v}
+            game={v.game}
+            onPlay={() => onPlay(v.id)}
+            isPlaying={playingVideoId === v.id}
+          />
+        ))}
+      </div>
+
+      {/* Inline player slot — single shared area below the gallery rather
+          than per-thumbnail panels, so we don't stack N players. */}
+      {playing && (
+        <div className="mt-4 bg-white rounded-lg shadow-md p-3 sm:p-4">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold text-gray-900 truncate">
+                {playing.game.is_home ? 'vs' : '@'}{' '}
+                {playing.game.opponent || 'TBD'}
+              </div>
+              <div className="text-xs text-gray-500 truncate">
+                {formatGameDateShort(playing.game.game_date)}
+                {playing.game.events?.event_name && (
+                  <> · {playing.game.events.event_name}</>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close video"
+              className="flex-shrink-0 p-1.5 -m-1.5 rounded-full hover:bg-gray-100 active:bg-gray-200 text-gray-500"
+            >
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                aria-hidden="true"
+              >
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <GameVideosPanel
+            videos={[playing]}
+            game={playing.game}
+            teamName={teamName}
+          />
+        </div>
+      )}
+    </section>
+  )
+}
+
+/**
+ * VideoGalleryItem — single tappable thumbnail tile in the VideoSection.
+ *
+ * 16:9 thumbnail with a centered play overlay. Below: opponent/at-symbol
+ * and a one-line date + parent event subtitle (truncated). When this
+ * video is currently playing, the tile gets a cyan ring to make the
+ * association with the inline player below the gallery obvious.
+ */
+function VideoGalleryItem({ video, game, onPlay, isPlaying }) {
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={onPlay}
+        aria-label={`Play video from game vs ${game.opponent || 'TBD'}`}
+        className={`relative w-full rounded-md overflow-hidden block hover:opacity-90 active:opacity-80 ${
+          isPlaying ? 'ring-2 ring-cyan-500' : ''
+        }`}
+      >
+        <VideoThumbnail videoId={video.id} size="md" />
+        <div
+          className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none"
+          aria-hidden="true"
+        >
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="white">
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        </div>
+      </button>
+      <div className="text-xs font-medium text-gray-900 mt-1.5 truncate">
+        {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
+      </div>
+      <div className="text-[11px] text-gray-500 truncate">
+        {formatGameDateShort(game.game_date)}
+        {game.events?.event_name && (
+          <> · {game.events.event_name}</>
+        )}
       </div>
     </div>
   )
@@ -1438,6 +1711,21 @@ function formatEventDate(start, end) {
   if (!end || end === start) return startStr
   const endStr = e.toLocaleDateString('en-US', opts)
   return `${startStr} – ${endStr}`
+}
+
+/**
+ * formatGameDateShort — "May 24" style, no weekday or year. Used in the
+ * VideoSection gallery beneath each thumbnail where space is tight and
+ * the weekday adds noise. Distinct from the main formatDate helper (which
+ * includes the weekday) and from formatEventDate (which handles ranges).
+ */
+function formatGameDateShort(s) {
+  if (!s) return ''
+  const [y, m, d] = s.split('-')
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  })
 }
 
 function parseGameDate(s) {
