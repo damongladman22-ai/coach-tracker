@@ -18,6 +18,8 @@ import { useFavorite } from '../hooks/useFavorite'
  * The "team identity" hub for parents/players. Shows:
  *  - Identity (name, age group, gender, program, season, standings position)
  *  - Season record (W/L/D/GF/GA/GD) — computed locally from games table
+ *  - Recruiting hero panel — elevates the College Coach Tracker story as
+ *    the second hero of the page (above the tabs)
  *  - Stats (games, schools, coaches)
  *  - Up to four tabs: Games, Events, Roster, Staff
  *      Games + Events are always shown.
@@ -45,6 +47,23 @@ import { useFavorite } from '../hooks/useFavorite'
  *    surfaced — W/L/T remain computed from the games table so manual games
  *    (friendlies, tournaments) are included in the team record. The
  *    AthleteOne-supplied W/L/T is intentionally not displayed here.
+ *
+ * Sprint 1 of Team Hub redesign (May 27):
+ *  - Added RecruitingHeroPanel between the team header card and the tab
+ *    strip. Three visual blocks: a coach/school summary line with division
+ *    breakdown, an active-or-upcoming event card (active gets the LIVE
+ *    tracker CTA with green-to-cyan gradient matching the home page card),
+ *    and a row of top-interest school pills. The panel hides entirely when
+ *    there's no recruiting story yet (zero attendance AND no upcoming
+ *    event), so the page falls back to its prior layout for off-season
+ *    teams without breaking flow.
+ *  - Added a small game-type pill on each EventCard in the Events tab so
+ *    parents can tell showcase / tournament / league events apart at a
+ *    glance. Pill content is the dominant game_types.name across the
+ *    event's games (handles mixed-type events by picking the most common).
+ *  - The existing "Colleges Watching This Team" table below the tabs is
+ *    preserved as a complementary detail view — the hero pills are a
+ *    teaser, the table is the full list with division/conference/games.
  */
 export default function PublicTeamPage() {
   const { teamSlug } = useParams()
@@ -243,6 +262,48 @@ export default function PublicTeamPage() {
       .slice(0, 10)
   }, [attendance])
 
+  // Distinct schools per division — feeds the "D1: 4 · D2: 3 · D3: 6"
+  // breakdown line in the recruiting hero panel. Counts UNIQUE schools per
+  // division (not coaches), since the hero summarizes program-level
+  // interest rather than headcount.
+  const divisionBreakdown = useMemo(() => {
+    const seen = new Set()
+    const counts = new Map()
+    attendance.forEach((a) => {
+      const school = a.coaches?.schools
+      if (!school || seen.has(school.id)) return
+      seen.add(school.id)
+      const div = school.division || 'Other'
+      counts.set(div, (counts.get(div) || 0) + 1)
+    })
+    return counts
+  }, [attendance])
+
+  // Featured event for the hero panel. Today-active beats upcoming; upcoming
+  // is the soonest future event by start_date. Returns null when there's
+  // nothing to surface (off-season, no upcoming events scheduled). String
+  // comparison on yyyy-mm-dd ISO dates is safe and avoids timezone drift.
+  const featuredEvent = useMemo(() => {
+    const todayStr = todayISO()
+
+    const active = eventGroups.find((g) => {
+      const start = g.event.start_date
+      const end = g.event.end_date || start
+      return start <= todayStr && todayStr <= end
+    })
+    if (active) return { ...active, status: 'active' }
+
+    const upcoming = eventGroups
+      .filter((g) => g.event.start_date > todayStr)
+      .sort(
+        (a, b) =>
+          parseGameDate(a.event.start_date) - parseGameDate(b.event.start_date)
+      )[0]
+    if (upcoming) return { ...upcoming, status: 'upcoming' }
+
+    return null
+  }, [eventGroups])
+
   const formatDate = (s) => {
     const [y, m, d] = s.split('-')
     return new Date(y, m - 1, d).toLocaleDateString('en-US', {
@@ -268,6 +329,11 @@ export default function PublicTeamPage() {
   // teams (or teams not yet synced) won't see empty tabs.
   const hasRoster = players.length > 0
   const hasStaff = staff.length > 0
+
+  // Hero panel visibility — show when there's any recruiting story to tell.
+  // Either logged attendance OR an active/upcoming event. Off-season teams
+  // with neither see the original layout (no empty hero shell).
+  const showRecruitingHero = stats.coaches > 0 || featuredEvent != null
 
   return (
     <PullToRefresh onRefresh={async () => { await load() }}>
@@ -359,6 +425,20 @@ export default function PublicTeamPage() {
                 </div>
               )
             })()}
+
+            {/* Recruiting hero panel — Sprint 1 addition. Sits between the
+                team header card and the tab strip. Hides entirely when
+                there's no recruiting story (zero attendance + no upcoming
+                event) so off-season teams keep their previous layout. */}
+            {showRecruitingHero && (
+              <RecruitingHeroPanel
+                stats={stats}
+                divisionBreakdown={divisionBreakdown}
+                featuredEvent={featuredEvent}
+                topColleges={topColleges}
+                teamSlug={teamSlug}
+              />
+            )}
 
             {/* Tab strip. Games + Events are always present; Roster + Staff
                 appear only when their data has been ingested from AthleteOne.
@@ -880,11 +960,197 @@ function GameCard({
 }
 
 /**
+ * RecruitingHeroPanel — Sprint 1 "second hero" for the team page.
+ *
+ * Elevates the College Coach Tracker story above the tabs. Three blocks
+ * (each independently conditional so the panel adapts to wherever the
+ * team is in its season):
+ *
+ *   1. Summary line — "12 coaches · 8 schools" with a "D1: 4 · D2: 3 · ..."
+ *      division breakdown beneath. Shown when any attendance exists; when
+ *      there's no attendance yet but an active/upcoming event is queued,
+ *      this is replaced by a one-liner inviting parents to start logging.
+ *
+ *   2. Featured event card — when an event is currently active (today
+ *      falls within the date range), the card shows a green pulsing "Active
+ *      now" badge plus a green-to-cyan gradient "Live Tracker" button
+ *      matching the home page TeamCard for visual consistency. When the
+ *      next event is upcoming (future), the card is informational only
+ *      ("Up next" gray badge + dates).
+ *
+ *   3. Top interest pills — top 5 schools by attendance count, each
+ *      showing "School Name · N" (games attended). Non-interactive pills
+ *      for Sprint 1; tapping behavior can be wired later once the Coach
+ *      Directory has a school-filter parameter to deep-link to.
+ *
+ * The parent component is responsible for hiding the panel entirely when
+ * there's nothing to show (zero attendance AND no featuredEvent) so this
+ * component can assume one or the other is present.
+ */
+function RecruitingHeroPanel({
+  stats,
+  divisionBreakdown,
+  featuredEvent,
+  topColleges,
+  teamSlug,
+}) {
+  // Canonical division ordering for the breakdown line. Anything not in
+  // this list is dropped (e.g. "Other" rolls up to nothing rather than
+  // crowding the line). NJCAA and JC are kept separate in case the data
+  // distinguishes them, but they typically render side by side.
+  const divOrder = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'NJCAA', 'JC']
+  const divisionItems = divOrder
+    .map((d) => [d, divisionBreakdown.get(d) || 0])
+    .filter(([, n]) => n > 0)
+
+  const hasAttendance = stats.coaches > 0
+
+  return (
+    <div className="bg-gradient-to-br from-cyan-50 to-blue-50 border border-cyan-200 rounded-lg shadow-sm p-4 sm:p-5 mb-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="text-lg" aria-hidden="true">🎓</span>
+        <h2 className="text-base font-semibold text-cyan-900">
+          College recruiting
+        </h2>
+      </div>
+
+      {hasAttendance ? (
+        <>
+          <p className="text-xl sm:text-2xl font-bold text-cyan-900 leading-tight">
+            {stats.coaches} {stats.coaches === 1 ? 'coach' : 'coaches'}
+            <span className="text-cyan-700 font-medium"> · </span>
+            {stats.schools} {stats.schools === 1 ? 'school' : 'schools'}
+          </p>
+          {divisionItems.length > 0 && (
+            <p className="text-xs sm:text-sm text-cyan-700 mt-1 mb-3">
+              {divisionItems.map(([d, n]) => `${d}: ${n}`).join(' · ')}
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-cyan-800 mb-3">
+          Track which college coaches attend this team's games. Logs from
+          parents/players will appear here.
+        </p>
+      )}
+
+      {featuredEvent && (
+        <FeaturedEventCard group={featuredEvent} teamSlug={teamSlug} />
+      )}
+
+      {topColleges.length > 0 && (
+        <div className={featuredEvent ? 'mt-3' : ''}>
+          <p className="text-[10px] uppercase tracking-wide font-medium text-cyan-700 mb-1.5">
+            Top interest
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {topColleges.slice(0, 5).map((s) => (
+              <span
+                key={s.id}
+                className="text-xs px-2.5 py-1 bg-white border border-cyan-200 text-cyan-900 rounded-full whitespace-nowrap"
+              >
+                {s.school}
+                <span className="text-cyan-600 font-medium ml-1">
+                  · {s.games}
+                </span>
+              </span>
+            ))}
+            {topColleges.length > 5 && (
+              <span className="text-xs px-2.5 py-1 text-cyan-700 font-medium">
+                +{topColleges.length - 5} more
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * FeaturedEventCard — small card inside the RecruitingHeroPanel showing
+ * the active or upcoming event.
+ *
+ *  - Active (today within date range): green pulsing "Active now" badge
+ *    + green-to-cyan "Live Tracker" gradient CTA. Also surfaces "N
+ *    schools logged" inline with the date so parents see momentum.
+ *  - Upcoming (future start_date): gray "Up next" badge, date range, no
+ *    CTA — purely informational so the page doesn't push parents toward
+ *    a tracker that isn't open yet.
+ */
+function FeaturedEventCard({ group, teamSlug }) {
+  const { event, attendance, status } = group
+  const isActive = status === 'active'
+
+  // Distinct schools logged at this event so far — only surfaced when the
+  // event is active so parents can see "3 schools logged" as the recruiting
+  // momentum builds. For upcoming events there's no attendance yet to count.
+  let activeSchoolsCount = 0
+  if (isActive) {
+    const schoolIds = new Set()
+    attendance.forEach((a) => {
+      if (a.coaches?.schools?.id) schoolIds.add(a.coaches.schools.id)
+    })
+    activeSchoolsCount = schoolIds.size
+  }
+
+  return (
+    <div className="bg-white rounded-md p-3 flex items-center justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <span
+          className={
+            isActive
+              ? 'text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 inline-flex items-center gap-1'
+              : 'text-[10px] uppercase tracking-wide font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 inline-flex items-center gap-1'
+          }
+        >
+          {isActive && (
+            <span
+              className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"
+              aria-hidden="true"
+            />
+          )}
+          {isActive ? 'Active now' : 'Up next'}
+        </span>
+        <p className="text-sm font-semibold text-gray-900 truncate mt-1">
+          {event.event_name}
+        </p>
+        <p className="text-xs text-gray-600 truncate">
+          {formatEventDate(event.start_date, event.end_date)}
+          {isActive && activeSchoolsCount > 0 && (
+            <>
+              <span className="text-gray-400"> · </span>
+              <span className="text-purple-700 font-medium">
+                {activeSchoolsCount}{' '}
+                {activeSchoolsCount === 1 ? 'school' : 'schools'} logged
+              </span>
+            </>
+          )}
+        </p>
+      </div>
+      {isActive && (
+        <Link
+          to={`/e/${event.slug}/${teamSlug}`}
+          className="bg-gradient-to-r from-emerald-500 to-cyan-600 text-white text-xs font-semibold rounded-md px-3 py-2 flex-shrink-0 hover:opacity-95 active:opacity-90 whitespace-nowrap"
+        >
+          Live Tracker →
+        </Link>
+      )}
+    </div>
+  )
+}
+
+/**
  * EventCard — one entry in the Events tab.
  *
  * A self-contained scorecard for the team at one event. Shows event name,
  * date range, location, and a row of stat pills (GP · W-L-D · GF·GA) along
  * with an optional coach-attendance pill.
+ *
+ * Sprint 1 addition: a small game-type pill inline with the event name
+ * (e.g. "Showcase", "League Play", "Friendly"). Content comes from the
+ * dominant game_types.name across the event's games — for mixed-type
+ * events (rare but possible), the most common wins.
  *
  * Smart routing on tap to avoid a flash from the live tracker's internal
  * redirect logic:
@@ -903,6 +1169,19 @@ function EventCard({ event, games, attendance, teamSlug }) {
   })
   const schoolsCount = schoolIds.size
 
+  // Dominant game type across the event's games — drives the inline pill
+  // next to the event name. Skipped when no game has a game_type set.
+  const eventGameType = (() => {
+    const counts = new Map()
+    games.forEach((g) => {
+      const name = g.game_types?.name
+      if (!name) return
+      counts.set(name, (counts.get(name) || 0) + 1)
+    })
+    if (counts.size === 0) return null
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0][0]
+  })()
+
   const allClosed = games.length > 0 && games.every((g) => g.is_closed)
   const destHref = allClosed
     ? `/e/${event.slug}/${teamSlug}/summary`
@@ -915,9 +1194,16 @@ function EventCard({ event, games, attendance, teamSlug }) {
     >
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-gray-900 truncate">
-            {event.event_name}
-          </h3>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-semibold text-gray-900 truncate">
+              {event.event_name}
+            </h3>
+            {eventGameType && (
+              <span className="text-[10px] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200 flex-shrink-0">
+                {eventGameType}
+              </span>
+            )}
+          </div>
           <div className="text-xs text-gray-500 mt-0.5">
             {formatEventDate(event.start_date, event.end_date)}
             {event.location ? ` · ${event.location}` : ''}
@@ -989,6 +1275,20 @@ function parseGameDate(s) {
   if (!s) return new Date()
   const [y, m, d] = s.split('-')
   return new Date(y, m - 1, d)
+}
+
+/**
+ * todayISO — today's date as yyyy-mm-dd in local time. Safe to
+ * string-compare against event.start_date / end_date which are stored as
+ * date-only ISO strings (no time component, no timezone). Using
+ * toISOString() would shift across midnight in non-UTC timezones.
+ */
+function todayISO() {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
 }
 
 /**
