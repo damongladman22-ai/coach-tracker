@@ -498,7 +498,6 @@ export default function PublicTeamPage() {
                 featuredEvent={featuredEvent}
                 topColleges={topColleges}
                 teamSlug={teamSlug}
-                teamGender={team.gender}
               />
             )}
 
@@ -641,13 +640,7 @@ export default function PublicTeamPage() {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {topColleges.map((s) => {
-                        const href = `/directory?${new URLSearchParams({
-                          school: String(s.id),
-                          ...(directoryGenderCode(team?.gender)
-                            ? { gender: directoryGenderCode(team.gender) }
-                            : {}),
-                          from: teamSlug,
-                        }).toString()}`
+                        const href = teamCollegeHref(teamSlug, s.id)
                         const go = () => navigate(href)
                         return (
                           <tr
@@ -662,7 +655,7 @@ export default function PublicTeamPage() {
                               }
                             }}
                             className="cursor-pointer hover:bg-cyan-50 transition-colors focus:outline-none focus:bg-cyan-50"
-                            title={`View ${s.school} coaches in the directory`}
+                            title={`See ${s.school} coaches who watched our games`}
                           >
                             <td className="px-4 py-3 text-sm font-medium text-gray-900">
                               {s.school}
@@ -1385,7 +1378,6 @@ function RecruitingHeroPanel({
   featuredEvent,
   topColleges,
   teamSlug,
-  teamGender,
 }) {
   // Canonical division ordering for the breakdown line. Anything not in
   // this list is dropped (e.g. "Other" rolls up to nothing rather than
@@ -1397,12 +1389,6 @@ function RecruitingHeroPanel({
     .filter(([, n]) => n > 0)
 
   const hasAttendance = stats.coaches > 0
-
-  // Gender code for directory deep-links. team.gender comes in human form
-  // ("Boys" / "Girls") so translate to the W/M codes the directory expects.
-  // Falls back to undefined when the team gender is something we don't
-  // recognize, in which case the directory uses its own default.
-  const genderCode = directoryGenderCode(teamGender)
 
   // Scroll to the "Colleges Watching This Team" section below. The id is
   // anchored on that section; scroll-mt-20 there gives the header room.
@@ -1463,9 +1449,9 @@ function RecruitingHeroPanel({
             {topColleges.slice(0, 5).map((s) => (
               <Link
                 key={s.id}
-                to={directoryHref(s.id, genderCode, teamSlug)}
+                to={teamCollegeHref(teamSlug, s.id)}
                 className="text-xs px-2.5 py-1 bg-white border border-cyan-200 text-cyan-900 rounded-full whitespace-nowrap hover:bg-cyan-100 hover:border-cyan-300 transition-colors"
-                title={`View ${s.school} coaches in the directory`}
+                title={`See ${s.school} coaches who watched our games`}
               >
                 {s.school}
                 <span className="text-cyan-600 font-medium ml-1">
@@ -1490,35 +1476,15 @@ function RecruitingHeroPanel({
 }
 
 /**
- * directoryGenderCode — translate a team's human-readable gender into the
- * W/M code the Coach Directory uses for its program_gender filter. The
- * mapping is forgiving on casing/wording (catches "Girls", "girls", "G",
- * "Boys", "Boys 04", etc.) but returns undefined for anything else, so
- * mixed/coed/unknown teams fall through to the directory's own default
- * instead of getting locked into an inaccurate filter.
+ * teamCollegeHref — build the URL for the contextual team × college
+ * recruiting detail page (/t/<teamSlug>/college/<schoolId>). This is
+ * where pills and table rows on the team page drill into — it's the
+ * "what did this college do for OUR team" view, not the general
+ * directory. The new page handles its own back-to-team affordance via
+ * the URL it was navigated from.
  */
-function directoryGenderCode(teamGender) {
-  if (!teamGender) return undefined
-  const first = String(teamGender).trim().charAt(0).toUpperCase()
-  if (first === 'G' || first === 'W') return 'W'
-  if (first === 'B' || first === 'M') return 'M'
-  return undefined
-}
-
-/**
- * directoryHref — build a /directory deep-link locked to one school. The
- * optional gender code pre-aligns the directory's W/M filter so the
- * landing experience doesn't show "no coaches" because of a mismatch
- * between the team's gender and the user's last-saved preference.
- * The fromSlug carries the team's slug so the directory can show a
- * "Back to team" link, preserving the user's sense of where they came
- * from when they deep-linked through a recruiting hero pill.
- */
-function directoryHref(schoolId, genderCode, fromSlug) {
-  const params = new URLSearchParams({ school: String(schoolId) })
-  if (genderCode) params.set('gender', genderCode)
-  if (fromSlug) params.set('from', fromSlug)
-  return `/directory?${params.toString()}`
+function teamCollegeHref(teamSlug, schoolId) {
+  return `/t/${encodeURIComponent(teamSlug)}/college/${encodeURIComponent(schoolId)}`
 }
 
 /**
