@@ -174,25 +174,33 @@ export default function ClubDashboard() {
           gameToSchools.get(a.game_id).add(sid)
         })
 
-        // Buzz: trailing 7 days of attendance activity, grouped by school,
-        // with the most-watched team per school so the pill click-through
+        // Buzz: trailing 7 days of recruiting activity. Filtered on
+        // game_date (when the game actually happened), NOT attendance
+        // created_at (when the row was inserted). The user-facing
+        // concept of "this week's buzz" is recent coach activity at
+        // games — backfilling an old game's attendance today shouldn't
+        // surface those coaches as "this week." Grouped by school, with
+        // the most-watched team per school so the pill click-through
         // can land on the contextual team × college page (not the
         // generic directory).
         const sevenDaysAgo = new Date()
         sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
         sevenDaysAgo.setHours(0, 0, 0, 0)
         const gameIdToTeamId = new Map()
+        const gameIdToDate = new Map()
         ;(games || []).forEach((g) => {
           gameIdToTeamId.set(g.id, g.team_id)
+          if (g.game_date) {
+            gameIdToDate.set(g.id, parseDate(g.game_date))
+          }
         })
         const recentCoachIds = new Set()
         const recentSchoolIds = new Set()
         const recentTeamIds = new Set()
         const recentBySchool = new Map() // schoolId -> { name, games:Set, teamCounts:Map }
         attRows.forEach((a) => {
-          if (!a.created_at) return
-          const ts = new Date(a.created_at)
-          if (Number.isNaN(ts.getTime()) || ts < sevenDaysAgo) return
+          const gameDate = gameIdToDate.get(a.game_id)
+          if (!gameDate || gameDate < sevenDaysAgo) return
           const schoolId = a.coaches?.school_id
           const schoolName = a.coaches?.schools?.school
           const teamId = gameIdToTeamId.get(a.game_id)
