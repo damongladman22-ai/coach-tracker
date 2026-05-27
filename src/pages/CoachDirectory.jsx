@@ -26,6 +26,10 @@ export default function CoachDirectory() {
   const isAdminContext = searchParams.get('context') === 'admin';
   const urlSchoolId = searchParams.get('school');
   const urlGender = searchParams.get('gender');
+  // 'from' is the team slug the user came from when deep-linked here via
+  // a recruiting hero pill. Used only to show a "Back to team" link near
+  // the top — no other behavioral effect.
+  const fromTeamSlug = searchParams.get('from');
   
   const [coaches, setCoaches] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -681,6 +685,22 @@ export default function CoachDirectory() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* Back to team page — shown when arrived via a recruiting hero
+            pill deep-link (URL has ?from=<teamSlug>). Keeps the user's
+            sense of place: they came from a specific team and the way
+            home is one tap, not a browser back guess. */}
+        {fromTeamSlug && (
+          <Link
+            to={`/t/${fromTeamSlug}`}
+            className="inline-flex items-center gap-1 text-sm text-cyan-700 hover:text-cyan-900 font-medium mb-3"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            Back to team
+          </Link>
+        )}
+
         {/* School lock banner — shown when arrived via a deep link like
             /directory?school=123. Makes it obvious that results are
             scoped to one school, with a clear way out. */}

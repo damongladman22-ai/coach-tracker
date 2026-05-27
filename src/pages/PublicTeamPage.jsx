@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getActiveSeasonId } from '../lib/season'
 import { computeRecord, gameResult } from '../components/ScoreInput'
@@ -85,6 +85,7 @@ import { useFavorite } from '../hooks/useFavorite'
  */
 export default function PublicTeamPage() {
   const { teamSlug } = useParams()
+  const navigate = useNavigate()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [team, setTeam] = useState(null)
@@ -639,25 +640,48 @@ export default function PublicTeamPage() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {topColleges.map((s) => (
-                        <tr key={s.id}>
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                            {s.school}
-                            <span className="text-gray-400 text-xs ml-2">
-                              {s.city && s.state ? `${s.city}, ${s.state}` : ''}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 hidden sm:table-cell">
-                            {s.division || '—'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">
-                            {s.conference || '—'}
-                          </td>
-                          <td className="px-4 py-3 text-sm text-right font-medium">
-                            {s.games}
-                          </td>
-                        </tr>
-                      ))}
+                      {topColleges.map((s) => {
+                        const href = `/directory?${new URLSearchParams({
+                          school: String(s.id),
+                          ...(directoryGenderCode(team?.gender)
+                            ? { gender: directoryGenderCode(team.gender) }
+                            : {}),
+                          from: teamSlug,
+                        }).toString()}`
+                        const go = () => navigate(href)
+                        return (
+                          <tr
+                            key={s.id}
+                            role="link"
+                            tabIndex={0}
+                            onClick={go}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault()
+                                go()
+                              }
+                            }}
+                            className="cursor-pointer hover:bg-cyan-50 transition-colors focus:outline-none focus:bg-cyan-50"
+                            title={`View ${s.school} coaches in the directory`}
+                          >
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                              {s.school}
+                              <span className="text-gray-400 text-xs ml-2">
+                                {s.city && s.state ? `${s.city}, ${s.state}` : ''}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 hidden sm:table-cell">
+                              {s.division || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-gray-600 hidden md:table-cell">
+                              {s.conference || '—'}
+                            </td>
+                            <td className="px-4 py-3 text-sm text-right font-medium">
+                              {s.games}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1439,7 +1463,7 @@ function RecruitingHeroPanel({
             {topColleges.slice(0, 5).map((s) => (
               <Link
                 key={s.id}
-                to={directoryHref(s.id, genderCode)}
+                to={directoryHref(s.id, genderCode, teamSlug)}
                 className="text-xs px-2.5 py-1 bg-white border border-cyan-200 text-cyan-900 rounded-full whitespace-nowrap hover:bg-cyan-100 hover:border-cyan-300 transition-colors"
                 title={`View ${s.school} coaches in the directory`}
               >
@@ -1486,10 +1510,14 @@ function directoryGenderCode(teamGender) {
  * optional gender code pre-aligns the directory's W/M filter so the
  * landing experience doesn't show "no coaches" because of a mismatch
  * between the team's gender and the user's last-saved preference.
+ * The fromSlug carries the team's slug so the directory can show a
+ * "Back to team" link, preserving the user's sense of where they came
+ * from when they deep-linked through a recruiting hero pill.
  */
-function directoryHref(schoolId, genderCode) {
+function directoryHref(schoolId, genderCode, fromSlug) {
   const params = new URLSearchParams({ school: String(schoolId) })
   if (genderCode) params.set('gender', genderCode)
+  if (fromSlug) params.set('from', fromSlug)
   return `/directory?${params.toString()}`
 }
 
