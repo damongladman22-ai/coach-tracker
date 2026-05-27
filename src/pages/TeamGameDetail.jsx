@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { gameResult } from '../components/ScoreInput'
@@ -50,6 +50,26 @@ export default function TeamGameDetail() {
   // parents land on a working player on arrival; user taps thumbnails
   // below to switch.
   const [selectedVideoId, setSelectedVideoId] = useState(null)
+  // Player container ref — used to scrollIntoView when the user taps a
+  // thumbnail. On mobile the player can sit below the thumbnail strip
+  // and out of viewport, so without this users would tap a thumbnail
+  // and not see anything change until they scrolled down to find the
+  // updated player.
+  const playerRef = useRef(null)
+
+  // Tap-thumbnail handler — swap the selected video and scroll the
+  // player into view. The scroll is deferred to the next animation
+  // frame so React has committed the re-render with the new video
+  // before we measure / scroll to it.
+  const handleSelectVideo = (videoId) => {
+    setSelectedVideoId(videoId)
+    requestAnimationFrame(() => {
+      playerRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    })
+  }
 
   const load = async () => {
     setLoading(true)
@@ -375,7 +395,7 @@ export default function TeamGameDetail() {
                           <button
                             key={v.id}
                             type="button"
-                            onClick={() => setSelectedVideoId(v.id)}
+                            onClick={() => handleSelectVideo(v.id)}
                             className={`relative aspect-video rounded overflow-hidden ring-2 transition-all ${
                               isSelected
                                 ? 'ring-cyan-500'
@@ -392,11 +412,13 @@ export default function TeamGameDetail() {
                   )}
 
                   {selectedVideo && (
-                    <GameVideosPanel
-                      videos={[selectedVideo]}
-                      game={game}
-                      teamName={team?.name}
-                    />
+                    <div ref={playerRef} className="scroll-mt-4">
+                      <GameVideosPanel
+                        videos={[selectedVideo]}
+                        game={game}
+                        teamName={team?.name}
+                      />
+                    </div>
                   )}
                 </section>
               )}
