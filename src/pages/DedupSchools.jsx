@@ -144,12 +144,19 @@ export default function DedupSchools({ session }) {
     return name
       .toLowerCase()
       .trim()
-      // Remove common suffixes/prefixes
+      // Strip leading "The " — safe, doesn't conflate distinct schools.
       .replace(/^the\s+/, '')
-      .replace(/\s+university$/i, '')
-      .replace(/\s+college$/i, '')
-      .replace(/\s+of\s+/g, ' ')
-      // Normalize punctuation and spacing
+      // DO NOT strip " University" / " College" / " of " suffixes — those
+      // distinguish genuinely different schools that share a base name:
+      //   Georgetown College (KY, NAIA) ≠ Georgetown University (DC, D1)
+      //   Regis College (MA, D3)        ≠ Regis University (CO, D2)
+      //   Simpson College (IA, D3)      ≠ Simpson University (CA, NAIA)
+      //   Boston College                ≠ Boston University
+      //   Wesleyan College (GA)         ≠ Wesleyan University (CT)
+      // Stripping them collapses these distinct pairs into the same key
+      // and causes the bulk-merge to delete one side. Same-school
+      // formatting variants are still caught by the fuzzy-match path.
+      // Normalize punctuation and spacing.
       .replace(/[.,\-–—]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -161,19 +168,23 @@ export default function DedupSchools({ session }) {
     const norm1 = normalizeSchoolName(a.school)
     const norm2 = normalizeSchoolName(b.school)
 
-    // Exact match on full name
-    if (name1 === name2) {
-      return 'exact'
-    }
-
-    // Exact match on normalized name
-    if (norm1 === norm2) {
-      return 'exact'
-    }
-
-    // Check if same state (for fuzzy matching, should be in same state)
-    const sameState = a.state && b.state && 
+    // Check if same state (now required for exact matches as a safety
+    // net — two schools can legitimately share a name across states)
+    const sameState = a.state && b.state &&
       a.state.toLowerCase() === b.state.toLowerCase()
+
+    // Exact match on full name — but only if same state, or one of the
+    // records has no state (legacy / unknown). This prevents
+    // "Concordia University" in MN being merged with "Concordia
+    // University" in OR.
+    if (name1 === name2 && (sameState || !a.state || !b.state)) {
+      return 'exact'
+    }
+
+    // Exact match on normalized name — same constraint
+    if (norm1 === norm2 && (sameState || !a.state || !b.state)) {
+      return 'exact'
+    }
 
     // Fuzzy matching - check Levenshtein distance on normalized names
     const distance = levenshtein(norm1, norm2)
