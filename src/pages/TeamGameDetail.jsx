@@ -133,13 +133,24 @@ export default function TeamGameDetail() {
 
       // Videos for this game — direct query rather than the realtime
       // hook used on the team page, since this is one game and the
-      // websocket-via-polling subscribe path isn't worth it. Order by
-      // most-recent uploads first.
-      const { data: videosData } = await supabase
+      // websocket-via-polling subscribe path isn't worth it. Matches the
+      // hook's column selection, the upload_status='ready' filter, and
+      // the uploaded_at ordering so the page-level behavior is
+      // consistent with the team-page video gallery. (Bug history: an
+      // earlier draft of this query ordered by 'created_at' which
+      // doesn't exist on this table; PostgREST returned an error and
+      // the videos array stayed empty, so the section never rendered.)
+      const { data: videosData, error: videosErr } = await supabase
         .from('videos')
-        .select('*')
+        .select(
+          'id, game_id, title, duration_seconds, file_size_bytes, mime_type, uploaded_at'
+        )
         .eq('game_id', gameId)
-        .order('created_at', { ascending: false })
+        .eq('upload_status', 'ready')
+        .order('uploaded_at', { ascending: false })
+      if (videosErr) {
+        console.error('TeamGameDetail videos query failed:', videosErr)
+      }
       setVideos(videosData || [])
       if (videosData && videosData.length > 0) {
         setSelectedVideoId(videosData[0].id)
