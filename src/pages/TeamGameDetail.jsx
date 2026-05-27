@@ -334,11 +334,12 @@ export default function TeamGameDetail() {
                 {/* Event context — link to the parent event when the
                     game belongs to one. Helps parents jump to the full
                     event slate (other teams, other games this team
-                    played at the same event). */}
+                    played at the same event). Passes ?from=<teamSlug>
+                    so the event page shows a "Back to team" link. */}
                 {game.events?.slug && (
                   <div className="mt-3 pt-3 border-t border-gray-100">
                     <Link
-                      to={`/e/${game.events.slug}`}
+                      to={`/e/${game.events.slug}?from=${encodeURIComponent(team.slug || teamSlug)}`}
                       className="inline-flex items-center gap-1 text-sm text-cyan-700 hover:text-cyan-900 font-medium"
                     >
                       Part of {game.events.event_name}
@@ -351,19 +352,21 @@ export default function TeamGameDetail() {
                     workflow so parents can still get to live logging or
                     the per-event summary. The unified game page is
                     read-only; this link is the bridge to the editing
-                    flow when one is appropriate. */}
+                    flow when one is appropriate. ?from=<teamSlug> rides
+                    along so the destination page can offer a back link
+                    to where the user came from. */}
                 {game.events?.slug && (
                   <div className="mt-3">
                     {!isPast && !game.is_closed ? (
                       <Link
-                        to={`/e/${game.events.slug}/${team.slug || teamSlug}`}
+                        to={`/e/${game.events.slug}/${team.slug || teamSlug}?from=${encodeURIComponent(team.slug || teamSlug)}`}
                         className="inline-flex items-center justify-center w-full sm:w-auto px-4 py-2 bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 rounded-lg text-sm font-medium"
                       >
                         Open Live Tracker
                       </Link>
                     ) : (
                       <Link
-                        to={`/e/${game.events.slug}/${team.slug || teamSlug}/summary`}
+                        to={`/e/${game.events.slug}/${team.slug || teamSlug}/summary?from=${encodeURIComponent(team.slug || teamSlug)}`}
                         className="inline-flex items-center justify-center w-full sm:w-auto px-4 py-2 bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 rounded-lg text-sm font-medium"
                       >
                         Event Summary
@@ -460,7 +463,7 @@ export default function TeamGameDetail() {
                   </p>
                   {game.events?.slug && !isPast && !game.is_closed && (
                     <Link
-                      to={`/e/${game.events.slug}/${team.slug || teamSlug}`}
+                      to={`/e/${game.events.slug}/${team.slug || teamSlug}?from=${encodeURIComponent(team.slug || teamSlug)}`}
                       className="inline-block mt-2 text-sm text-cyan-700 hover:text-cyan-900 font-medium"
                     >
                       Open the live tracker to log coaches →

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRealtimeAttendance } from '../hooks/useRealtimeAttendance';
 import { 
@@ -27,6 +27,12 @@ import { useRealtimeVideos } from '../hooks/useRealtimeVideos';
  */
 export default function TeamGames() {
   const { eventSlug, teamSlug } = useParams();
+  const [searchParams] = useSearchParams();
+  // ?from=<teamSlug> carries the team the user came from (e.g. via the
+  // game detail page's "Open Live Tracker" button). We use it to show a
+  // "Back to team" affordance — the team name in the dark header is
+  // technically a link, but its styling doesn't read as back navigation.
+  const fromTeamSlug = searchParams.get('from');
   const navigate = useNavigate();
   
   // Page data
@@ -273,6 +279,21 @@ export default function TeamGames() {
       <header className="op-header border-b border-gray-700 sticky top-0 z-40">
         <div className="op-gradient-border"></div>
         <div className="px-4 py-3">
+          {/* Back to team — surfaced explicitly when arrived via a
+              ?from=<teamSlug> deep-link (e.g. from the game detail
+              page). The team-name link below is also a back path but
+              doesn't read as navigation; this affordance does. */}
+          {fromTeamSlug && (
+            <Link
+              to={`/t/${fromTeamSlug}`}
+              className="inline-flex items-center gap-1 text-sm text-cyan-300 hover:text-cyan-100 font-medium mb-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="m15 18-6-6 6-6" />
+              </svg>
+              Back to team
+            </Link>
+          )}
           {/* Breadcrumb navigation */}
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2 text-sm text-gray-400">

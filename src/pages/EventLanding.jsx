@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { PageLoader, ErrorMessage } from '../components/LoadingStates';
 import OPLogo from '../components/OPLogo';
@@ -13,6 +13,11 @@ import HamburgerMenu from '../components/HamburgerMenu';
  */
 export default function EventLanding() {
   const { eventSlug } = useParams();
+  const [searchParams] = useSearchParams();
+  // ?from=<teamSlug> carries the team the user came from (e.g. via the
+  // game detail page's "Part of <event>" link). When present we show a
+  // "Back to team" affordance so the user doesn't lose their place.
+  const fromTeamSlug = searchParams.get('from');
   
   const [event, setEvent] = useState(null);
   const [eventTeams, setEventTeams] = useState([]);
@@ -167,6 +172,24 @@ export default function EventLanding() {
     return today >= startDate && today < endDate;
   };
 
+  // Whether the event has ended. Used to hide the "Live Tracker /
+  // View Games" CTA on past events — a long-finished event with games
+  // an admin forgot to close was still showing the live-tracker button,
+  // which was confusing and wrong. After the event ends, Summary is the
+  // only thing parents should see.
+  const isEventPast = () => {
+    if (!event) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const endDateStr = event.end_date || event.start_date;
+    const [endYear, endMonth, endDay] = endDateStr.split('-');
+    const endDate = new Date(endYear, endMonth - 1, endDay);
+    endDate.setDate(endDate.getDate() + 1); // make inclusive
+
+    return today >= endDate;
+  };
+
   if (loading) {
     return <PageLoader message="Loading event..." />;
   }
@@ -184,6 +207,7 @@ export default function EventLanding() {
   }
 
   const active = isEventActive();
+  const past = isEventPast();
 
   // Calculate totals
   const totalSchools = new Set(
@@ -236,6 +260,22 @@ export default function EventLanding() {
       </header>
 
       <div className="max-w-4xl mx-auto px-4 py-6">
+        {/* Back to team page — shown when arrived from a team page (e.g.
+            via the game detail "Part of <event>" link). The breadcrumb
+            in the dark header only goes back to Home; this gives the
+            user one-tap recovery to where they actually came from. */}
+        {fromTeamSlug && (
+          <Link
+            to={`/t/${fromTeamSlug}`}
+            className="inline-flex items-center gap-1 text-sm text-cyan-700 hover:text-cyan-900 font-medium mb-3"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+            Back to team
+          </Link>
+        )}
+
         {/* Compact stat row — replaces the old Event Overview card */}
         <div className="bg-white rounded-lg shadow-md p-4 mb-5">
           <div className="grid grid-cols-4 gap-2">
@@ -289,7 +329,13 @@ export default function EventLanding() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      {stats.hasOpenGames && (
+                      {/* Live Tracker / View Games button — only shown
+                          while the event hasn't ended yet. After the
+                          event is past, even open (unclosed) games
+                          shouldn't surface this CTA: there's nothing
+                          live to track anymore. Summary becomes the
+                          only action. */}
+                      {stats.hasOpenGames && !past && (
                         <Link
                           to={`/e/${eventSlug}/${et.slug}`}
                           className="flex-1 sm:flex-none bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 text-center"
@@ -300,7 +346,7 @@ export default function EventLanding() {
                       <Link
                         to={`/e/${eventSlug}/${et.slug}/summary`}
                         className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium text-center ${
-                          stats.hasOpenGames 
+                          stats.hasOpenGames && !past
                             ? 'bg-green-100 text-green-700 hover:bg-green-200'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}

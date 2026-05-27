@@ -1,18 +1,27 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 
 /**
  * Floating Feedback Button
- * 
+ *
  * Displays a small floating button that opens a modal for submitting feedback.
  * Auto-captures the current page URL for context.
- * 
+ *
  * Also listens for a window 'open-feedback' event so other components (like
  * the HamburgerMenu's "Submit Feedback" item) can trigger the same modal
  * without lifting state. Belt-and-suspenders: floating button + menu item
  * → same modal.
- * 
+ *
+ * Rendering: the button + modal are rendered via a React portal directly
+ * into document.body. This is necessary because some parent pages wrap
+ * their content in PullToRefresh, which uses a CSS transform to drive the
+ * pull animation. A transformed ancestor creates a new containing block
+ * for position: fixed descendants — so without the portal the button
+ * sticks to the bottom of the scrollable content instead of floating
+ * above the viewport. The portal escapes the transform tree entirely.
+ *
  * Props:
  * - position: 'bottom-left' (default) or 'bottom-right'
  * - offset: additional bottom offset in pixels (for pages with bottom nav)
@@ -96,7 +105,14 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
     ? 'right-4' 
     : 'left-4';
 
-  return (
+  // Bail before portal if document.body somehow isn't available (e.g.
+  // during a server-side render path). Vite SPAs always have it on the
+  // client, but the guard keeps this safe in any environment.
+  if (typeof document === 'undefined' || !document.body) {
+    return null;
+  }
+
+  return createPortal(
     <>
       {/* Floating Button */}
       <button
@@ -226,6 +242,7 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
           </div>
         </div>
       )}
-    </>
+    </>,
+    document.body
   );
 }
