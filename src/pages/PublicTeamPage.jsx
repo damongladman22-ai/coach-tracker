@@ -291,17 +291,27 @@ export default function PublicTeamPage() {
   // is the soonest future event by start_date. Returns null when there's
   // nothing to surface (off-season, no upcoming events scheduled). String
   // comparison on yyyy-mm-dd ISO dates is safe and avoids timezone drift.
+  //
+  // Filters out season-long events (>30 days) — they shouldn't hijack the
+  // hero panel as "Active now" just because we're partway through the
+  // conference season. The hero is reserved for discrete, time-bounded
+  // events where "Log attendance" actually makes sense as a call to action.
   const featuredEvent = useMemo(() => {
     const todayStr = todayISO()
 
-    const active = eventGroups.find((g) => {
+    const discreteEvents = eventGroups.filter((g) => {
+      const days = getEventDurationDays(g.event.start_date, g.event.end_date)
+      return days <= 30
+    })
+
+    const active = discreteEvents.find((g) => {
       const start = g.event.start_date
       const end = g.event.end_date || start
       return start <= todayStr && todayStr <= end
     })
     if (active) return { ...active, status: 'active' }
 
-    const upcoming = eventGroups
+    const upcoming = discreteEvents
       .filter((g) => g.event.start_date > todayStr)
       .sort(
         (a, b) =>
@@ -1302,10 +1312,20 @@ function EventCard({ event, games, attendance, teamSlug }) {
 
   // Recruiting check falls back to the event name itself when game_types
   // isn't tagged. AthleteOne ingest doesn't always tag showcase events with
-  // a game_type, but "ECNL Fall Showcase" or "Bethesda Premier Cup" in the
-  // event_name is a strong enough signal on its own.
+  // a game_type, but "ECNL Florida - Winter" in the event_name is a strong
+  // enough signal on its own.
+  //
+  // Duration override: events lasting more than 30 days are NEVER treated
+  // as recruiting regardless of keyword match. Catches "ECNL Girls Ohio
+  // Valley 2025-26" (the conference season schedule, ~8 months) which
+  // would otherwise match on "ecnl" the same way "ECNL Florida - Winter"
+  // (3 days) does. A season-long event isn't a showcase no matter what
+  // it's called.
+  const eventDurationDays = getEventDurationDays(event.start_date, event.end_date)
+  const isLongRunning = eventDurationDays > 30
   const isRecruiting =
-    isRecruitingType(eventGameType) || isRecruitingType(event.event_name)
+    !isLongRunning &&
+    (isRecruitingType(eventGameType) || isRecruitingType(event.event_name))
 
   const allClosed = games.length > 0 && games.every((g) => g.is_closed)
   const destHref = allClosed
@@ -1413,6 +1433,26 @@ function parseGameDate(s) {
   if (!s) return new Date()
   const [y, m, d] = s.split('-')
   return new Date(y, m - 1, d)
+}
+
+/**
+ * getEventDurationDays — number of days between an event's start and end
+ * dates, inclusive. Used to distinguish discrete events (weekend showcases,
+ * 2-4 days; multi-week tournaments, under a month) from season-long
+ * schedules (conference seasons, several months). The latter shouldn't be
+ * styled as recruiting events even when their names contain "ECNL", and
+ * shouldn't hijack the hero panel's "Active now" badge just because we're
+ * partway through the season.
+ *
+ * Returns 0 when start_date is missing (defensive); when only start_date
+ * is set, treats it as a 0-day event.
+ */
+function getEventDurationDays(start, end) {
+  if (!start) return 0
+  const s = parseGameDate(start)
+  const e = end ? parseGameDate(end) : s
+  const ms = e - s
+  return Math.round(ms / (1000 * 60 * 60 * 24))
 }
 
 /**
