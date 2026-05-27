@@ -56,19 +56,39 @@ export default function TeamGameDetail() {
   // and not see anything change until they scrolled down to find the
   // updated player.
   const playerRef = useRef(null)
+  // Ref flag so we only auto-scroll on explicit thumbnail taps (not on
+  // initial mount, where setSelectedVideoId fires once the videos load
+  // and a scroll there would be jarring — the user hasn't done
+  // anything yet).
+  const shouldScrollOnSelectRef = useRef(false)
 
-  // Tap-thumbnail handler — swap the selected video and scroll the
-  // player into view. The scroll is deferred to the next animation
-  // frame so React has committed the re-render with the new video
-  // before we measure / scroll to it.
+  // Scroll the player into view after a thumbnail tap. Lives in an
+  // effect (not the handler) so the scroll happens after React has
+  // committed the new selected video and the browser has had a tick
+  // to paint — running in the handler or in requestAnimationFrame
+  // sometimes aimed at the old position because the player content
+  // (especially video iframes) wasn't settled yet.
+  useEffect(() => {
+    if (!shouldScrollOnSelectRef.current) return
+    shouldScrollOnSelectRef.current = false
+    const el = playerRef.current
+    if (!el) return
+    const tid = setTimeout(() => {
+      // scrollIntoView walks up to find the nearest scroll container,
+      // so it works whether the page scrolls on window or inside a
+      // transformed wrapper like PullToRefresh.
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 60)
+    return () => clearTimeout(tid)
+  }, [selectedVideoId])
+
+  // Tap-thumbnail handler — set the flag and let the effect handle the
+  // scroll on the next commit. State update alone isn't enough; we
+  // need the post-commit timing for the player container to be at its
+  // final position when we scroll.
   const handleSelectVideo = (videoId) => {
+    shouldScrollOnSelectRef.current = true
     setSelectedVideoId(videoId)
-    requestAnimationFrame(() => {
-      playerRef.current?.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      })
-    })
   }
 
   const load = async () => {
