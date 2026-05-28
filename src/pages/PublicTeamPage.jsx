@@ -422,6 +422,21 @@ export default function PublicTeamPage() {
     ? conferenceStandings.find((r) => r.team_id === ourAthleteOneTeamId)
     : null
 
+  // Opponent enrichment lookup. Keyed by team_name so game cards can
+  // look up the opposing team's logo + place + record without an extra
+  // query. Same source as games table's opponent string (AthleteOne
+  // team-info HTML), so exact match is reliable for conference
+  // opponents. Non-conference opponents (tournaments, out-of-conf
+  // friendlies) won't be in standings — GameCard falls through to plain
+  // text in that case.
+  const opponentLookup = useMemo(() => {
+    const map = {}
+    for (const row of conferenceStandings) {
+      if (row.team_name) map[row.team_name] = row
+    }
+    return map
+  }, [conferenceStandings])
+
   // Roster is its own prominent section now (Sprint 2), not a tab. Staff
   // stays as a tab — lower-traffic and the email-on-tap workflow already
   // works well there. Both still gate on data being present so teams with
@@ -603,6 +618,7 @@ export default function PublicTeamPage() {
                       formatTime={formatTime}
                       videos={videosByGame[g.id] || []}
                       schoolsCount={schoolsByGame[g.id] || 0}
+                      opponentLookup={opponentLookup}
                     />
                   ))}
                 </div>
@@ -1670,6 +1686,7 @@ function GameCard({
   formatTime,
   videos = [],
   schoolsCount = 0,
+  opponentLookup = {},
 }) {
   const navigate = useNavigate()
   const r = gameResult(game)
@@ -1689,6 +1706,12 @@ function GameCard({
   const isClosed = game.is_closed
   const inEvent = !!eventSlug
   const hasVideo = videos.length > 0
+
+  // Opponent enrichment from conference standings. Matched by exact
+  // team_name (both sourced from AthleteOne team-info HTML, so they
+  // align). Non-conference opponents return null here; the card falls
+  // through to plain "vs/at opponent" text.
+  const opponentInfo = opponentLookup[game.opponent || ''] || null
 
   const isPast = (() => {
     const today = new Date()
@@ -1813,10 +1836,35 @@ function GameCard({
             </span>
           )}
         </div>
-        {/* Line 2: time · vs/at opponent */}
-        <div className="text-sm text-gray-700 mt-0.5">
-          {game.game_time && <>{formatTime(game.game_time)} · </>}
-          {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
+        {/* Line 2: time · [logo] vs/at opponent · (place · record) */}
+        <div className="text-sm text-gray-700 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          {game.game_time && (
+            <span className="whitespace-nowrap">
+              {formatTime(game.game_time)} ·
+            </span>
+          )}
+          {opponentInfo?.logo_url && (
+            <img
+              src={opponentInfo.logo_url}
+              alt=""
+              loading="lazy"
+              className="w-5 h-5 inline-block object-contain rounded-sm flex-shrink-0"
+              onError={(e) => {
+                e.currentTarget.style.display = 'none'
+              }}
+            />
+          )}
+          <span>
+            {game.is_home ? 'vs' : '@'} {game.opponent || 'TBD'}
+          </span>
+          {opponentInfo &&
+            opponentInfo.place != null &&
+            opponentInfo.wins != null && (
+              <span className="text-xs text-gray-500 whitespace-nowrap">
+                ({ordinal(opponentInfo.place)} · {opponentInfo.wins}-
+                {opponentInfo.losses}-{opponentInfo.draws})
+              </span>
+            )}
         </div>
         {/* Line 3: event context (or game type) + location */}
         <div className="text-xs text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
