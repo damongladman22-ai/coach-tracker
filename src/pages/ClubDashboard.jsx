@@ -743,166 +743,150 @@ function isoDate(d) {
 }
 
 // ===========================================================================
-// Postseason Pipeline section + supporting components
+// Postseason Pipeline ticker
 //
-// The hero block on /home that celebrates OP teams qualifying for ECNL
-// postseason brackets. Dark slate-900 backdrop so tier cards (amber for
-// Champions League, sky for NAC, etc) pop. Renders nothing when no team
-// has earned a berth yet — preseason home page stays clean.
+// Slim horizontal strip (~70px tall) at the top of /home — replaces the
+// older hero block that was crowding out the team list. Auto-scrolls
+// left like a sports ticker so all qualified teams appear without
+// taking vertical space. Pauses on hover/touch so users can tap a pill
+// to jump to that team. Respects prefers-reduced-motion (animation
+// disabled; manual horizontal scroll still works via overflow-x-auto).
+//
+// Hides entirely when no team has qualified (preseason).
 // ===========================================================================
 
-// Per-tier palette. Tailwind JIT requires literal class strings, so we
-// can't compose these from accent names — each tier's full classes
-// listed here.
+// Tier color palettes. Tailwind JIT requires literal class strings, so
+// each tier's full classes are listed here (no dynamic composition).
 const TIER_PALETTES = {
   amber: {
-    cardBg: 'bg-gradient-to-br from-amber-50 to-yellow-100',
-    cardBorder: 'border-amber-300',
-    cardAccent: 'text-amber-900',
-    cardLabel: 'text-amber-700',
-    headerBadge: 'bg-amber-400/20 text-amber-100',
+    pillBg: 'bg-amber-100',
+    pillBorder: 'border-amber-300',
+    pillText: 'text-amber-900',
+    pillAccent: 'text-amber-900',
   },
   sky: {
-    cardBg: 'bg-gradient-to-br from-sky-50 to-blue-100',
-    cardBorder: 'border-sky-300',
-    cardAccent: 'text-sky-900',
-    cardLabel: 'text-sky-700',
-    headerBadge: 'bg-sky-400/20 text-sky-100',
+    pillBg: 'bg-sky-100',
+    pillBorder: 'border-sky-300',
+    pillText: 'text-sky-900',
+    pillAccent: 'text-sky-900',
   },
   orange: {
-    cardBg: 'bg-gradient-to-br from-orange-50 to-amber-100',
-    cardBorder: 'border-orange-300',
-    cardAccent: 'text-orange-900',
-    cardLabel: 'text-orange-700',
-    headerBadge: 'bg-orange-400/20 text-orange-100',
+    pillBg: 'bg-orange-100',
+    pillBorder: 'border-orange-300',
+    pillText: 'text-orange-900',
+    pillAccent: 'text-orange-900',
   },
   cyan: {
-    cardBg: 'bg-gradient-to-br from-cyan-50 to-teal-100',
-    cardBorder: 'border-cyan-300',
-    cardAccent: 'text-cyan-900',
-    cardLabel: 'text-cyan-700',
-    headerBadge: 'bg-cyan-400/20 text-cyan-100',
+    pillBg: 'bg-cyan-100',
+    pillBorder: 'border-cyan-300',
+    pillText: 'text-cyan-900',
+    pillAccent: 'text-cyan-900',
   },
 }
 
 function PostseasonPipelineSection({ postseason }) {
   if (!postseason) return null
 
-  return (
-    <section className="mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl p-4 sm:p-6 text-white shadow-lg overflow-hidden relative">
-      {/* Subtle decorative gradient sweep */}
-      <div className="absolute -top-12 -right-12 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+  // Flatten all qualified teams in tier-then-rank order. Doubled for
+  // seamless marquee loop (the second copy is aria-hidden so screen
+  // readers don't repeat).
+  const allEntries = []
+  for (const tier of postseason.tiers) {
+    for (const entry of tier.teams) {
+      allEntries.push({ ...entry, tier })
+    }
+  }
 
-      <div className="relative">
-        <div className="mb-4">
-          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
+  return (
+    <section className="mb-5 bg-slate-900 rounded-lg overflow-hidden shadow-sm">
+      <style>{`
+        @keyframes pp-marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .pp-ticker {
+          animation: pp-marquee 60s linear infinite;
+          will-change: transform;
+        }
+        .pp-ticker:hover,
+        .pp-ticker:focus-within {
+          animation-play-state: paused;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .pp-ticker { animation: none; }
+        }
+      `}</style>
+
+      {/* Compact header */}
+      <div className="px-4 pt-2.5 pb-1 text-white">
+        <div className="flex items-center gap-2 text-xs sm:text-sm">
+          <span aria-hidden="true">🏆</span>
+          <span className="font-semibold uppercase tracking-wider">
             Postseason Pipeline
-          </h2>
-          <p className="text-sm text-slate-300 mt-0.5">
+          </span>
+          <span className="text-slate-400">·</span>
+          <span className="text-slate-300">
             <span className="font-semibold text-white">
               {postseason.totalQualified}
             </span>{' '}
-            OP {postseason.totalQualified === 1 ? 'team' : 'teams'} advancing to
-            postseason
-          </p>
+            {postseason.totalQualified === 1 ? 'team' : 'teams'} advancing
+          </span>
         </div>
+      </div>
 
-        <div className="space-y-4">
-          {postseason.tiers.map((tier) => (
-            <PostseasonTier key={tier.key} tier={tier} />
+      {/* Ticker row — overflow-x-auto on the wrapper enables manual scroll
+          when animation is paused or disabled. max-content on the inner
+          flex gives the ticker its natural width so the marquee loop
+          translates the correct distance. */}
+      <div className="pb-2.5 overflow-x-auto scrollbar-hide">
+        <div
+          className="pp-ticker flex gap-2 px-4"
+          style={{ width: 'max-content' }}
+        >
+          {allEntries.map((entry, i) => (
+            <PostseasonPill key={`a-${i}`} entry={entry} />
+          ))}
+          {allEntries.map((entry, i) => (
+            <PostseasonPill key={`b-${i}`} entry={entry} ariaHidden />
           ))}
         </div>
-
-        {postseason.totalTeams > postseason.totalQualified && (
-          <p className="text-xs text-slate-400 mt-4 italic">
-            {postseason.totalTeams - postseason.totalQualified} more teams
-            competing — see team pages for full standings
-          </p>
-        )}
       </div>
     </section>
   )
 }
 
-function PostseasonTier({ tier }) {
+function PostseasonPill({ entry, ariaHidden = false }) {
+  const { team, seed, place, tier } = entry
   const palette = TIER_PALETTES[tier.accent] || TIER_PALETTES.cyan
-
-  return (
-    <div>
-      <div className="flex items-center gap-2 mb-2 px-0.5">
-        <span className="text-lg" aria-hidden="true">
-          {tier.icon}
-        </span>
-        <h3 className="font-semibold text-white text-sm sm:text-base">
-          {tier.label}
-        </h3>
-        <span
-          className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${palette.headerBadge}`}
-        >
-          {tier.teams.length}
-        </span>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-        {tier.teams.map((entry) => (
-          <PostseasonTeamCard
-            key={entry.team.id}
-            entry={entry}
-            palette={palette}
-            tier={tier}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function PostseasonTeamCard({ entry, palette, tier }) {
-  const { team, seed, place } = entry
-  // Champions League cards lead with the seed (the only tier that has
-  // one); other tiers lead with the bracket label since "Qualified" is
-  // implicit. Hover lift on the card invites the tap-to-team gesture.
   const isCL = tier.key === 'cl'
+
+  // Pill content:
+  //   CL → "🏆 U13 Girls ECNL · #7"
+  //   Others → "🛡️ U13 Girls ECNL RL · 1st" (or just team name if no place)
+  const trailing = isCL
+    ? seed != null
+      ? `#${seed}`
+      : null
+    : place != null
+      ? ordinalPlace(place)
+      : null
 
   return (
     <Link
       to={`/t/${team.slug}`}
-      className={`block ${palette.cardBg} border ${palette.cardBorder} rounded-lg p-3 hover:shadow-md hover:-translate-y-0.5 transition`}
+      aria-hidden={ariaHidden || undefined}
+      tabIndex={ariaHidden ? -1 : 0}
+      className={`flex-shrink-0 inline-flex items-center gap-1.5 ${palette.pillBg} border ${palette.pillBorder} rounded-full pl-2.5 pr-3 py-1.5 text-xs font-medium hover:shadow active:scale-95 transition`}
     >
-      {isCL ? (
+      <span aria-hidden="true" className="text-sm leading-none">
+        {tier.icon}
+      </span>
+      <span className={`${palette.pillText} font-medium`}>{team.name}</span>
+      {trailing && (
         <>
-          <div
-            className={`text-[10px] uppercase tracking-wider font-bold ${palette.cardLabel}`}
-          >
-            National Seed
-          </div>
-          <div
-            className={`text-2xl font-extrabold ${palette.cardAccent} leading-none mt-0.5`}
-          >
-            #{seed ?? '?'}
-          </div>
+          <span className="text-gray-400">·</span>
+          <span className={`${palette.pillAccent} font-bold`}>{trailing}</span>
         </>
-      ) : (
-        <>
-          <div
-            className={`text-[10px] uppercase tracking-wider font-bold ${palette.cardLabel}`}
-          >
-            Qualified
-          </div>
-          <div
-            className={`text-base sm:text-lg font-bold ${palette.cardAccent} leading-tight mt-0.5`}
-          >
-            {tier.label}
-          </div>
-        </>
-      )}
-      <div className="text-sm font-medium text-gray-900 mt-2 truncate">
-        {team.name}
-      </div>
-      {place != null && (
-        <div className="text-xs text-gray-600">
-          {ordinalPlace(place)} in conference
-        </div>
       )}
     </Link>
   )
@@ -922,4 +906,5 @@ function ordinalPlace(n) {
             : 'th'
   return `${n}${suffix}`
 }
+
 
