@@ -1,910 +1,427 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
-import { ErrorMessage } from '../components/LoadingStates'
-import OPLogo from '../components/OPLogo'
-import FeedbackButton from '../components/FeedbackButton'
-import SeasonSelector from '../components/SeasonSelector'
-import HamburgerMenu from '../components/HamburgerMenu'
-import PullToRefresh from '../components/PullToRefresh'
-import { computeRecord } from '../components/ScoreInput'
-import { useFavorite, useFavorites } from '../hooks/useFavorite'
+import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { supabase } from '../lib/supabase';
+import { ErrorMessage, CardSkeleton, Skeleton } from '../components/LoadingStates';
+import OPLogo from '../components/OPLogo';
+import FeedbackButton from '../components/FeedbackButton';
 
 /**
- * Club Dashboard — team-first home page.
- *
- * The mental model:
- *  - Teams are the primary unit; each team card surfaces its own state
- *    (record, next game, live status)
- *  - Parents pick a season via the SeasonSelector at the top — teams
- *    filter to whichever year is selected. Defaults to the DB-active
- *    season on first visit.
- *  - Favorited teams pin to a "My Teams" section above the grouped lists
- *
- * Sprint 3 additions to the team card:
- *  - Favorite star (top-right) — toggles localStorage-backed favorites
- *  - LIVE TRACKER button when the team has games in progress, with smart
- *    routing: one live game → direct to that game; multiple → event-team page
- *  - Next-game one-liner ("Plays Sat 2pm · vs ABC") when there's an upcoming
- *    game and no live one
+ * Public Club Dashboard - Landing page for parents
+ * 
+ * Shows all events organized by status with quick links to teams
  */
 export default function ClubDashboard() {
-  const [selectedSeason, setSelectedSeason] = useState(null)
-  const [teams, setTeams] = useState([])
-  const [teamStats, setTeamStats] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-
-  // Filter/sort state
-  const [groupBy, setGroupBy] = useState('age')
-  const [filterProgram, setFilterProgram] = useState('all')
-  const [filterGender, setFilterGender] = useState('all')
-
-  const favorites = useFavorites()
+  const [events, setEvents] = useState([]);
+  const [eventTeams, setEventTeams] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (selectedSeason?.id) {
-      load(selectedSeason.id)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedSeason?.id])
+    fetchData();
+  }, []);
 
-  const load = async (seasonId) => {
+  const fetchData = async () => {
     try {
-      setLoading(true)
-      setError(null)
+      setLoading(true);
+      setError(null);
 
-      // Teams in selected season
-      const { data: teamsData, error: teamsErr } = await supabase
-        .from('teams')
-        .select(
-          '*, age_groups(id, name, sort_order), programs(id, name, sort_order)'
-        )
-        .eq('season_id', seasonId)
-        .eq('active', true)
-      if (teamsErr) throw teamsErr
-      const teamList = (teamsData || []).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      )
-      setTeams(teamList)
-
-      // Events in selected season (needed for live-game detection)
-      const { data: eventsData } = await supabase
+      // Fetch all events
+      const { data: eventsData, error: eventsError } = await supabase
         .from('events')
-        .select('id, start_date, end_date, slug, event_name')
-        .eq('season_id', seasonId)
+        .select('*')
+        .order('start_date', { ascending: false });
 
-      if (teamList.length > 0) {
-        const teamIds = teamList.map((t) => t.id)
+      if (eventsError) throw eventsError;
+      setEvents(eventsData || []);
 
-        // Games — extended select with date/time/opponent/event-slug so we
-        // can drive the LIVE button + next-game line on each card.
-        const { data: games } = await supabase
+      // Fetch all event teams with club team details
+      const { data: eventTeamsData, error: teamsError } = await supabase
+        .from('event_teams')
+        .select('*, club_teams(*), events(slug)')
+        .order('club_teams(team_name)');
+
+      if (teamsError) throw teamsError;
+
+      // Fetch games to check if any are open for each event team
+      const eventTeamIds = (eventTeamsData || []).map(et => et.id);
+      let gamesData = [];
+      if (eventTeamIds.length > 0) {
+        const { data } = await supabase
           .from('games')
-          .select(
-            'id, team_id, event_id, is_closed, our_score, opponent_score, game_date, game_time, opponent, is_home, events(id, slug, event_name)'
-          )
-          .in('team_id', teamIds)
+          .select('id, event_team_id, is_closed')
+          .in('event_team_id', eventTeamIds);
+        gamesData = data || [];
+      }
 
-        const today = new Date()
-        today.setHours(0, 0, 0, 0)
-        const todayStr = isoDate(today)
-        const activeEventIds = new Set(
-          (eventsData || [])
-            .filter((ev) => {
-              const start = parseDate(ev.start_date)
-              const end = ev.end_date ? parseDate(ev.end_date) : start
-              const endInc = new Date(end)
-              endInc.setDate(endInc.getDate() + 1)
-              return today >= start && today < endInc
-            })
-            .map((ev) => ev.id)
-        )
+      // Create a map of event_team_id -> hasOpenGames
+      const openGamesMap = {};
+      eventTeamIds.forEach(id => {
+        const teamGames = gamesData.filter(g => g.event_team_id === id);
+        openGamesMap[id] = teamGames.some(g => !g.is_closed);
+      });
 
-        // Per-team derived data:
-        //   - all games (for record + games count)
-        //   - live games (today's date + event active + not closed)
-        //   - next game (date >= today, not closed, soonest)
-        const teamGames = new Map()
-        const teamLive = new Map()
-        const teamNext = new Map()
-        ;(games || []).forEach((g) => {
-          if (!teamGames.has(g.team_id)) teamGames.set(g.team_id, [])
-          teamGames.get(g.team_id).push(g)
-
-          // Live game check
-          if (
-            g.game_date === todayStr &&
-            !g.is_closed &&
-            g.event_id &&
-            activeEventIds.has(g.event_id) &&
-            g.events?.slug
-          ) {
-            if (!teamLive.has(g.team_id)) teamLive.set(g.team_id, [])
-            teamLive.get(g.team_id).push({
-              gameId: g.id,
-              eventSlug: g.events.slug,
-              eventName: g.events.event_name,
-            })
-          }
-
-          // Next-game candidate
-          if (g.game_date >= todayStr && !g.is_closed) {
-            const existing = teamNext.get(g.team_id)
-            if (!existing || g.game_date < existing.gameDate) {
-              teamNext.set(g.team_id, {
-                gameDate: g.game_date,
-                gameTime: g.game_time,
-                opponent: g.opponent,
-                isHome: g.is_home,
-              })
-            }
-          }
-        })
-
-        // Schools-per-team (existing attendance aggregation)
-        const allGameIds = (games || []).map((g) => g.id)
-        let attRows = []
-        if (allGameIds.length > 0) {
-          const { data: att } = await supabase
-            .from('attendance')
-            .select('game_id, coaches(school_id)')
-            .in('game_id', allGameIds)
-          attRows = att || []
+      // Group by event and attach hasOpenGames
+      const byEvent = {};
+      (eventTeamsData || []).forEach(et => {
+        if (!byEvent[et.event_id]) {
+          byEvent[et.event_id] = [];
         }
-        const gameToSchools = new Map()
-        attRows.forEach((a) => {
-          const sid = a.coaches?.school_id
-          if (!sid) return
-          if (!gameToSchools.has(a.game_id))
-            gameToSchools.set(a.game_id, new Set())
-          gameToSchools.get(a.game_id).add(sid)
-        })
+        byEvent[et.event_id].push({
+          ...et,
+          hasOpenGames: openGamesMap[et.id] || false
+        });
+      });
+      setEventTeams(byEvent);
 
-        const stats = {}
-        teamList.forEach((t) => {
-          const list = teamGames.get(t.id) || []
-          const ids = list.map((g) => g.id)
-          const allSchools = new Set()
-          ids.forEach((gid) => {
-            const s = gameToSchools.get(gid)
-            if (s) s.forEach((sid) => allSchools.add(sid))
-          })
-          stats[t.id] = {
-            games: ids.length,
-            schools: allSchools.size,
-            record: computeRecord(list),
-            liveGames: teamLive.get(t.id) || [],
-            nextGame: teamNext.get(t.id) || null,
-          }
-        })
-        setTeamStats(stats)
-      } else {
-        setTeamStats({})
-      }
     } catch (err) {
-      console.error('Error loading dashboard:', err)
-      setError(err.message)
+      console.error('Error loading data:', err);
+      setError(err.message);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  // Filtered teams
-  const filteredTeams = useMemo(() => {
-    return teams.filter((t) => {
-      if (filterProgram !== 'all' && String(t.program_id) !== filterProgram)
-        return false
-      if (filterGender !== 'all' && t.gender !== filterGender) return false
-      return true
-    })
-  }, [teams, filterProgram, filterGender])
+  // Categorize events by status
+  const categorizeEvents = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const active = [];
+    const upcoming = [];
+    const past = [];
 
-  // Favorited teams (subset of filtered teams) — drives "My Teams" section
-  const favoriteTeams = useMemo(() => {
-    if (favorites.length === 0) return []
-    const favSet = new Set(favorites)
-    return filteredTeams.filter((t) => favSet.has(t.id))
-  }, [filteredTeams, favorites])
+    events.forEach(event => {
+      const startDate = parseDate(event.start_date);
+      const endDate = event.end_date ? parseDate(event.end_date) : startDate;
+      
+      // Add one day to end date to make it inclusive
+      const endDateInclusive = new Date(endDate);
+      endDateInclusive.setDate(endDateInclusive.getDate() + 1);
 
-  // Postseason pipeline data — walks every team's own conference standings
-  // row, classifies the qualification text into one of four tiers, and
-  // sorts within each tier. Hidden entirely when no team has qualified
-  // for anything yet (preseason). Drives the hero section above My Teams.
-  const postseasonData = useMemo(() => {
-    if (teams.length === 0) return null
-
-    // Tier order = display order. Highest prestige first. "match" is a
-    // predicate on the raw qualification string from AthleteOne. Order
-    // matters when strings could overlap; first match wins.
-    const TIERS = [
-      {
-        key: 'cl',
-        label: 'Champions League',
-        icon: '🏆',
-        accent: 'amber',
-        match: (q) => /^Champions League/i.test(q),
-      },
-      {
-        key: 'nac',
-        label: 'North American Cup',
-        icon: '🥈',
-        accent: 'sky',
-        match: (q) => /North American Cup/i.test(q),
-      },
-      {
-        key: 'showcase',
-        label: 'Showcase Cup',
-        icon: '🥉',
-        accent: 'orange',
-        match: (q) => /Showcase Cup/i.test(q),
-      },
-      {
-        key: 'rl',
-        label: 'Regional League Playoffs',
-        icon: '🛡️',
-        accent: 'cyan',
-        match: (q) => /Regional League Playoffs/i.test(q),
-      },
-    ]
-    const buckets = TIERS.map((t) => ({ ...t, teams: [] }))
-    let totalQualified = 0
-
-    for (const team of teams) {
-      const standings = team.athleteone_metadata?.conference_standings
-      const aoTeamId = team.athleteone_team_id
-      if (!Array.isArray(standings) || !aoTeamId) continue
-      const ourRow = standings.find((r) => r.team_id === aoTeamId)
-      if (!ourRow) continue
-      const qual = (ourRow.qualification || '').trim()
-      if (!qual || /^n\/?a$/i.test(qual)) continue
-      const tierIdx = TIERS.findIndex((t) => t.match(qual))
-      if (tierIdx < 0) continue
-
-      // Champions League appends a national seed number: "Champions
-      // League 7". Other brackets don't have seeds. Lower seed = better.
-      let seed = null
-      if (TIERS[tierIdx].key === 'cl') {
-        const m = qual.match(/(\d+)\s*$/)
-        if (m) seed = parseInt(m[1], 10)
-      }
-      buckets[tierIdx].teams.push({
-        team,
-        qualification: qual,
-        seed,
-        place: ourRow.place ?? null,
-      })
-      totalQualified++
-    }
-
-    // Sort within each tier: CL by seed (best first); others by
-    // conference place.
-    for (const bucket of buckets) {
-      if (bucket.key === 'cl') {
-        bucket.teams.sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999))
+      if (today >= startDate && today < endDateInclusive) {
+        active.push(event);
+      } else if (startDate > today) {
+        upcoming.push(event);
       } else {
-        bucket.teams.sort((a, b) => (a.place ?? 9999) - (b.place ?? 9999))
+        past.push(event);
       }
-    }
+    });
 
-    const populated = buckets.filter((b) => b.teams.length > 0)
-    if (populated.length === 0) return null
-    return { tiers: populated, totalQualified, totalTeams: teams.length }
-  }, [teams])
+    // Sort upcoming by date ascending
+    upcoming.sort((a, b) => parseDate(a.start_date) - parseDate(b.start_date));
+    
+    // Past is already sorted descending from the query
 
+    return { active, upcoming, past };
+  };
 
-  // Group teams
-  const groupedTeams = useMemo(() => {
-    if (groupBy === 'none') {
-      return [{ label: null, teams: filteredTeams }]
-    }
-    const groups = new Map()
-    filteredTeams.forEach((t) => {
-      const key =
-        groupBy === 'age'
-          ? t.age_groups?.name || 'Other'
-          : t.programs?.name || 'Other'
-      const sortKey =
-        groupBy === 'age'
-          ? t.age_groups?.sort_order ?? 999
-          : t.programs?.sort_order ?? 999
-      if (!groups.has(key)) groups.set(key, { sortKey, teams: [] })
-      groups.get(key).teams.push(t)
-    })
-    return Array.from(groups.entries())
-      .sort((a, b) => a[1].sortKey - b[1].sortKey)
-      .map(([label, v]) => ({ label, teams: v.teams }))
-  }, [filteredTeams, groupBy])
+  // Parse date without timezone issues
+  const parseDate = (dateStr) => {
+    if (!dateStr) return new Date();
+    const [year, month, day] = dateStr.split('-');
+    return new Date(year, month - 1, day);
+  };
 
-  const availablePrograms = useMemo(() => {
-    const m = new Map()
-    teams.forEach((t) => {
-      if (t.programs?.id && !m.has(t.programs.id))
-        m.set(t.programs.id, t.programs)
-    })
-    return Array.from(m.values()).sort(
-      (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0)
-    )
-  }, [teams])
-  const availableGenders = useMemo(() => {
-    const s = new Set()
-    teams.forEach((t) => s.add(t.gender))
-    return Array.from(s)
-  }, [teams])
-
-  return (
-    <PullToRefresh
-      onRefresh={async () => {
-        if (selectedSeason?.id) await load(selectedSeason.id)
-      }}
-    >
-      <div className="min-h-screen bg-gray-50">
-        <header className="bg-slate-900 text-white">
-        <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between gap-3">
-          <Link to="/home" className="flex items-center gap-3 hover:opacity-80">
-            <OPLogo className="h-10 w-10" />
-            <div>
-              <div className="font-semibold">Ohio Premier Soccer</div>
-              <div className="text-xs text-cyan-300">PitchSide</div>
-            </div>
-          </Link>
-          <HamburgerMenu />
-        </div>
-        <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-6">
-        {/* Season selector */}
-        <div className="mb-5">
-          <SeasonSelector
-            value={selectedSeason}
-            onChange={setSelectedSeason}
-            variant="parent"
-          />
-        </div>
-
-        {!selectedSeason || loading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
-        ) : error ? (
-          <ErrorMessage error={error} onRetry={() => load(selectedSeason.id)} />
-        ) : (
-          <>
-            {/* Postseason Pipeline — hero section celebrating OP teams
-                advancing to postseason competition. Hidden until at
-                least one team has earned a bracket berth. */}
-            <PostseasonPipelineSection postseason={postseasonData} />
-
-            {/* My Teams (favorites) — pinned above the grouped lists */}
-            {favoriteTeams.length > 0 && (
-              <section className="mb-6">
-                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2 px-1 flex items-center gap-2">
-                  <StarIcon filled small />
-                  My Teams
-                </h2>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {favoriteTeams.map((t) => (
-                    <TeamCard
-                      key={`fav-${t.id}`}
-                      team={t}
-                      stats={teamStats[t.id]}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
-
-            {/* All teams grouped */}
-            <section className="mb-8">
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 mb-4">
-                <div>
-                  <h2 className="text-2xl font-bold text-gray-900">
-                    Our Teams
-                  </h2>
-                </div>
-              </div>
-
-              {/* Filter/sort controls */}
-              <div className="bg-white rounded-lg shadow-sm p-3 mb-4 flex flex-wrap gap-3 items-center">
-                <ControlGroup label="Group by">
-                  <select
-                    value={groupBy}
-                    onChange={(e) => setGroupBy(e.target.value)}
-                    className="px-2 py-1 border border-gray-300 rounded text-sm"
-                  >
-                    <option value="age">Age Group</option>
-                    <option value="program">Program</option>
-                    <option value="none">None (flat list)</option>
-                  </select>
-                </ControlGroup>
-                {availablePrograms.length > 1 && (
-                  <ControlGroup label="Program">
-                    <select
-                      value={filterProgram}
-                      onChange={(e) => setFilterProgram(e.target.value)}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                    >
-                      <option value="all">All</option>
-                      {availablePrograms.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  </ControlGroup>
-                )}
-                {availableGenders.length > 1 && (
-                  <ControlGroup label="Gender">
-                    <select
-                      value={filterGender}
-                      onChange={(e) => setFilterGender(e.target.value)}
-                      className="px-2 py-1 border border-gray-300 rounded text-sm"
-                    >
-                      <option value="all">All</option>
-                      {availableGenders.map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
-                      ))}
-                    </select>
-                  </ControlGroup>
-                )}
-                {(filterProgram !== 'all' || filterGender !== 'all') && (
-                  <button
-                    onClick={() => {
-                      setFilterProgram('all')
-                      setFilterGender('all')
-                    }}
-                    className="text-xs text-blue-600 hover:underline ml-auto"
-                  >
-                    Clear filters
-                  </button>
-                )}
-              </div>
-
-              {filteredTeams.length === 0 ? (
-                <div className="bg-white rounded-lg shadow-sm p-8 text-center text-gray-500">
-                  {teams.length === 0
-                    ? `No teams in ${selectedSeason.name} yet.`
-                    : 'No teams match the current filters.'}
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  {groupedTeams.map((group) => (
-                    <div key={group.label || 'flat'}>
-                      {group.label && (
-                        <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2 px-1">
-                          {group.label}
-                        </h3>
-                      )}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {group.teams.map((t) => (
-                          <TeamCard
-                            key={t.id}
-                            team={t}
-                            stats={teamStats[t.id]}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          </>
-        )}
-      </main>
-
-        <FeedbackButton pageContext="club-dashboard" />
-      </div>
-    </PullToRefresh>
-  )
-}
-
-function ControlGroup({ label, children }) {
-  return (
-    <label className="flex items-center gap-2 text-sm text-gray-600">
-      <span>{label}:</span>
-      {children}
-    </label>
-  )
-}
-
-/**
- * TeamCard — single team summary on /home.
- *
- * Tap zones:
- *   - Card body → /t/:teamSlug (team page)
- *   - Star button → toggle favorite
- *   - LIVE TRACKER button → smart-routed to live game or event-team page
- *
- * Using a div+onClick (not <Link>) because we have nested actionable elements
- * (star, LIVE button), and nested <Link>s are invalid HTML.
- */
-function TeamCard({ team, stats }) {
-  const navigate = useNavigate()
-  const [isFavorite, setFavorite] = useFavorite(team.id)
-  const r = stats?.record
-  const liveGames = stats?.liveGames || []
-  const hasLive = liveGames.length > 0
-  const nextGame = stats?.nextGame
-
-  // Smart routing for LIVE button
-  let liveHref = null
-  if (hasLive) {
-    if (liveGames.length === 1) {
-      // Single live game — go straight to it
-      liveHref = `/e/${liveGames[0].eventSlug}/${team.slug}/game/${liveGames[0].gameId}`
-    } else {
-      // Multiple live games (same day, possibly same event) — go to event-team
-      // landing so they can pick. Use the first one's event slug.
-      liveHref = `/e/${liveGames[0].eventSlug}/${team.slug}`
-    }
-  }
-
-  const goToTeam = () => navigate(`/t/${team.slug}`)
-  const handleKey = (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      goToTeam()
-    }
-  }
-
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={goToTeam}
-      onKeyDown={handleKey}
-      className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow p-4 border border-gray-100 cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-500"
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-gray-900 truncate">
-            {team.name}
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            setFavorite(!isFavorite)
-          }}
-          aria-label={
-            isFavorite ? 'Remove from My Teams' : 'Add to My Teams'
-          }
-          aria-pressed={isFavorite}
-          className="flex-shrink-0 p-1.5 -m-1.5 rounded-full hover:bg-gray-100 active:bg-gray-200"
-        >
-          <StarIcon filled={isFavorite} />
-        </button>
-      </div>
-
-      {/* Next game line (only when no live game; otherwise LIVE button covers it) */}
-      {!hasLive && nextGame && (
-        <div className="text-xs text-gray-600 mt-2 truncate">
-          {formatNextGame(nextGame)}
-        </div>
-      )}
-
-      {/* Mini stat row */}
-      <div className="grid grid-cols-5 gap-1 pt-3 mt-3 border-t border-gray-100">
-        <MiniStat value={r?.played ?? 0} label="GP" />
-        <MiniStat value={r?.wins ?? 0} label="W" />
-        <MiniStat value={r?.losses ?? 0} label="L" />
-        <MiniStat value={r?.ties ?? 0} label="D" />
-        <MiniStat value={formatGD(r?.gd)} label="GD" />
-      </div>
-
-      {/* LIVE TRACKER button — replaces the old static badge */}
-      {hasLive && liveHref && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            navigate(liveHref)
-          }}
-          className="mt-3 w-full bg-gradient-to-r from-emerald-500 to-cyan-600 text-white text-sm font-semibold rounded-lg py-2.5 px-3 flex items-center justify-center gap-2 shadow-sm hover:opacity-95 active:opacity-90"
-        >
-          <span
-            className="h-2 w-2 rounded-full bg-white animate-pulse"
-            aria-hidden="true"
-          />
-          <span>LIVE TRACKER</span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </button>
-      )}
-    </div>
-  )
-}
-
-function MiniStat({ value, label }) {
-  return (
-    <div className="text-center">
-      <div className="text-[10px] uppercase tracking-wider text-gray-500 font-medium">
-        {label}
-      </div>
-      <div className="text-lg font-bold text-gray-900 leading-none mt-1 tabular-nums">
-        {value}
-      </div>
-    </div>
-  )
-}
-
-function StarIcon({ filled, small = false }) {
-  const size = small ? 14 : 20
-  if (filled) {
-    return (
-      <svg
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        className="text-amber-400"
-        aria-hidden="true"
-      >
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-      </svg>
-    )
-  }
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinejoin="round"
-      className="text-gray-400"
-      aria-hidden="true"
-    >
-      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-    </svg>
-  )
-}
-
-/**
- * formatNextGame — produces a short one-liner for the team card.
- *   "Plays today 2pm · vs ABC"
- *   "Plays tomorrow · @ XYZ"
- *   "Plays Sat 2pm · vs ABC"
- *   "Plays Oct 5 · vs ABC"
- *
- * Relative day labels for today/tomorrow and within-week dates; absolute
- * month/day beyond a week.
- */
-function formatNextGame(next) {
-  if (!next || !next.gameDate) return ''
-  const date = parseDate(next.gameDate)
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const diffDays = Math.round((date - today) / (1000 * 60 * 60 * 24))
-
-  let dayLabel
-  if (diffDays === 0) dayLabel = 'today'
-  else if (diffDays === 1) dayLabel = 'tomorrow'
-  else if (diffDays > 1 && diffDays < 7)
-    dayLabel = date.toLocaleDateString('en-US', { weekday: 'short' })
-  else
-    dayLabel = date.toLocaleDateString('en-US', {
+  // Format date for display
+  const formatDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [year, month, day] = dateStr.split('-');
+    return new Date(year, month - 1, day).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
-    })
+      year: 'numeric'
+    });
+  };
 
-  const timeLabel = formatTime(next.gameTime)
-  const versus = next.isHome ? 'vs' : '@'
-  const opponent = next.opponent || 'TBD'
+  const formatDateRange = (startDate, endDate) => {
+    if (!startDate) return '';
+    if (!endDate || startDate === endDate) {
+      return formatDate(startDate);
+    }
+    const [startYear, startMonth, startDay] = startDate.split('-');
+    const [endYear, endMonth, endDay] = endDate.split('-');
+    
+    const start = new Date(startYear, startMonth - 1, startDay);
+    const end = new Date(endYear, endMonth - 1, endDay);
+    
+    if (startYear === endYear && startMonth === endMonth) {
+      // Same month: "Dec 15-17, 2025"
+      return `${start.toLocaleDateString('en-US', { month: 'short' })} ${startDay}-${endDay}, ${startYear}`;
+    } else if (startYear === endYear) {
+      // Same year: "Dec 15 - Jan 2, 2025"
+      return `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${startYear}`;
+    } else {
+      // Different years
+      return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+    }
+  };
 
-  const dayAndTime = timeLabel ? `${dayLabel} ${timeLabel}` : dayLabel
-  return `Plays ${dayAndTime} · ${versus} ${opponent}`
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        {/* Header skeleton */}
+        <header className="op-header shadow-lg">
+          <div className="op-gradient-border"></div>
+          <div className="max-w-4xl mx-auto px-4 py-6">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-12 w-12 rounded-full" />
+              <div>
+                <Skeleton className="h-7 w-48 mb-2" />
+                <Skeleton className="h-4 w-64" />
+              </div>
+            </div>
+          </div>
+        </header>
+        
+        <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+          <Skeleton className="h-6 w-32 mb-4" />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </main>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-4">
+        <ErrorMessage 
+          title="Could not load events" 
+          message={error}
+          onRetry={fetchData}
+        />
+      </div>
+    );
+  }
+
+  const { active, upcoming, past } = categorizeEvents();
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {/* Header */}
+      <header className="op-header shadow-lg">
+        <div className="op-gradient-border"></div>
+        <div className="max-w-4xl mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <Link to="/home" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+              <OPLogo className="h-12 w-auto" />
+              <div>
+                <h1 className="text-2xl font-bold text-white">College Coach Tracker</h1>
+                <p className="text-cyan-300 text-sm">Track college coach attendance at events</p>
+              </div>
+            </Link>
+            <nav className="flex items-center gap-2">
+              <Link 
+                to="/directory" 
+                className="text-sm text-gray-300 hover:text-white flex items-center gap-1.5 p-2 -m-2 rounded-lg"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                Directory
+              </Link>
+              <Link 
+                to="/help?context=parent" 
+                className="text-sm text-gray-300 hover:text-white flex items-center gap-1.5 p-2 -m-2 rounded-lg"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Help
+              </Link>
+              <Link 
+                to="/admin" 
+                className="text-sm text-gray-300 hover:text-white flex items-center gap-1.5 p-2 -m-2 rounded-lg"
+                title="Admin login"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 11c0 3.517-1.009 6.799-2.753 9.571m-3.44-2.04l.054-.09A13.916 13.916 0 008 11a4 4 0 118 0c0 1.017-.07 2.019-.203 3m-2.118 6.844A21.88 21.88 0 0015.171 17m3.839 1.132c.645-2.266.99-4.659.99-7.132A8 8 0 008 4.07M3 15.364c.64-1.319 1-2.8 1-4.364 0-1.457.39-2.823 1.07-4" />
+                </svg>
+                Admin
+              </Link>
+            </nav>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-8">
+        {/* Active Events */}
+        {active.length > 0 && (
+          <section>
+            <div className="flex items-center gap-2 mb-4">
+              <span className="bg-green-500 h-3 w-3 rounded-full animate-pulse"></span>
+              <h2 className="text-xl font-semibold text-gray-900">Happening Now</h2>
+            </div>
+            <div className="space-y-4">
+              {active.map(event => (
+                <EventCard 
+                  key={event.id} 
+                  event={event} 
+                  teams={eventTeams[event.id] || []}
+                  formatDateRange={formatDateRange}
+                  isActive={true}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Upcoming Events */}
+        {upcoming.length > 0 && (
+          <section>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Upcoming Events</h2>
+            <div className="space-y-4">
+              {upcoming.map(event => (
+                <EventCard 
+                  key={event.id} 
+                  event={event} 
+                  teams={eventTeams[event.id] || []}
+                  formatDateRange={formatDateRange}
+                />
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* Past Events */}
+        {past.length > 0 && (
+          <section>
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Past Events</h2>
+            <div className="space-y-4">
+              {past.slice(0, 5).map(event => (
+                <EventCard 
+                  key={event.id} 
+                  event={event} 
+                  teams={eventTeams[event.id] || []}
+                  formatDateRange={formatDateRange}
+                  isPast={true}
+                />
+              ))}
+              {past.length > 5 && (
+                <p className="text-center text-gray-500 text-sm py-2">
+                  And {past.length - 5} more past events...
+                </p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* Empty State */}
+        {events.length === 0 && (
+          <div className="bg-white rounded-lg shadow-md p-8 text-center">
+            <div className="text-gray-400 mb-4">
+              <svg className="h-16 w-16 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No Events Yet</h3>
+            <p className="text-gray-500">
+              Check back soon for upcoming tournaments and showcases.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Feedback Button */}
+      <FeedbackButton />
+    </div>
+  );
 }
 
 /**
- * formatGD — render goal differential with a +/- sign prefix.
- *   null/undefined → 0
- *   0 → "0"
- *   positive → "+N"
- *   negative → "-N" (JS native)
+ * Event Card Component
  */
-function formatGD(gd) {
-  if (gd == null) return 0
-  if (gd > 0) return `+${gd}`
-  return gd
-}
-
-function formatTime(t) {
-  if (!t) return ''
-  const [h, m] = t.split(':').map(Number)
-  const ampm = h >= 12 ? 'pm' : 'am'
-  const h12 = h % 12 || 12
-  // Drop ":00" for top-of-hour times to keep the line compact: "2pm" vs "2:00pm"
-  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`
-}
-
-function parseDate(s) {
-  if (!s) return new Date()
-  const [y, m, d] = s.split('-')
-  return new Date(y, m - 1, d)
-}
-
-function isoDate(d) {
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-}
-
-// ===========================================================================
-// Postseason Pipeline ticker
-//
-// Slim horizontal strip (~70px tall) at the top of /home — replaces the
-// older hero block that was crowding out the team list. Auto-scrolls
-// left like a sports ticker so all qualified teams appear without
-// taking vertical space. Pauses on hover/touch so users can tap a pill
-// to jump to that team. Respects prefers-reduced-motion (animation
-// disabled; manual horizontal scroll still works via overflow-x-auto).
-//
-// Hides entirely when no team has qualified (preseason).
-// ===========================================================================
-
-// Tier color palettes. Tailwind JIT requires literal class strings, so
-// each tier's full classes are listed here (no dynamic composition).
-const TIER_PALETTES = {
-  amber: {
-    pillBg: 'bg-amber-100',
-    pillBorder: 'border-amber-300',
-    pillText: 'text-amber-900',
-    pillAccent: 'text-amber-900',
-  },
-  sky: {
-    pillBg: 'bg-sky-100',
-    pillBorder: 'border-sky-300',
-    pillText: 'text-sky-900',
-    pillAccent: 'text-sky-900',
-  },
-  orange: {
-    pillBg: 'bg-orange-100',
-    pillBorder: 'border-orange-300',
-    pillText: 'text-orange-900',
-    pillAccent: 'text-orange-900',
-  },
-  cyan: {
-    pillBg: 'bg-cyan-100',
-    pillBorder: 'border-cyan-300',
-    pillText: 'text-cyan-900',
-    pillAccent: 'text-cyan-900',
-  },
-}
-
-function PostseasonPipelineSection({ postseason }) {
-  if (!postseason) return null
-
-  // Flatten all qualified teams in tier-then-rank order. Doubled for
-  // seamless marquee loop (the second copy is aria-hidden so screen
-  // readers don't repeat).
-  const allEntries = []
-  for (const tier of postseason.tiers) {
-    for (const entry of tier.teams) {
-      allEntries.push({ ...entry, tier })
-    }
-  }
+function EventCard({ event, teams, formatDateRange, isActive = false, isPast = false }) {
+  const [expanded, setExpanded] = useState(isActive);
 
   return (
-    <section className="mb-5 bg-slate-900 rounded-lg overflow-hidden shadow-sm">
-      <style>{`
-        @keyframes pp-marquee {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(-50%); }
-        }
-        .pp-ticker {
-          animation: pp-marquee 60s linear infinite;
-          will-change: transform;
-        }
-        .pp-ticker:hover,
-        .pp-ticker:focus-within {
-          animation-play-state: paused;
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .pp-ticker { animation: none; }
-        }
-      `}</style>
-
-      {/* Compact header */}
-      <div className="px-4 pt-2.5 pb-1 text-white">
-        <div className="flex items-center gap-2 text-xs sm:text-sm">
-          <span aria-hidden="true">🏆</span>
-          <span className="font-semibold uppercase tracking-wider">
-            Postseason Pipeline
-          </span>
-          <span className="text-slate-400">·</span>
-          <span className="text-slate-300">
-            <span className="font-semibold text-white">
-              {postseason.totalQualified}
-            </span>{' '}
-            {postseason.totalQualified === 1 ? 'team' : 'teams'} advancing
-          </span>
+    <div className={`bg-white rounded-lg shadow-md overflow-hidden ${isActive ? 'ring-2 ring-green-500' : ''}`}>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-4 py-4 flex justify-between items-center hover:bg-gray-50 transition-colors"
+      >
+        <div className="text-left">
+          <div className="flex items-center gap-2">
+            <h3 className={`font-semibold ${isPast ? 'text-gray-600' : 'text-gray-900'}`}>
+              {event.event_name}
+            </h3>
+            {isActive && (
+              <span className="bg-green-100 text-green-700 text-xs font-medium px-2 py-0.5 rounded">
+                LIVE
+              </span>
+            )}
+          </div>
+          <p className={`text-sm ${isPast ? 'text-gray-400' : 'text-gray-500'}`}>
+            {formatDateRange(event.start_date, event.end_date)}
+          </p>
         </div>
-      </div>
-
-      {/* Ticker row — overflow-x-auto on the wrapper enables manual scroll
-          when animation is paused or disabled. max-content on the inner
-          flex gives the ticker its natural width so the marquee loop
-          translates the correct distance. */}
-      <div className="pb-2.5 overflow-x-auto scrollbar-hide">
-        <div
-          className="pp-ticker flex gap-2 px-4"
-          style={{ width: 'max-content' }}
-        >
-          {allEntries.map((entry, i) => (
-            <PostseasonPill key={`a-${i}`} entry={entry} />
-          ))}
-          {allEntries.map((entry, i) => (
-            <PostseasonPill key={`b-${i}`} entry={entry} ariaHidden />
-          ))}
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-500">
+            {teams.length} team{teams.length !== 1 ? 's' : ''}
+          </span>
+          <svg 
+            className={`h-5 w-5 text-gray-400 transition-transform ${expanded ? 'rotate-180' : ''}`} 
+            fill="none" 
+            viewBox="0 0 24 24" 
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
         </div>
-      </div>
-    </section>
-  )
-}
+      </button>
 
-function PostseasonPill({ entry, ariaHidden = false }) {
-  const { team, seed, place, tier } = entry
-  const palette = TIER_PALETTES[tier.accent] || TIER_PALETTES.cyan
-  const isCL = tier.key === 'cl'
-
-  // Pill content:
-  //   CL → "🏆 U13 Girls ECNL · #7"
-  //   Others → "🛡️ U13 Girls ECNL RL · 1st" (or just team name if no place)
-  const trailing = isCL
-    ? seed != null
-      ? `#${seed}`
-      : null
-    : place != null
-      ? ordinalPlace(place)
-      : null
-
-  return (
-    <Link
-      to={`/t/${team.slug}`}
-      aria-hidden={ariaHidden || undefined}
-      tabIndex={ariaHidden ? -1 : 0}
-      className={`flex-shrink-0 inline-flex items-center gap-1.5 ${palette.pillBg} border ${palette.pillBorder} rounded-full pl-2.5 pr-3 py-1.5 text-xs font-medium hover:shadow active:scale-95 transition`}
-    >
-      <span aria-hidden="true" className="text-sm leading-none">
-        {tier.icon}
-      </span>
-      <span className={`${palette.pillText} font-medium`}>{team.name}</span>
-      {trailing && (
-        <>
-          <span className="text-gray-400">·</span>
-          <span className={`${palette.pillAccent} font-bold`}>{trailing}</span>
-        </>
+      {expanded && (
+        <div className="border-t px-4 py-3 bg-gray-50">
+          {teams.length === 0 ? (
+            <p className="text-sm text-gray-500 italic">No teams assigned to this event yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {teams.map(et => (
+                <div 
+                  key={et.id} 
+                  className="flex items-center justify-between bg-white rounded-lg p-3 shadow-sm"
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">{et.club_teams?.team_name}</div>
+                    <div className="text-xs text-gray-500">{et.club_teams?.gender}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    {et.hasOpenGames && (
+                      <Link
+                        to={`/e/${event.slug}/${et.slug}`}
+                        className="op-button px-3 py-1.5 rounded text-sm font-medium"
+                      >
+                        Live Tracker
+                      </Link>
+                    )}
+                    <Link
+                      to={`/e/${event.slug}/${et.slug}/summary`}
+                      className={`px-3 py-1.5 rounded text-sm font-medium ${
+                        et.hasOpenGames
+                          ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          : 'op-button'
+                      }`}
+                    >
+                      Summary
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          {/* Event page link */}
+          <div className="mt-3 pt-3 border-t text-center">
+            <Link
+              to={`/e/${event.slug}`}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              View all teams at this event →
+            </Link>
+          </div>
+        </div>
       )}
-    </Link>
-  )
+    </div>
+  );
 }
-
-function ordinalPlace(n) {
-  const v = n % 100
-  const suffix =
-    v >= 11 && v <= 13
-      ? 'th'
-      : n % 10 === 1
-        ? 'st'
-        : n % 10 === 2
-          ? 'nd'
-          : n % 10 === 3
-            ? 'rd'
-            : 'th'
-  return `${n}${suffix}`
-}
-
-

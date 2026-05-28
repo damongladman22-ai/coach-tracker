@@ -721,12 +721,12 @@ export default function Schools({ session }) {
                       ? '...'
                       : isActive ? 'Mark Inactive' : 'Mark Active'}
                   </button>
-                  <button
-                    onClick={(e) => deleteSchool(school, e)}
-                    className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded-lg"
-                  >
-                    Delete
-                  </button>
+                  {/* Delete intentionally not exposed in UI. Schools are a
+                      product-level shared resource — deletion cascades
+                      through every club's coach and attendance history.
+                      Use Mark Inactive instead. For genuine data errors
+                      (dedup misses, wrong imports), drop the row via
+                      Supabase SQL Editor (service_role). */}
                   <span className="text-gray-400 ml-2 p-2">
                     {expandedSchool === school.id ? '▼' : '▶'}
                   </span>
@@ -899,15 +899,12 @@ export default function Schools({ session }) {
                                 ? '...'
                                 : isActive ? 'Mark Inactive' : 'Mark Active'}
                             </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                deleteCoach(coach.id, school.id)
-                              }}
-                              className="text-red-600 hover:text-red-800 text-xs"
-                            >
-                              Delete
-                            </button>
+                            {/* Delete intentionally not exposed. Coaches are
+                                a product-level shared resource across all
+                                clubs — deleting cascades through every
+                                club's attendance history. Use Mark Inactive
+                                instead. Genuine data errors get cleaned via
+                                SQL Editor. */}
                           </div>
                         </div>
                             )
