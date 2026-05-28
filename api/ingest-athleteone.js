@@ -1218,22 +1218,27 @@ function parseStandingsRow(rowHtml, division) {
 }
 
 // Auto-discover the full set of standings URL parameters for this team:
-// (org_id, season_id, age_group_id). Returns the triple or null. Does
-// not persist — caller decides based on commit mode.
+// (org_id, season_id, age_group_id). Returns the triple or null.
 //
 // Strategy:
-//   For each known (org_id, season_id) pair:
-//     1. Sentinel call with age_group_id=0. If response contains our
-//        team_id, read the selected age_group_id from the dropdown
-//        (1 API call) — done.
-//     2. Otherwise iterate the dropdown options for this pair, fetching
-//        each and checking for our team_id.
-//   Failing all pairs, return null.
+//   For each known (org_id, season_id) pair, find an age_group_id whose
+//   response contains our team_id. Score that match by how many rows
+//   have real (non-n/a) qualifications populated. After walking ALL
+//   pairs, return the highest-scoring triple.
 //
-// Worst case is N × (M+1) API calls where N is the number of known
-// pairs and M is the number of age groups per pair (~6 for ECNL).
-// Only runs on first sync per team — cached afterwards.
+// Why scoring matters: AthleteOne ignores (org_id, season_id) for
+// purposes of which TEAMS get returned — both (9,69) and (12,70) return
+// the same boys roster when event_id is a boys event. But (org, season)
+// DOES determine whether qualifications come back populated or as
+// "n/a" for every row. Without scoring we'd cache the first matching
+// pair and silently lose all postseason data.
+//
+// Tie-breaking when no pair has any real qualifications (preseason or
+// no brackets yet): first pair in KNOWN_STANDINGS_PAIRS wins. Acceptable
+// because team list is identical across pairs in that case.
 async function discoverStandingsParams(eventId, ourTeamId) {
+  const candidates = []
+
   for (const [orgId, seasonId] of KNOWN_STANDINGS_PAIRS) {
     const sentinel = await fetchConferenceStandings(
       eventId,
@@ -1242,30 +1247,59 @@ async function discoverStandingsParams(eventId, ourTeamId) {
       0
     )
     if (!sentinel.ok) continue
+
+    // Find the age_group_id whose response contains ourTeamId.
+    let ageGroupId = null
+    let sourceHtml = null
     if (htmlContainsTeamId(sentinel.html, ourTeamId)) {
-      const ageGroupId = parseSelectedAgeGroup(sentinel.html)
-      if (ageGroupId) {
-        return { org_id: orgId, season_id: seasonId, age_group_id: ageGroupId }
-      }
+      ageGroupId = parseSelectedAgeGroup(sentinel.html)
+      sourceHtml = sentinel.html
     }
-    const candidates = parseAgeGroupOptions(sentinel.html)
-    for (const candidate of candidates) {
-      const r = await fetchConferenceStandings(
-        eventId,
-        orgId,
-        seasonId,
-        candidate
-      )
-      if (r.ok && htmlContainsTeamId(r.html, ourTeamId)) {
-        return {
-          org_id: orgId,
-          season_id: seasonId,
-          age_group_id: candidate,
+    if (!ageGroupId) {
+      const options = parseAgeGroupOptions(sentinel.html)
+      for (const candidate of options) {
+        const r = await fetchConferenceStandings(
+          eventId,
+          orgId,
+          seasonId,
+          candidate
+        )
+        if (r.ok && htmlContainsTeamId(r.html, ourTeamId)) {
+          ageGroupId = candidate
+          sourceHtml = r.html
+          break
         }
       }
     }
+    if (!ageGroupId || !sourceHtml) continue
+
+    // Score by how many rows have real (non-n/a, non-empty)
+    // qualifications. parseConferenceStandings returns rows with
+    // qualification field already extracted.
+    const rows = parseConferenceStandings(sourceHtml)
+    let score = 0
+    for (const row of rows) {
+      const q = (row.qualification || '').trim()
+      if (q && !/^n\/?a$/i.test(q)) score++
+    }
+    candidates.push({
+      org_id: orgId,
+      season_id: seasonId,
+      age_group_id: ageGroupId,
+      score: score,
+    })
   }
-  return null
+
+  if (candidates.length === 0) return null
+
+  // Pick highest score; ties broken by first-in-order (stable sort).
+  candidates.sort((a, b) => b.score - a.score)
+  const best = candidates[0]
+  return {
+    org_id: best.org_id,
+    season_id: best.season_id,
+    age_group_id: best.age_group_id,
+  }
 }
 
 // Sync the full conference standings for one team into its metadata.
