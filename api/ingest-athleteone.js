@@ -1025,81 +1025,136 @@ function htmlContainsTeamId(html, teamId) {
   return re.test(html)
 }
 
-// Parse the full conference standings <tbody> into structured rows. The
-// table has 11 cells per row:
-//   [POS, TEAM_INFO, GP, W, L, D, GF, GA, GD, PPG, PTS]
+// Parse the full conference standings into structured rows. Each table
+// has 11 cells per row: [POS, TEAM_INFO, GP, W, L, D, GF, GA, GD, PPG, PTS].
 // TEAM_INFO contains a <span class="individual-team-item" data-team-id="N">
 // with the team name and an optional qualification block.
+//
+// Multi-division conferences (e.g. ECNL Girls Ohio Valley G2010 → North
+// and South, 6 teams each) return TWO tables in the same response. Each
+// table is preceded by an <h*> heading naming the division. Single-
+// division conferences (e.g. G2013) return one table with no division
+// heading. Output rows carry a `division` field that is null for the
+// single-table case and the heading text (e.g. "North"/"South") for
+// the multi-table case.
 function parseConferenceStandings(html) {
   const out = []
-  // The dropdown selects also have <table>-like wrappers in some browsers'
-  // serialisations, so we anchor on the standings header which precedes
-  // the actual data table.
-  const headerIdx = html.search(/<th[^>]*>\s*POS\s*<\/th>/i)
-  if (headerIdx === -1) return out
-  const after = html.substring(headerIdx)
-  const tbodyMatch = after.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i)
-  if (!tbodyMatch) return out
-  const tbody = tbodyMatch[1]
 
-  const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
-  let rowMatch
-  while ((rowMatch = rowRe.exec(tbody)) !== null) {
-    const row = rowMatch[1]
-    const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi
-    const cells = []
-    let c
-    while ((c = cellRe.exec(row)) !== null) cells.push(c[1])
-    if (cells.length < 11) continue
-
-    // Cell 0: place
-    const placeRaw = stripTags(cells[0]).trim()
-    const place = parseInt(placeRaw, 10)
-    if (Number.isNaN(place)) continue
-
-    // Cell 1: team info — span with team_id + name, optional qualification
-    const cell1 = cells[1]
-    const teamMatch = cell1.match(
-      /<span\s+class="individual-team-item"[^>]*data-team-id="(\d+)"[^>]*>([\s\S]*?)<\/span>/i
-    )
-    if (!teamMatch) continue
-    const teamId = parseInt(teamMatch[1], 10)
-    const teamName = stripTags(teamMatch[2]).trim()
-
-    // Qualification text: <span>Qualification:</span><span>X</span>
-    const qualMatch = cell1.match(
-      /Qualification:\s*<\/span>\s*<span[^>]*>([\s\S]*?)<\/span>/i
-    )
-    const qualification = qualMatch ? stripTags(qualMatch[1]).trim() : null
-
-    const num = (raw) => {
-      const cleaned = stripTags(raw).trim()
-      if (cleaned === '' || cleaned === '-') return null
-      const n = parseFloat(cleaned)
-      return Number.isNaN(n) ? null : n
-    }
-    const intOrNull = (raw) => {
-      const n = num(raw)
-      return n === null ? null : Math.round(n)
-    }
-
-    out.push({
-      place: place,
-      team_id: teamId,
-      team_name: teamName,
-      qualification: qualification,
-      gp: intOrNull(cells[2]),
-      wins: intOrNull(cells[3]),
-      losses: intOrNull(cells[4]),
-      draws: intOrNull(cells[5]),
-      gf: intOrNull(cells[6]),
-      ga: intOrNull(cells[7]),
-      gd: intOrNull(cells[8]),
-      ppg: num(cells[9]),
-      pts: intOrNull(cells[10]),
-    })
+  // Find every standings table by anchoring on its POS column header.
+  // Multiple matches means a divisional split — one match means a flat
+  // conference table. Same logic handles both.
+  const posHeaderRe = /<th[^>]*>\s*POS\s*<\/th>/gi
+  const tableStarts = []
+  let h
+  while ((h = posHeaderRe.exec(html)) !== null) {
+    tableStarts.push(h.index)
   }
+  if (tableStarts.length === 0) return out
+
+  // Index all <h2>–<h5> headings with their positions. We'll match each
+  // table to the nearest preceding heading. Page-title-style headings
+  // ("G2010 - ECNL Standings") describe the page, not a division — we
+  // skip those via the /standings|conference|select/i filter so they
+  // don't get mistaken for division names.
+  const headingRe = /<h[2-5][^>]*>([\s\S]*?)<\/h[2-5]>/gi
+  const headings = []
+  let hm
+  while ((hm = headingRe.exec(html)) !== null) {
+    const text = stripTags(hm[1]).trim().replace(/\s+/g, ' ')
+    if (!text) continue
+    if (/\b(standings|conference|select)\b/i.test(text)) continue
+    headings.push({ pos: hm.index, text: text })
+  }
+
+  // Closest preceding heading wins. Scoped to the gap between this
+  // table and the previous one so the South heading doesn't get
+  // attributed to North's table.
+  function divisionFor(tableStart, prevEnd) {
+    let best = null
+    for (const heading of headings) {
+      if (heading.pos < tableStart && heading.pos >= prevEnd) {
+        best = heading.text
+      }
+    }
+    return best
+  }
+
+  for (let i = 0; i < tableStarts.length; i++) {
+    const start = tableStarts[i]
+    const prevEnd = i > 0 ? tableStarts[i - 1] : 0
+    const division = divisionFor(start, prevEnd)
+
+    const end =
+      i + 1 < tableStarts.length ? tableStarts[i + 1] : html.length
+    const section = html.substring(start, end)
+    const tbodyMatch = section.match(/<tbody[^>]*>([\s\S]*?)<\/tbody>/i)
+    if (!tbodyMatch) continue
+
+    const tbody = tbodyMatch[1]
+    const rowRe = /<tr[^>]*>([\s\S]*?)<\/tr>/gi
+    let rowMatch
+    while ((rowMatch = rowRe.exec(tbody)) !== null) {
+      const parsed = parseStandingsRow(rowMatch[1], division)
+      if (parsed) out.push(parsed)
+    }
+  }
+
   return out
+}
+
+// Parse a single <tr> from the standings table. Returns null when the
+// row doesn't look like a standings row (insufficient cells, missing
+// team span, non-numeric place — all expected for header/spacer rows).
+function parseStandingsRow(rowHtml, division) {
+  const cellRe = /<td[^>]*>([\s\S]*?)<\/td>/gi
+  const cells = []
+  let c
+  while ((c = cellRe.exec(rowHtml)) !== null) cells.push(c[1])
+  if (cells.length < 11) return null
+
+  const place = parseInt(stripTags(cells[0]).trim(), 10)
+  if (Number.isNaN(place)) return null
+
+  const cell1 = cells[1]
+  const teamMatch = cell1.match(
+    /<span\s+class="individual-team-item"[^>]*data-team-id="(\d+)"[^>]*>([\s\S]*?)<\/span>/i
+  )
+  if (!teamMatch) return null
+  const teamId = parseInt(teamMatch[1], 10)
+  const teamName = stripTags(teamMatch[2]).trim()
+
+  const qualMatch = cell1.match(
+    /Qualification:\s*<\/span>\s*<span[^>]*>([\s\S]*?)<\/span>/i
+  )
+  const qualification = qualMatch ? stripTags(qualMatch[1]).trim() : null
+
+  const num = (raw) => {
+    const cleaned = stripTags(raw).trim()
+    if (cleaned === '' || cleaned === '-') return null
+    const n = parseFloat(cleaned)
+    return Number.isNaN(n) ? null : n
+  }
+  const intOrNull = (raw) => {
+    const n = num(raw)
+    return n === null ? null : Math.round(n)
+  }
+
+  return {
+    place: place,
+    team_id: teamId,
+    team_name: teamName,
+    qualification: qualification,
+    division: division,
+    gp: intOrNull(cells[2]),
+    wins: intOrNull(cells[3]),
+    losses: intOrNull(cells[4]),
+    draws: intOrNull(cells[5]),
+    gf: intOrNull(cells[6]),
+    ga: intOrNull(cells[7]),
+    gd: intOrNull(cells[8]),
+    ppg: num(cells[9]),
+    pts: intOrNull(cells[10]),
+  }
 }
 
 // Auto-discover the AthleteOne age_group_id for this team within its

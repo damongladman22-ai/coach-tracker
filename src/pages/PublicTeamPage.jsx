@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -934,6 +934,27 @@ function ConferenceStandingsModal({
     ? standings.find((r) => r.team_id === ourTeamId)
     : null
 
+  // Group rows by division. For single-division conferences every row has
+  // division=null and we get one anonymous group (no section header).
+  // For multi-division (Ohio Valley G2010 → North/South) we get one
+  // group per division, preserving the response order so North stays
+  // before South. The UI renders a small uppercase row inside the tbody
+  // ahead of each named group — sticky table head stays put across them.
+  const groups = useMemo(() => {
+    const map = new Map()
+    for (const row of standings) {
+      if (!row) continue
+      const key = row.division || ''
+      if (!map.has(key)) {
+        map.set(key, { name: row.division || null, rows: [] })
+      }
+      map.get(key).rows.push(row)
+    }
+    return Array.from(map.values())
+  }, [standings])
+
+  const hasNamedDivisions = groups.some((g) => g.name)
+
   // Friendly relative time for the "Last updated" footer. AthleteOne
   // standings typically refresh within hours of league results being
   // entered, so we show absolute date for older syncs.
@@ -993,7 +1014,9 @@ function ConferenceStandingsModal({
                 {ageGroupName && ourRow && <span> · </span>}
                 {ourRow && (
                   <span>
-                    {ordinal(ourRow.place)} place
+                    {ourRow.division && `${ourRow.division} · `}
+                    {ordinal(ourRow.place)}
+                    {ourRow.division ? ' in division' : ' place'}
                     {ourRow.qualification && ` · ${ourRow.qualification}`}
                   </span>
                 )}
@@ -1026,7 +1049,7 @@ function ConferenceStandingsModal({
         {/* Table — scrollable when content overflows the modal */}
         <div className="flex-1 overflow-y-auto min-h-0">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+            <thead className="sticky top-0 bg-gray-50 border-b border-gray-200 z-10">
               <tr className="text-[11px] uppercase tracking-wider text-gray-600">
                 <th className="text-center px-2 sm:px-3 py-2 font-semibold w-10">
                   #
@@ -1039,9 +1062,10 @@ function ConferenceStandingsModal({
                 <th className="hidden sm:table-cell text-center px-2 py-2 font-semibold">
                   GF-GA
                 </th>
-                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold">
-                  GD
-                </th>
+                {/* GD now visible on mobile too — goal-differential is the
+                    most informative single stat after W-L-T for understanding
+                    where a team sits in the table. */}
+                <th className="text-center px-2 py-2 font-semibold">GD</th>
                 <th className="hidden md:table-cell text-center px-2 py-2 font-semibold">
                   PPG
                 </th>
@@ -1051,76 +1075,95 @@ function ConferenceStandingsModal({
               </tr>
             </thead>
             <tbody>
-              {standings.map((row, idx) => {
-                if (!row) return null
-                const isOurs = ourTeamId && row.team_id === ourTeamId
-                return (
-                  <tr
-                    key={row.team_id || `row-${idx}`}
-                    className={`border-b border-gray-100 ${
-                      isOurs
-                        ? 'bg-cyan-50'
-                        : 'hover:bg-gray-50'
-                    }`}
-                    style={
-                      isOurs
-                        ? { boxShadow: 'inset 4px 0 0 0 #06b6d4' }
-                        : undefined
-                    }
-                  >
-                    <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-semibold text-gray-700">
-                      {row.place}
-                    </td>
-                    <td className="px-2 py-2.5">
-                      <div
-                        className={`truncate ${
-                          isOurs
-                            ? 'font-bold text-cyan-900'
-                            : 'text-gray-900'
-                        }`}
-                        title={row.team_name}
+              {groups.map((group, groupIdx) => (
+                <Fragment key={group.name || `group-${groupIdx}`}>
+                  {/* Section divider row — only renders when this group
+                      has a division name. For single-division responses
+                      every group has name=null so nothing extra appears
+                      and the table looks the same as before. colSpan=8
+                      to span every column at every breakpoint (hidden
+                      cells simply don't contribute width). */}
+                  {group.name && (
+                    <tr className="bg-slate-100 border-t-2 border-b border-slate-300">
+                      <td
+                        colSpan={8}
+                        className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-700"
                       >
-                        {row.team_name}
-                      </div>
-                      {row.qualification && (
-                        <div className="text-[10px] text-gray-500 truncate">
-                          {row.qualification}
-                        </div>
-                      )}
-                    </td>
-                    <td className="hidden sm:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
-                      {row.gp ?? '—'}
-                    </td>
-                    <td className="text-center px-2 py-2.5 tabular-nums text-gray-700">
-                      {row.wins ?? 0}-{row.losses ?? 0}-{row.draws ?? 0}
-                    </td>
-                    <td className="hidden sm:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
-                      {(row.gf ?? 0)}-{(row.ga ?? 0)}
-                    </td>
-                    <td
-                      className={`hidden md:table-cell text-center px-2 py-2.5 tabular-nums font-medium ${
-                        row.gd > 0
-                          ? 'text-emerald-700'
-                          : row.gd < 0
-                          ? 'text-rose-700'
-                          : 'text-gray-700'
-                      }`}
-                    >
-                      {row.gd != null
-                        ? row.gd > 0
-                          ? `+${row.gd}`
-                          : `${row.gd}`
-                        : '—'}
-                    </td>
-                    <td className="hidden md:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
-                      {row.ppg != null ? row.ppg.toFixed(2) : '—'}
-                    </td>
-                    <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-bold text-gray-900">
-                      {row.pts ?? 0}
-                    </td>
-                  </tr>
-                )
-              })}
+                        {group.name}
+                      </td>
+                    </tr>
+                  )}
+                  {group.rows.map((row, idx) => {
+                    if (!row) return null
+                    const isOurs =
+                      ourTeamId && row.team_id === ourTeamId
+                    return (
+                      <tr
+                        key={row.team_id || `row-${groupIdx}-${idx}`}
+                        className={`border-b border-gray-100 ${
+                          isOurs ? 'bg-cyan-50' : 'hover:bg-gray-50'
+                        }`}
+                        style={
+                          isOurs
+                            ? { boxShadow: 'inset 4px 0 0 0 #06b6d4' }
+                            : undefined
+                        }
+                      >
+                        <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-semibold text-gray-700">
+                          {row.place}
+                        </td>
+                        <td className="px-2 py-2.5">
+                          <div
+                            className={`truncate ${
+                              isOurs
+                                ? 'font-bold text-cyan-900'
+                                : 'text-gray-900'
+                            }`}
+                            title={row.team_name}
+                          >
+                            {row.team_name}
+                          </div>
+                          {row.qualification && (
+                            <div className="text-[10px] text-gray-500 truncate">
+                              {row.qualification}
+                            </div>
+                          )}
+                        </td>
+                        <td className="hidden sm:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                          {row.gp ?? '—'}
+                        </td>
+                        <td className="text-center px-2 py-2.5 tabular-nums text-gray-700">
+                          {row.wins ?? 0}-{row.losses ?? 0}-{row.draws ?? 0}
+                        </td>
+                        <td className="hidden sm:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                          {(row.gf ?? 0)}-{(row.ga ?? 0)}
+                        </td>
+                        <td
+                          className={`text-center px-2 py-2.5 tabular-nums font-medium ${
+                            row.gd > 0
+                              ? 'text-emerald-700'
+                              : row.gd < 0
+                              ? 'text-rose-700'
+                              : 'text-gray-700'
+                          }`}
+                        >
+                          {row.gd != null
+                            ? row.gd > 0
+                              ? `+${row.gd}`
+                              : `${row.gd}`
+                            : '—'}
+                        </td>
+                        <td className="hidden md:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                          {row.ppg != null ? row.ppg.toFixed(2) : '—'}
+                        </td>
+                        <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-bold text-gray-900">
+                          {row.pts ?? 0}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>
@@ -1129,6 +1172,8 @@ function ConferenceStandingsModal({
         <div className="px-4 sm:px-5 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3 text-[11px] sm:text-xs text-gray-500 flex-shrink-0">
           <span className="truncate">
             {standings.length} team{standings.length === 1 ? '' : 's'}
+            {hasNamedDivisions &&
+              ` · ${groups.length} division${groups.length === 1 ? '' : 's'}`}
             {teamName && ourRow && ` · You: ${teamName}`}
           </span>
           {lastUpdated && (
