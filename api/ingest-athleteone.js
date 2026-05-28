@@ -1026,13 +1026,21 @@ function parseTeamInfoTime(s) {
 const CONFERENCE_STANDINGS_BASE =
   'https://api.athleteone.com/api/Script/get-conference-standings'
 
-// Known (org_id, season_id) pairs to try during auto-discovery. Add
-// new pairs as we identify them — RL Girls, RL Boys, Pre-ECNL Girls,
-// Pre-ECNL Boys. Order matters slightly for efficiency: the most
-// commonly-used program goes first.
+// Known (org_id, season_id) pairs to try during auto-discovery. Each
+// entry covers ONE ECNL program across ALL age bands within that
+// program. Discovered empirically via probe mode — see
+// /api/ingest-athleteone?probe=true&teamId=N to find pairs for new
+// programs.
+//
+// AthleteOne treats (org_id, season_id) as a "qualification filter":
+// the team list returned is determined by event_id alone, but only
+// the matching pair populates postseason qualifications. Scoring
+// discovery picks the pair with the most populated qualifications.
 const KNOWN_STANDINGS_PAIRS = [
-  [9, 69], // ECNL Girls
-  [12, 70], // ECNL Boys
+  [9, 69], // ECNL Girls (all age bands)
+  [12, 70], // ECNL Boys (all age bands)
+  [13, 71], // ECNL RL Girls (all age bands, multi-conference)
+  [16, 72], // ECNL RL Boys (all age bands)
 ]
 
 async function fetchConferenceStandings(eventId, orgId, seasonId, ageGroupId) {
