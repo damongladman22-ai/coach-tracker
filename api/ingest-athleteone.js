@@ -118,6 +118,20 @@ export default async function handler(req, res) {
             ? conferenceResult.season_id
             : null,
           conference_error: conferenceResult.ok ? null : conferenceResult.reason,
+          conference_debug_url: conferenceResult.ok
+            ? conferenceResult.debug_url
+            : null,
+          conference_debug_bytes: conferenceResult.ok
+            ? conferenceResult.debug_response_bytes
+            : null,
+          conference_debug_snippet: conferenceResult.ok
+            ? conferenceResult.debug_snippet
+            : null,
+          conference_op_row: conferenceResult.ok
+            ? conferenceResult.standings.find(
+                (r) => r.team_id === team.athleteone_team_id
+              ) || null
+            : null,
         },
       }
 
@@ -1305,11 +1319,33 @@ async function syncConferenceStandings(supabase, team, commit) {
   if (standings.length === 0) {
     return { ok: false, reason: 'no rows parsed' }
   }
+
+  // DEBUG: capture 800-char snippet around our team_id so we can verify
+  // Vercel saw the same response your Mac saw.
+  let debugSnippet = null
+  const teamIdMarker = 'data-team-id="' + team.athleteone_team_id + '"'
+  const idx = r.html.indexOf(teamIdMarker)
+  if (idx >= 0) {
+    debugSnippet = r.html.substring(Math.max(0, idx - 50), idx + 750)
+  }
+
   return {
     ok: true,
     org_id: orgId,
     season_id: seasonId,
     age_group_id: ageGroupId,
     standings: standings,
+    debug_response_bytes: r.html.length,
+    debug_snippet: debugSnippet,
+    debug_url:
+      'https://api.athleteone.com/api/Script/get-conference-standings/' +
+      team.athleteone_event_id +
+      '/' +
+      orgId +
+      '/' +
+      seasonId +
+      '/' +
+      ageGroupId +
+      '/0',
   }
 }
