@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Spinner } from './LoadingStates';
-import GenderBadge from './GenderBadge';
 
 /**
  * Optimized school search component
@@ -11,21 +10,20 @@ import GenderBadge from './GenderBadge';
  * - Debounced input (150ms delay)
  * - Fuzzy matching (handles typos)
  * - Mobile-optimized with large touch targets
- *
- * Props:
- * - selectedSchool: currently-selected school object, or null
- * - onSelect: callback when user picks a school
- * - programGender (optional): 'M' or 'W' — restricts search to schools of that
- *   program gender. Omit for legacy behavior (search across all genders).
  */
-export function SchoolSearch({ selectedSchool, onSelect, programGender = null }) {
+export function SchoolSearch({ selectedSchool, onSelect }) {
   const [query, setQuery] = useState('');
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const inputRef = useRef(null);
 
-  // Load all schools once on mount (client-side caching)
+  // Load all schools once on mount (client-side caching).
+  // Filters out inactive schools — this component is the picker for
+  // live coach attendance entry (admin Attendance Matrix and similar
+  // flows), where you wouldn't be tagging coaches against a defunct
+  // women's soccer program. The admin Schools page has its own list
+  // for managing inactive status; this picker is for active use only.
   useEffect(() => {
     async function loadSchools() {
       try {
@@ -35,15 +33,12 @@ export function SchoolSearch({ selectedSchool, onSelect, programGender = null })
         const batchSize = 1000;
         
         while (true) {
-          let q = supabase
+          const { data, error } = await supabase
             .from('schools')
-            .select('id, school, city, state, division, conference, program_gender')
+            .select('id, school, city, state, division, conference')
+            .neq('is_active', false)
             .order('school')
             .range(from, from + batchSize - 1);
-          if (programGender === 'M' || programGender === 'W') {
-            q = q.eq('program_gender', programGender);
-          }
-          const { data, error } = await q;
           
           if (error) throw error;
           if (!data || data.length === 0) break;
@@ -63,8 +58,7 @@ export function SchoolSearch({ selectedSchool, onSelect, programGender = null })
     }
 
     loadSchools();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [programGender]);
+  }, []);
 
   // Debounce the search query
   useEffect(() => {
@@ -239,10 +233,7 @@ export function SchoolSearch({ selectedSchool, onSelect, programGender = null })
                 onClick={() => handleSelect(school)}
                 className="w-full text-left px-4 py-4 hover:bg-gray-50 active:bg-gray-100 border-b last:border-b-0 focus:bg-gray-50 focus:outline-none"
               >
-                <div className="font-medium text-gray-900 flex items-center gap-2">
-                  <span>{school.school}</span>
-                  <GenderBadge gender={school.program_gender} size="xs" />
-                </div>
+                <div className="font-medium text-gray-900">{school.school}</div>
                 <div className="text-sm text-gray-500">
                   {school.city}, {school.state} • {school.division} • {school.conference}
                 </div>

@@ -1,21 +1,17 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { teamGenderToProgramGender, programGenderLabel } from '../lib/lookups'
 import FeedbackButton from '../components/FeedbackButton'
-import HamburgerMenu from '../components/HamburgerMenu'
-import GenderBadge from '../components/GenderBadge'
 
 export default function GameAttendance() {
   const { eventSlug, teamSlug, gameId } = useParams()
   const navigate = useNavigate()
   const [game, setGame] = useState(null)
-  const [teamGender, setTeamGender] = useState(null) // 'Boys' | 'Girls' | null
   const [attendance, setAttendance] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAddModal, setShowAddModal] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
-  const [allSchools, setAllSchools] = useState([]) // All schools loaded once (gender-filtered)
+  const [allSchools, setAllSchools] = useState([]) // All schools loaded once
   const [schoolsLoading, setSchoolsLoading] = useState(false)
   const [selectedSchool, setSelectedSchool] = useState(null)
   const [coaches, setCoaches] = useState([])
@@ -24,20 +20,16 @@ export default function GameAttendance() {
   const [newCoach, setNewCoach] = useState({ first_name: '', last_name: '' })
   const [saving, setSaving] = useState(false)
 
-  // The schools-table program_gender code derived from this team's gender.
-  // null when team gender unknown — falls back to no filter (legacy behavior).
-  const programGender = useMemo(() => teamGenderToProgramGender(teamGender), [teamGender])
-
   useEffect(() => {
     fetchGameData()
   }, [gameId])
 
   const fetchGameData = async () => {
-    // Fetch game (with team gender), attendance, and unlock setting in parallel
+    // Fetch game, attendance, and unlock setting in parallel
     const [gameResult, attendanceResult, settingResult] = await Promise.all([
       supabase
         .from('games')
-        .select('*, teams(gender)')
+        .select('*')
         .eq('id', gameId)
         .single(),
       supabase
@@ -53,10 +45,6 @@ export default function GameAttendance() {
     
     const gameData = gameResult.data
     const unlockMinutes = parseInt(settingResult.data?.value, 10) || 30
-
-    // Extract team gender from the joined teams row (v2 schema: games.team_id -> teams.gender)
-    const fetchedTeamGender = gameData?.teams?.gender || null
-    setTeamGender(fetchedTeamGender)
     
     // If game is closed, redirect to summary
     if (gameData?.is_closed) {
@@ -94,10 +82,12 @@ export default function GameAttendance() {
     setAttendance(attendanceData || [])
   }
 
-  // Load schools (filtered by this team's program gender) when modal opens.
-  // We cache, but invalidate if programGender changes (e.g. game switch).
+  // Load all schools when modal opens (one-time load for client-side search).
+  // Filters to active schools only — parents/players logging coach
+  // attendance at a live game shouldn't see programs that no longer
+  // exist. (Admin Schools page handles managing inactive status.)
   const loadAllSchools = async () => {
-    if (allSchools.length > 0) return // Already loaded for current gender
+    if (allSchools.length > 0) return // Already loaded
     
     setSchoolsLoading(true)
     try {
@@ -106,15 +96,12 @@ export default function GameAttendance() {
       const batchSize = 1000
       
       while (true) {
-        let q = supabase
+        const { data, error } = await supabase
           .from('schools')
-          .select('id, school, city, state, division, program_gender')
+          .select('id, school, city, state, division')
+          .neq('is_active', false)
           .order('school')
           .range(from, from + batchSize - 1)
-        if (programGender === 'M' || programGender === 'W') {
-          q = q.eq('program_gender', programGender)
-        }
-        const { data, error } = await q
         
         if (error) throw error
         if (!data || data.length === 0) break
@@ -305,15 +292,12 @@ export default function GameAttendance() {
       {/* Header */}
       <header className="bg-blue-600 text-white p-4">
         {/* Breadcrumb navigation */}
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2 text-sm text-blue-200">
-            <Link to="/home" className="hover:text-white">Home</Link>
-            <span>›</span>
-            <Link to={`/e/${eventSlug}`} className="hover:text-white">Event</Link>
-            <span>›</span>
-            <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-white">Team</Link>
-          </div>
-          <HamburgerMenu />
+        <div className="flex items-center gap-2 text-sm text-blue-200 mb-2">
+          <Link to="/home" className="hover:text-white">Home</Link>
+          <span>›</span>
+          <Link to={`/e/${eventSlug}`} className="hover:text-white">Event</Link>
+          <span>›</span>
+          <Link to={`/e/${eventSlug}/${teamSlug}`} className="hover:text-white">Team</Link>
         </div>
         <h1 className="text-xl font-bold">
           {game && `${formatDate(game.game_date)} vs ${game.opponent}`}
@@ -409,12 +393,6 @@ export default function GameAttendance() {
               {!selectedSchool ? (
                 /* School Search */
                 <>
-                  {programGender && (
-                    <p className="text-xs text-gray-500 mb-2 -mt-1 flex items-center gap-1.5">
-                      <GenderBadge gender={programGender} size="xs" />
-                      <span>Showing {programGenderLabel(programGender).toLowerCase()} programs</span>
-                    </p>
-                  )}
                   <div className="relative sticky top-0 bg-white z-10 mb-4">
                     <input
                       type="text"
@@ -441,10 +419,7 @@ export default function GameAttendance() {
                           className="w-full text-left p-4 bg-gray-50 rounded-lg hover:bg-gray-100 active:bg-gray-200"
                           role="option"
                         >
-                          <div className="font-medium text-base flex items-center gap-2">
-                            <span>{school.school}</span>
-                            <GenderBadge gender={school.program_gender} size="xs" />
-                          </div>
+                          <div className="font-medium text-base">{school.school}</div>
                           <div className="text-sm text-gray-500">
                             {school.city}, {school.state} • {school.division}
                           </div>
