@@ -1017,6 +1017,7 @@ function ConferenceStandingsModal({
                     {ourRow.division && `${ourRow.division} · `}
                     {ordinal(ourRow.place)}
                     {ourRow.division ? ' in division' : ' place'}
+                    {ourRow.ppg != null && ` · ${ourRow.ppg.toFixed(2)} PPG`}
                     {ourRow.qualification && ` · ${ourRow.qualification}`}
                   </span>
                 )}
@@ -1059,16 +1060,18 @@ function ConferenceStandingsModal({
                   GP
                 </th>
                 <th className="text-center px-2 py-2 font-semibold">W-L-T</th>
-                <th className="hidden sm:table-cell text-center px-2 py-2 font-semibold">
+                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold">
                   GF-GA
                 </th>
-                {/* GD now visible on mobile too — goal-differential is the
-                    most informative single stat after W-L-T for understanding
-                    where a team sits in the table. */}
-                <th className="text-center px-2 py-2 font-semibold">GD</th>
-                <th className="hidden md:table-cell text-center px-2 py-2 font-semibold">
-                  PPG
+                <th className="hidden sm:table-cell text-center px-2 py-2 font-semibold">
+                  GD
                 </th>
+                {/* PPG is the primary ranking metric in ECNL — it
+                    normalizes for uneven games-played across teams
+                    (weather cancellations, schedule asymmetries). Always
+                    visible, bold-weighted to match the Pts column it
+                    sits beside. */}
+                <th className="text-center px-2 py-2 font-semibold">PPG</th>
                 <th className="text-center px-2 sm:px-3 py-2 font-semibold">
                   Pts
                 </th>
@@ -1135,11 +1138,11 @@ function ConferenceStandingsModal({
                         <td className="text-center px-2 py-2.5 tabular-nums text-gray-700">
                           {row.wins ?? 0}-{row.losses ?? 0}-{row.draws ?? 0}
                         </td>
-                        <td className="hidden sm:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                        <td className="hidden md:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
                           {(row.gf ?? 0)}-{(row.ga ?? 0)}
                         </td>
                         <td
-                          className={`text-center px-2 py-2.5 tabular-nums font-medium ${
+                          className={`hidden sm:table-cell text-center px-2 py-2.5 tabular-nums font-medium ${
                             row.gd > 0
                               ? 'text-emerald-700'
                               : row.gd < 0
@@ -1153,10 +1156,15 @@ function ConferenceStandingsModal({
                               : `${row.gd}`
                             : '—'}
                         </td>
-                        <td className="hidden md:table-cell text-center px-2 py-2.5 tabular-nums text-gray-700">
+                        {/* PPG — bolded to signal it's the primary
+                            ranking metric. ECNL standings are PPG-sorted
+                            (not Pts-sorted) precisely because games-
+                            played is uneven, so this is the number
+                            parents care about most when scanning. */}
+                        <td className="text-center px-2 py-2.5 tabular-nums font-bold text-gray-900">
                           {row.ppg != null ? row.ppg.toFixed(2) : '—'}
                         </td>
-                        <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-bold text-gray-900">
+                        <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums text-gray-700">
                           {row.pts ?? 0}
                         </td>
                       </tr>
