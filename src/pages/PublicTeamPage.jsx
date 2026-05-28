@@ -413,6 +413,15 @@ export default function PublicTeamPage() {
   const ourAthleteOneTeamId = team?.athleteone_team_id || null
   const hasConferenceData = conferenceStandings.length > 0
 
+  // Sprint 4.5: our team's own row from the conference standings, used
+  // by the Conference metric card to render a richer "1st · North"
+  // primary with a "Champions League · #8 seed" subline. Falls back to
+  // standingsPosition (the team-info mini-widget number) when the full
+  // conference table hasn't been synced yet or our team isn't in it.
+  const conferenceRow = ourAthleteOneTeamId
+    ? conferenceStandings.find((r) => r.team_id === ourAthleteOneTeamId)
+    : null
+
   // Roster is its own prominent section now (Sprint 2), not a tab. Staff
   // stays as a tab — lower-traffic and the email-on-tap workflow already
   // works well there. Both still gate on data being present so teams with
@@ -503,6 +512,7 @@ export default function PublicTeamPage() {
             <MetricCardsRow
               record={computeRecord(games)}
               standingsPosition={standingsPosition}
+              conferenceRow={conferenceRow}
               headCoach={headCoach}
               onConferenceClick={
                 hasConferenceData
@@ -752,7 +762,13 @@ export default function PublicTeamPage() {
  *   Conf     — ordinal of standingsPosition; hidden when null
  *   Head Coach — full name; hidden when no staff member matches "head coach"
  */
-function MetricCardsRow({ record, standingsPosition, headCoach, onConferenceClick }) {
+function MetricCardsRow({
+  record,
+  standingsPosition,
+  conferenceRow,
+  headCoach,
+  onConferenceClick,
+}) {
   const cards = []
 
   // Record always shown — "—" placeholder before any games are played so
@@ -790,12 +806,36 @@ function MetricCardsRow({ record, standingsPosition, headCoach, onConferenceClic
     color: gdColor,
   })
 
-  if (standingsPosition != null) {
-    // Sprint 4.5: Conference card becomes interactive when the full
-    // standings table is available (onConferenceClick passed from parent).
-    // Otherwise renders as a plain card. Affordance is a subtle "View
-    // table" hint + cursor change so the tap behaviour is discoverable
-    // without shouting.
+  // Sprint 4.5: Conference card. When the full conference standings are
+  // synced and our team's row is in there (conferenceRow), render a
+  // richer card showing divisional place + qualification:
+  //
+  //   🏆 1st · North         ← primary (big number + smaller division)
+  //   Champions League #8 seed   ← subline (postseason context)
+  //   View league →          ← affordance label
+  //
+  // Falls back to the legacy standingsPosition rendering when the
+  // conference row isn't available (older sync, parser miss, or team
+  // not in the standings response).
+  if (conferenceRow) {
+    const qual = parseQualification(conferenceRow.qualification)
+    cards.push({
+      key: 'standing',
+      primary: ordinal(conferenceRow.place),
+      primaryAccent: conferenceRow.division
+        ? `· ${conferenceRow.division}`
+        : null,
+      subline: qual
+        ? qual.seed != null
+          ? `${qual.bracket} · #${qual.seed} seed`
+          : qual.bracket
+        : null,
+      label: onConferenceClick ? 'View league →' : 'In conference',
+      color: 'text-amber-700',
+      prefixIcon: '🏆',
+      onClick: onConferenceClick || null,
+    })
+  } else if (standingsPosition != null) {
     cards.push({
       key: 'standing',
       primary: ordinal(standingsPosition),
@@ -854,13 +894,38 @@ function MetricCardsRow({ record, standingsPosition, headCoach, onConferenceClic
                   ? 'text-base sm:text-lg'
                   : 'text-xl sm:text-2xl'
               } font-bold leading-tight tabular-nums truncate ${c.color}`}
-              title={c.primary}
+              title={
+                c.primaryAccent
+                  ? `${c.primary} ${c.primaryAccent}`
+                  : c.primary
+              }
             >
               {c.prefixIcon && (
                 <span className="mr-1" aria-hidden="true">{c.prefixIcon}</span>
               )}
               {c.primary}
+              {/* primaryAccent renders smaller and lighter next to the
+                  big number — e.g. the division name "· North" after
+                  "1st" on the Conference card. Keeps the place number
+                  as the visual anchor while showing context inline. */}
+              {c.primaryAccent && (
+                <span className="ml-1 text-sm sm:text-base font-medium text-gray-600">
+                  {c.primaryAccent}
+                </span>
+              )}
             </div>
+            {/* Optional subline — used by the Conference card to surface
+                postseason context ("Champions League · #8 seed"). Renders
+                below the primary, above the label. Other cards omit it
+                and the grid stretches to equalize heights. */}
+            {c.subline && (
+              <div
+                className="text-[11px] sm:text-xs text-gray-600 mt-1 truncate"
+                title={c.subline}
+              >
+                {c.subline}
+              </div>
+            )}
             <div
               className={`text-[10px] sm:text-xs uppercase tracking-wider font-medium mt-1 truncate ${
                 c.onClick ? 'text-cyan-700' : 'text-gray-500'
@@ -2286,4 +2351,24 @@ function ordinal(n) {
   const v = num % 100
   const suffix = suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]
   return `${num}${suffix}`
+}
+
+// AthleteOne concatenates the postseason bracket and seed number into a
+// single qualification string: "Champions League 8", "North American
+// Cup", "Showcase Cup", "n/a", etc. Split it so we can render the seed
+// as a distinct token ("Champions League · #8 seed"). Returns null when
+// the team didn't qualify for anything (or no qualification text).
+function parseQualification(q) {
+  if (!q) return null
+  const trimmed = q.trim()
+  if (!trimmed || /^n\/?a$/i.test(trimmed)) return null
+  const parts = trimmed.split(/\s+/)
+  const last = parts[parts.length - 1]
+  if (/^\d+$/.test(last) && parts.length > 1) {
+    return {
+      bracket: parts.slice(0, -1).join(' '),
+      seed: parseInt(last, 10),
+    }
+  }
+  return { bracket: trimmed, seed: null }
 }
