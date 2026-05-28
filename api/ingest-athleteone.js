@@ -1051,29 +1051,30 @@ function parseConferenceStandings(html) {
   }
   if (tableStarts.length === 0) return out
 
-  // Index all <h2>–<h5> headings with their positions. We'll match each
-  // table to the nearest preceding heading. Page-title-style headings
-  // ("G2010 - ECNL Standings") describe the page, not a division — we
-  // skip those via the /standings|conference|select/i filter so they
-  // don't get mistaken for division names.
-  const headingRe = /<h[2-5][^>]*>([\s\S]*?)<\/h[2-5]>/gi
-  const headings = []
-  let hm
-  while ((hm = headingRe.exec(html)) !== null) {
-    const text = stripTags(hm[1]).trim().replace(/\s+/g, ' ')
-    if (!text) continue
-    if (/\b(standings|conference|select)\b/i.test(text)) continue
-    headings.push({ pos: hm.index, text: text })
+  // The division marker is a big 48px-styled <span> AthleteOne renders
+  // as a grey watermark above each table. In multi-division conferences
+  // (Ohio Valley G2010 → North/South) the span text is the division
+  // name. In single-division conferences (G2013) the SAME span carries
+  // the league acronym ("ECNL") as a decoration — we handle that case
+  // by nulling division on all rows when every value matches a known
+  // acronym, so the modal renders flat instead of putting "ECNL" as
+  // a section header above one undivided table.
+  const markerRe =
+    /<span\s+style="[^"]*font-size:\s*48px[^"]*"[^>]*>([^<]+)<\/span>/gi
+  const markers = []
+  let mm
+  while ((mm = markerRe.exec(html)) !== null) {
+    const text = stripTags(mm[1]).trim()
+    if (text) markers.push({ pos: mm.index, text: text })
   }
 
-  // Closest preceding heading wins. Scoped to the gap between this
-  // table and the previous one so the South heading doesn't get
-  // attributed to North's table.
-  function divisionFor(tableStart, prevEnd) {
+  // Closest preceding marker wins, scoped to the gap between this table
+  // and the previous one.
+  function markerFor(tableStart, prevEnd) {
     let best = null
-    for (const heading of headings) {
-      if (heading.pos < tableStart && heading.pos >= prevEnd) {
-        best = heading.text
+    for (const marker of markers) {
+      if (marker.pos < tableStart && marker.pos >= prevEnd) {
+        best = marker.text
       }
     }
     return best
@@ -1082,7 +1083,7 @@ function parseConferenceStandings(html) {
   for (let i = 0; i < tableStarts.length; i++) {
     const start = tableStarts[i]
     const prevEnd = i > 0 ? tableStarts[i - 1] : 0
-    const division = divisionFor(start, prevEnd)
+    const division = markerFor(start, prevEnd)
 
     const end =
       i + 1 < tableStarts.length ? tableStarts[i + 1] : html.length
@@ -1096,6 +1097,26 @@ function parseConferenceStandings(html) {
     while ((rowMatch = rowRe.exec(tbody)) !== null) {
       const parsed = parseStandingsRow(rowMatch[1], division)
       if (parsed) out.push(parsed)
+    }
+  }
+
+  // Single-division responses put the league acronym in the marker span
+  // ("ECNL"/"ECNL RL"/"PRE-ECNL"/etc) as a watermark, NOT as a real
+  // division label. When every row carries the same value AND that
+  // value is a known acronym, treat the response as undivided.
+  const distinct = new Set(out.map((r) => r.division).filter((d) => d))
+  const ACRONYM_MARKERS = new Set([
+    'ECNL',
+    'ECNL RL',
+    'ECNL BOYS',
+    'ECNL GIRLS',
+    'PRE-ECNL',
+    'PRE ECNL',
+  ])
+  if (distinct.size === 1) {
+    const only = Array.from(distinct)[0]
+    if (ACRONYM_MARKERS.has(only.toUpperCase())) {
+      for (const r of out) r.division = null
     }
   }
 
@@ -1124,7 +1145,7 @@ function parseStandingsRow(rowHtml, division) {
   const teamName = stripTags(teamMatch[2]).trim()
 
   const qualMatch = cell1.match(
-    /Qualification:\s*<\/span>\s*<span[^>]*>([\s\S]*?)<\/span>/i
+    /Qualification:\s*<\/span\s*>\s*<span[^>]*>([\s\S]*?)<\/span\s*>/i
   )
   const qualification = qualMatch ? stripTags(qualMatch[1]).trim() : null
 
