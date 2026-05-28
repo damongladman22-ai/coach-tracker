@@ -207,6 +207,84 @@ export default function ClubDashboard() {
     return filteredTeams.filter((t) => favSet.has(t.id))
   }, [filteredTeams, favorites])
 
+  // Postseason pipeline data — walks every team's own conference standings
+  // row, classifies the qualification text into one of four tiers, and
+  // sorts within each tier. Hidden entirely when no team has qualified
+  // for anything yet (preseason). Drives the ticker above My Teams.
+  const postseasonData = useMemo(() => {
+    if (teams.length === 0) return null
+
+    const TIERS = [
+      {
+        key: 'cl',
+        label: 'Champions League',
+        icon: '🏆',
+        accent: 'amber',
+        match: (q) => /^Champions League/i.test(q),
+      },
+      {
+        key: 'nac',
+        label: 'North American Cup',
+        icon: '🥈',
+        accent: 'sky',
+        match: (q) => /North American Cup/i.test(q),
+      },
+      {
+        key: 'showcase',
+        label: 'Showcase Cup',
+        icon: '🥉',
+        accent: 'orange',
+        match: (q) => /Showcase Cup/i.test(q),
+      },
+      {
+        key: 'rl',
+        label: 'Regional League Playoffs',
+        icon: '🛡️',
+        accent: 'cyan',
+        match: (q) => /Regional League Playoffs/i.test(q),
+      },
+    ]
+    const buckets = TIERS.map((t) => ({ ...t, teams: [] }))
+    let totalQualified = 0
+
+    for (const team of teams) {
+      const standings = team.athleteone_metadata?.conference_standings
+      const aoTeamId = team.athleteone_team_id
+      if (!Array.isArray(standings) || !aoTeamId) continue
+      const ourRow = standings.find((r) => r.team_id === aoTeamId)
+      if (!ourRow) continue
+      const qual = (ourRow.qualification || '').trim()
+      if (!qual || /^n\/?a$/i.test(qual)) continue
+      const tierIdx = TIERS.findIndex((t) => t.match(qual))
+      if (tierIdx < 0) continue
+
+      let seed = null
+      if (TIERS[tierIdx].key === 'cl') {
+        const m = qual.match(/(\d+)\s*$/)
+        if (m) seed = parseInt(m[1], 10)
+      }
+      buckets[tierIdx].teams.push({
+        team,
+        qualification: qual,
+        seed,
+        place: ourRow.place ?? null,
+      })
+      totalQualified++
+    }
+
+    for (const bucket of buckets) {
+      if (bucket.key === 'cl') {
+        bucket.teams.sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999))
+      } else {
+        bucket.teams.sort((a, b) => (a.place ?? 9999) - (b.place ?? 9999))
+      }
+    }
+
+    const populated = buckets.filter((b) => b.teams.length > 0)
+    if (populated.length === 0) return null
+    return { tiers: populated, totalQualified, totalTeams: teams.length }
+  }, [teams])
+
   // Group teams
   const groupedTeams = useMemo(() => {
     if (groupBy === 'none') {
@@ -283,6 +361,10 @@ export default function ClubDashboard() {
           <ErrorMessage error={error} onRetry={() => load(selectedSeason.id)} />
         ) : (
           <>
+            {/* Postseason Pipeline ticker — hero strip above team lists.
+                Hidden until at least one team has qualified for a bracket. */}
+            <PostseasonPipelineSection postseason={postseasonData} />
+
             {/* My Teams (favorites) — pinned above the grouped lists */}
             {favoriteTeams.length > 0 && (
               <section className="mb-6">
@@ -649,4 +731,166 @@ function isoDate(d) {
   const m = String(d.getMonth() + 1).padStart(2, '0')
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
+}
+
+// ===========================================================================
+// Postseason Pipeline ticker
+//
+// Slim horizontal strip at the top of /home that celebrates OP teams
+// qualifying for postseason brackets. Auto-scrolls left like a sports
+// ticker so all qualified teams fit without taking vertical space.
+// Pauses on hover/touch so users can tap a pill to jump to that team.
+// Respects prefers-reduced-motion (animation disabled; manual horizontal
+// scroll still works via overflow-x-auto).
+//
+// Hides entirely when no team has qualified (preseason).
+// ===========================================================================
+
+// Tier color palettes. Tailwind JIT requires literal class strings, so
+// each tier's full classes are listed here (no dynamic composition).
+const TIER_PALETTES = {
+  amber: {
+    pillBg: 'bg-amber-100',
+    pillBorder: 'border-amber-300',
+    pillText: 'text-amber-900',
+    pillAccent: 'text-amber-900',
+  },
+  sky: {
+    pillBg: 'bg-sky-100',
+    pillBorder: 'border-sky-300',
+    pillText: 'text-sky-900',
+    pillAccent: 'text-sky-900',
+  },
+  orange: {
+    pillBg: 'bg-orange-100',
+    pillBorder: 'border-orange-300',
+    pillText: 'text-orange-900',
+    pillAccent: 'text-orange-900',
+  },
+  cyan: {
+    pillBg: 'bg-cyan-100',
+    pillBorder: 'border-cyan-300',
+    pillText: 'text-cyan-900',
+    pillAccent: 'text-cyan-900',
+  },
+}
+
+function PostseasonPipelineSection({ postseason }) {
+  if (!postseason) return null
+
+  // Flatten all qualified teams in tier-then-rank order. Doubled for
+  // seamless marquee loop (the second copy is aria-hidden so screen
+  // readers don't repeat).
+  const allEntries = []
+  for (const tier of postseason.tiers) {
+    for (const entry of tier.teams) {
+      allEntries.push({ ...entry, tier })
+    }
+  }
+
+  return (
+    <section className="mb-5 bg-slate-900 rounded-lg overflow-hidden shadow-sm">
+      <style>{`
+        @keyframes pp-marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .pp-ticker {
+          animation: pp-marquee 60s linear infinite;
+          will-change: transform;
+        }
+        .pp-ticker:hover,
+        .pp-ticker:focus-within {
+          animation-play-state: paused;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .pp-ticker { animation: none; }
+        }
+      `}</style>
+
+      {/* Compact header */}
+      <div className="px-4 pt-2.5 pb-1 text-white">
+        <div className="flex items-center gap-2 text-xs sm:text-sm">
+          <span aria-hidden="true">🏆</span>
+          <span className="font-semibold uppercase tracking-wider">
+            Postseason Pipeline
+          </span>
+          <span className="text-slate-400">·</span>
+          <span className="text-slate-300">
+            <span className="font-semibold text-white">
+              {postseason.totalQualified}
+            </span>{' '}
+            {postseason.totalQualified === 1 ? 'team' : 'teams'} advancing
+          </span>
+        </div>
+      </div>
+
+      {/* Ticker row — overflow-x-auto on the wrapper enables manual scroll
+          when animation is paused or disabled. max-content on the inner
+          flex gives the ticker its natural width so the marquee loop
+          translates the correct distance. */}
+      <div className="pb-2.5 overflow-x-auto scrollbar-hide">
+        <div
+          className="pp-ticker flex gap-2 px-4"
+          style={{ width: 'max-content' }}
+        >
+          {allEntries.map((entry, i) => (
+            <PostseasonPill key={`a-${i}`} entry={entry} />
+          ))}
+          {allEntries.map((entry, i) => (
+            <PostseasonPill key={`b-${i}`} entry={entry} ariaHidden />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function PostseasonPill({ entry, ariaHidden = false }) {
+  const { team, seed, place, tier } = entry
+  const palette = TIER_PALETTES[tier.accent] || TIER_PALETTES.cyan
+  const isCL = tier.key === 'cl'
+
+  const trailing = isCL
+    ? seed != null
+      ? `#${seed}`
+      : null
+    : place != null
+      ? ordinalPlace(place)
+      : null
+
+  return (
+    <Link
+      to={`/t/${team.slug}`}
+      aria-hidden={ariaHidden || undefined}
+      tabIndex={ariaHidden ? -1 : 0}
+      className={`flex-shrink-0 inline-flex items-center gap-1.5 ${palette.pillBg} border ${palette.pillBorder} rounded-full pl-2.5 pr-3 py-1.5 text-xs font-medium hover:shadow active:scale-95 transition`}
+    >
+      <span aria-hidden="true" className="text-sm leading-none">
+        {tier.icon}
+      </span>
+      <span className={`${palette.pillText} font-medium`}>{team.name}</span>
+      {trailing && (
+        <>
+          <span className="text-gray-400">·</span>
+          <span className={`${palette.pillAccent} font-bold`}>{trailing}</span>
+        </>
+      )}
+    </Link>
+  )
+}
+
+function ordinalPlace(n) {
+  const v = n % 100
+  const suffix =
+    v >= 11 && v <= 13
+      ? 'th'
+      : n % 10 === 1
+        ? 'st'
+        : n % 10 === 2
+          ? 'nd'
+          : n % 10 === 3
+            ? 'rd'
+            : 'th'
+  return `${n}${suffix}`
 }
