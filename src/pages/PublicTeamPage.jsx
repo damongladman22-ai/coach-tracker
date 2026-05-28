@@ -424,18 +424,32 @@ export default function PublicTeamPage() {
 
   // Opponent enrichment lookup. Keyed by team_name so game cards can
   // look up the opposing team's logo + place + record without an extra
-  // query. Same source as games table's opponent string (AthleteOne
-  // team-info HTML), so exact match is reliable for conference
-  // opponents. Non-conference opponents (tournaments, out-of-conf
-  // friendlies) won't be in standings — GameCard falls through to plain
-  // text in that case.
+  // query.
+  //
+  // Two sources:
+  //   1. known_opponents (from athleteone_metadata) — populated from
+  //      every game row in team-info HTML. Carries just logo + club_id
+  //      + team_id. Covers BOTH conference AND non-conference opponents
+  //      (tournament/showcase teams) so logos appear everywhere.
+  //   2. conference_standings — richer per-row data (place, record,
+  //      PPG, qualification). Only covers same-conference opponents.
+  //
+  // We layer known_opponents first, then overlay conference_standings
+  // so the richer data wins for in-conference opponents while
+  // tournament opponents still get their logo.
   const opponentLookup = useMemo(() => {
     const map = {}
+    const known = team?.athleteone_metadata?.known_opponents || {}
+    for (const name in known) {
+      map[name] = { ...known[name] }
+    }
     for (const row of conferenceStandings) {
-      if (row.team_name) map[row.team_name] = row
+      if (row.team_name) {
+        map[row.team_name] = { ...(map[row.team_name] || {}), ...row }
+      }
     }
     return map
-  }, [conferenceStandings])
+  }, [team, conferenceStandings])
 
   // Roster is its own prominent section now (Sprint 2), not a tab. Staff
   // stays as a tab — lower-traffic and the email-on-tap workflow already

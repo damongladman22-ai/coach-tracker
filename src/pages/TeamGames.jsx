@@ -274,17 +274,26 @@ export default function TeamGames() {
     );
   }
 
-  // Opponent enrichment lookup. Keyed by team_name so game cards can
-  // pull the opposing team's logo + place + record without an extra
-  // query. Same source as games.opponent string (AthleteOne team-info
-  // HTML), so exact match is reliable for in-conference opponents.
-  // Out-of-conference opponents (tournaments, friendlies) won't be in
-  // standings — render falls through to plain text.
+  // Opponent enrichment lookup. Layers two sources keyed by team_name:
+  //   1. known_opponents from athleteone_metadata — covers EVERY
+  //      opponent including non-conference (tournament/showcase) teams,
+  //      with just logo + club_id + team_id.
+  //   2. conference_standings — richer fields (place, record, ppg) for
+  //      in-conference opponents only; overlays the known_opponents
+  //      entry so the richer data wins where available.
+  // The merged map drives logo display on game cards. Out-of-conference
+  // opponents still get their logo via the known_opponents layer.
   const opponentLookup = (() => {
     const map = {};
+    const known = eventTeam?.athleteone_metadata?.known_opponents || {};
+    for (const name in known) {
+      map[name] = { ...known[name] };
+    }
     const rows = eventTeam?.athleteone_metadata?.conference_standings || [];
     for (const row of rows) {
-      if (row.team_name) map[row.team_name] = row;
+      if (row.team_name) {
+        map[row.team_name] = { ...(map[row.team_name] || {}), ...row };
+      }
     }
     return map;
   })();

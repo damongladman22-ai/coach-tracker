@@ -135,6 +135,43 @@ export default async function handler(req, res) {
         )
       }
 
+      // Build a known_opponents map for opponent enrichment in the UI.
+      // Conference opponents (rich data: place, record, ppg, logo) come
+      // from conference_standings; non-conference opponents (tournament
+      // and showcase teams whose own conference we don't track) come
+      // from the game rows of our team-info HTML, which embed each
+      // opponent's logo + club_id + team_id. Game cards do a merged
+      // lookup so logos appear even for out-of-conference matchups.
+      //
+      // Keyed by team_name (the exact opponent text we store on games)
+      // for direct lookup. Same key shape as conference_standings rows
+      // so consumers can use the same matching path. Last-write wins
+      // when a name appears in both — conference_standings carries
+      // richer fields so we write it second.
+      const knownOpponents = {}
+      const opponentGameRows = parseGamesFromTeamInfo(html)
+      for (const g of opponentGameRows) {
+        if (!g.opponent || !g.opponent_logo_url) continue
+        knownOpponents[g.opponent] = {
+          team_name: g.opponent,
+          team_id: g.opponent_team_id || null,
+          club_id: g.opponent_club_id || null,
+          logo_url: g.opponent_logo_url,
+        }
+      }
+      if (conferenceResult.ok) {
+        for (const row of conferenceResult.standings) {
+          if (!row.team_name) continue
+          knownOpponents[row.team_name] = {
+            team_name: row.team_name,
+            team_id: row.team_id || null,
+            club_id: row.club_id || null,
+            logo_url: row.logo_url || knownOpponents[row.team_name]?.logo_url || null,
+          }
+        }
+      }
+      standings.known_opponents = knownOpponents
+
       const summary = {
         team_id: team.id,
         name: team.name,
@@ -939,12 +976,19 @@ function parseGamesFromTeamInfo(html, ourTeamIdStr) {
     )
 
     // Opponent: the lone individual-team-item span in this view (vs the
-    // club-schedule which had two). The opponent's data-team-id is captured
-    // for downstream use (currently informational; could be wired into a
-    // future opponent-team lookup table).
+    // club-schedule which had two). data-team-id + data-club-id are
+    // captured so downstream consumers can wire opponent enrichment
+    // (logos, club lookups) without re-fetching.
     const oppMatch = tr.match(
-      /<span\s+class="individual-team-item"[^>]*data-team-id="(\d+)"[^>]*>([^<]+)<\/span>/i
+      /<span\s+class="individual-team-item"[^>]*data-club-id="(\d+)"[^>]*data-team-id="(\d+)"[^>]*>([^<]+)<\/span>/i
     )
+
+    // Opponent logo lives in the SAME flexbox cell as the team-item
+    // span — typically the <img> just before it. Grab any image src
+    // inside the row whose tag also sits before the opponent span;
+    // simplest reliable rule: first img.src in the row (since opponent
+    // logo is the only image in a game row's main cell).
+    const logoMatch = tr.match(/<img[^>]+src="([^"]+)"/i)
 
     const venueMatch = tr.match(
       /<span\s+class="game-complex-item"[^>]*>([\s\S]*?)<\/span>/i
@@ -959,8 +1003,10 @@ function parseGamesFromTeamInfo(html, ourTeamIdStr) {
       athleteone_game_id: parseInt(gmMatch[1], 10),
       game_date: parseTeamInfoDate(dateMatch[1]),
       game_time: timeMatch ? parseTeamInfoTime(timeMatch[1]) : null,
-      opponent: oppMatch ? oppMatch[2].trim() : null,
-      opponent_team_id: oppMatch ? oppMatch[1] : null,
+      opponent: oppMatch ? oppMatch[3].trim() : null,
+      opponent_club_id: oppMatch ? parseInt(oppMatch[1], 10) : null,
+      opponent_team_id: oppMatch ? parseInt(oppMatch[2], 10) : null,
+      opponent_logo_url: logoMatch ? logoMatch[1] : null,
       is_home: isHome,
       location: venueMatch
         ? venueMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()

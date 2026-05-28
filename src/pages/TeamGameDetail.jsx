@@ -251,14 +251,24 @@ export default function TeamGameDetail() {
     )
   }, [game])
 
-  // Opponent enrichment from the team's conference_standings (AthleteOne
-  // ingest). Matched by exact team_name — same source as games.opponent,
-  // so in-conference opponents resolve reliably; non-conference returns
-  // null and the hero falls through to plain matchup text.
+  // Opponent enrichment. Layers two sources, both keyed by team_name:
+  //   1. known_opponents — covers every opponent in the team's history
+  //      (in-conf + tournament/showcase), with just logo + club_id +
+  //      team_id. Stored in athleteone_metadata by the ingest function.
+  //   2. conference_standings — richer fields (place, record, ppg) for
+  //      in-conference rows only; overlays the known_opponents entry
+  //      so the richer record wins where it exists.
+  // Result: tournament opponents (Match Fit Surf, SUSA, etc.) get
+  // their logo in the hero card; in-conference opponents get the full
+  // place/record subline beneath.
   const opponentInfo = (() => {
     if (!game?.opponent) return null
+    const known = team?.athleteone_metadata?.known_opponents || {}
     const rows = team?.athleteone_metadata?.conference_standings || []
-    return rows.find((r) => r.team_name === game.opponent) || null
+    const fromStandings = rows.find((r) => r.team_name === game.opponent)
+    const fromKnown = known[game.opponent]
+    if (!fromStandings && !fromKnown) return null
+    return { ...(fromKnown || {}), ...(fromStandings || {}) }
   })()
 
   return (
