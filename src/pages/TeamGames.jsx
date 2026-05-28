@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams, Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useRealtimeAttendance } from '../hooks/useRealtimeAttendance';
@@ -85,10 +85,12 @@ export default function TeamGames() {
 
         if (eventError || !eventData) throw new Error('Event not found');
 
-        // Get team by slug in that event's season
+        // Get team by slug in that event's season. athleteone_metadata
+        // includes conference_standings (when synced) which we use below
+        // to enrich each game card with opponent logo + record.
         const { data: teamData, error: teamError } = await supabase
           .from('teams')
-          .select('id, name, slug, gender')
+          .select('id, name, slug, gender, athleteone_team_id, athleteone_metadata')
           .eq('slug', teamSlug)
           .eq('season_id', eventData.season_id)
           .single();
@@ -100,6 +102,8 @@ export default function TeamGames() {
           id: teamData.id,
           slug: teamData.slug,
           events: eventData,
+          athleteone_team_id: teamData.athleteone_team_id,
+          athleteone_metadata: teamData.athleteone_metadata,
           club_teams: {
             id: teamData.id,
             team_name: teamData.name,
@@ -270,6 +274,21 @@ export default function TeamGames() {
     );
   }
 
+  // Opponent enrichment lookup. Keyed by team_name so game cards can
+  // pull the opposing team's logo + place + record without an extra
+  // query. Same source as games.opponent string (AthleteOne team-info
+  // HTML), so exact match is reliable for in-conference opponents.
+  // Out-of-conference opponents (tournaments, friendlies) won't be in
+  // standings — render falls through to plain text.
+  const opponentLookup = (() => {
+    const map = {};
+    const rows = eventTeam?.athleteone_metadata?.conference_standings || [];
+    for (const row of rows) {
+      if (row.team_name) map[row.team_name] = row;
+    }
+    return map;
+  })();
+
   return (
     <div className="min-h-screen bg-gray-50 pb-8">
       {/* Auto-refresh status indicator */}
@@ -350,6 +369,7 @@ export default function TeamGames() {
               const isUnlocked = isGameUnlocked(game);
               const isLocked = !isClosed && !isUnlocked && game.game_time;
               const gameVideos = videosByGame[game.id] || [];
+              const opponentInfo = opponentLookup[game.opponent || ''] || null;
               
               return (
                 <GameWithVideoBadge
@@ -373,6 +393,15 @@ export default function TeamGames() {
                               <span className="ml-2 text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded">Closed</span>
                             </p>
                             <p className="font-semibold text-lg text-gray-700 truncate">
+                              {opponentInfo?.logo_url && (
+                                <img
+                                  src={opponentInfo.logo_url}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-5 w-5 inline-block object-contain mr-1.5 align-text-bottom rounded-sm"
+                                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                                />
+                              )}
                               vs {game.opponent}
                               {(() => {
                                 const r = gameResult(game)
@@ -383,6 +412,11 @@ export default function TeamGames() {
                                 ) : null
                               })()}
                             </p>
+                            {opponentInfo && opponentInfo.place != null && opponentInfo.wins != null && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {ordinal(opponentInfo.place)} · {opponentInfo.wins}-{opponentInfo.losses}-{opponentInfo.draws}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <Link
@@ -410,7 +444,23 @@ export default function TeamGames() {
                             <p className="text-sm text-gray-500">
                               <span className="font-medium text-gray-700">Game {index + 1}</span> • {formatDate(game.game_date)} @ {formatGameTime(game)}
                             </p>
-                            <p className="font-semibold text-lg text-gray-700 truncate">vs {game.opponent}</p>
+                            <p className="font-semibold text-lg text-gray-700 truncate">
+                              {opponentInfo?.logo_url && (
+                                <img
+                                  src={opponentInfo.logo_url}
+                                  alt=""
+                                  loading="lazy"
+                                  className="h-5 w-5 inline-block object-contain mr-1.5 align-text-bottom rounded-sm"
+                                  onError={(e) => { e.currentTarget.style.display = 'none' }}
+                                />
+                              )}
+                              vs {game.opponent}
+                            </p>
+                            {opponentInfo && opponentInfo.place != null && opponentInfo.wins != null && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                {ordinal(opponentInfo.place)} · {opponentInfo.wins}-{opponentInfo.losses}-{opponentInfo.draws}
+                              </p>
+                            )}
                           </div>
                         </div>
                         <div className="bg-amber-100 text-amber-800 px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0 text-center">
@@ -438,6 +488,15 @@ export default function TeamGames() {
                             {game.game_time && <span className="ml-1">@ {formatGameTime(game)}</span>}
                           </p>
                           <p className="font-semibold text-lg truncate">
+                            {opponentInfo?.logo_url && (
+                              <img
+                                src={opponentInfo.logo_url}
+                                alt=""
+                                loading="lazy"
+                                className="h-5 w-5 inline-block object-contain mr-1.5 align-text-bottom rounded-sm"
+                                onError={(e) => { e.currentTarget.style.display = 'none' }}
+                              />
+                            )}
                             vs {game.opponent}
                             {(() => {
                               const r = gameResult(game)
@@ -448,6 +507,11 @@ export default function TeamGames() {
                               ) : null
                             })()}
                           </p>
+                          {opponentInfo && opponentInfo.place != null && opponentInfo.wins != null && (
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {ordinal(opponentInfo.place)} · {opponentInfo.wins}-{opponentInfo.losses}-{opponentInfo.draws}
+                            </p>
+                          )}
                         </div>
                         <div className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium flex-shrink-0">
                           + Add Coaches
@@ -507,4 +571,24 @@ function GameWithVideoBadge({ children, videos, game, teamName }) {
       )}
     </div>
   );
+}
+
+// Turns a number into "1st", "2nd", "3rd", "4th"... Used to render the
+// opponent's conference place on each game card. Same shape as the
+// helper in PublicTeamPage.jsx — kept local here to avoid a one-line
+// import dependency.
+function ordinal(n) {
+  if (n == null) return ''
+  const v = n % 100
+  const suffix =
+    v >= 11 && v <= 13
+      ? 'th'
+      : n % 10 === 1
+        ? 'st'
+        : n % 10 === 2
+          ? 'nd'
+          : n % 10 === 3
+            ? 'rd'
+            : 'th'
+  return `${n}${suffix}`
 }
