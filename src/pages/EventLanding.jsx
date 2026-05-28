@@ -51,6 +51,7 @@ export default function EventLanding() {
           id,
           is_closed,
           team_id,
+          game_date,
           teams (id, name, slug, gender)
         `)
         .eq('event_id', eventData.id);
@@ -85,7 +86,35 @@ export default function EventLanding() {
           const teamGames = et.games;
           if (teamGames.length > 0) {
             const gameIds = teamGames.map((g) => g.id);
-            const hasOpenGames = teamGames.some((g) => !g.is_closed);
+
+            // "Live window" — same rule used by PublicTeamPage.EventCard.
+            // Unclosed game today, in the future, or within the last 14
+            // days. This is what gates whether the "Live Tracker / View
+            // Games" CTA renders. The earlier rule (any open game + event
+            // not past) misfired on long-running conference events:
+            // admins rarely close each game individually, so unclosed
+            // stale games kept the live CTA visible for months. We still
+            // honor `past` (event end date in the past) as a kill switch
+            // for discrete events that get past their end without any
+            // explicit close action, but the recency check is what
+            // catches the conference-wrapper case.
+            const RECENT_DAYS = 14;
+            const todayMs = (() => {
+              const d = new Date();
+              d.setHours(0, 0, 0, 0);
+              return d.getTime();
+            })();
+            const parseGameDate = (dateStr) => {
+              const [y, m, d] = dateStr.split('-');
+              return new Date(y, m - 1, d);
+            };
+            const hasLiveWindow = teamGames.some((g) => {
+              if (g.is_closed) return false;
+              if (!g.game_date) return true; // undated → treat as live by default
+              const gameMs = parseGameDate(g.game_date).getTime();
+              const daysFromToday = (gameMs - todayMs) / (1000 * 60 * 60 * 24);
+              return daysFromToday >= -RECENT_DAYS;
+            });
 
             const { data: attendanceData } = await supabase
               .from('attendance')
@@ -104,14 +133,14 @@ export default function EventLanding() {
               games: teamGames.length,
               schools: uniqueSchools.size,
               coaches: uniqueCoaches.size,
-              hasOpenGames: hasOpenGames,
+              hasLiveWindow: hasLiveWindow,
             };
           } else {
             stats[et.id] = {
               games: 0,
               schools: 0,
               coaches: 0,
-              hasOpenGames: false,
+              hasLiveWindow: false,
             };
           }
         }
@@ -207,7 +236,11 @@ export default function EventLanding() {
   }
 
   const active = isEventActive();
-  const past = isEventPast();
+  // `past` previously gated the Live Tracker CTA. Now superseded by the
+  // per-team `hasLiveWindow` check (computed in fetchData above), which
+  // handles both discrete-event-ended and long-running-conference-stale
+  // cases uniformly. The isEventPast() helper is kept in case other
+  // surfaces want it later, but the local is no longer needed here.
 
   // Calculate totals
   const totalSchools = new Set(
@@ -329,13 +362,15 @@ export default function EventLanding() {
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      {/* Live Tracker / View Games button — only shown
-                          while the event hasn't ended yet. After the
-                          event is past, even open (unclosed) games
-                          shouldn't surface this CTA: there's nothing
-                          live to track anymore. Summary becomes the
-                          only action. */}
-                      {stats.hasOpenGames && !past && (
+                      {/* Live Tracker / View Games button — gated on the
+                          per-team "live window": any unclosed game today,
+                          in the future, or within the last 14 days. This
+                          catches both event-end-past (no future games) and
+                          the long-running conference case where the event
+                          itself never "ends" but the last game is weeks
+                          old. When the window is closed, Summary becomes
+                          the only action and gets the primary blue style. */}
+                      {stats.hasLiveWindow && (
                         <Link
                           to={`/e/${eventSlug}/${et.slug}`}
                           className="flex-1 sm:flex-none bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 text-center"
@@ -346,7 +381,7 @@ export default function EventLanding() {
                       <Link
                         to={`/e/${eventSlug}/${et.slug}/summary`}
                         className={`flex-1 sm:flex-none px-4 py-2 rounded-lg text-sm font-medium text-center ${
-                          stats.hasOpenGames && !past
+                          stats.hasLiveWindow
                             ? 'bg-green-100 text-green-700 hover:bg-green-200'
                             : 'bg-blue-600 text-white hover:bg-blue-700'
                         }`}
