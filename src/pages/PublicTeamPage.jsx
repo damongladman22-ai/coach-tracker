@@ -1723,32 +1723,23 @@ function GameCard({
     )
   })()
 
-  // Action button — present only for games attached to an event. We
-  // stopPropagation on its click so the card-level navigation below
-  // doesn't fight the button's own destination.
+  // Action button — present only for UPCOMING/live games attached to an
+  // event ("Open Tracker"). For past/closed games the whole-card click
+  // already routes to game detail, and tournament-level summaries are
+  // available from the Events tab, so the right column stays empty.
+  // We stopPropagation on the button's click so the card-level
+  // navigation below doesn't fight the button's own destination.
   let action = null
-  if (inEvent) {
-    if (isPast || isClosed) {
-      action = (
-        <Link
-          to={`/e/${eventSlug}/${teamSlug}/summary`}
-          onClick={(e) => e.stopPropagation()}
-          className="text-xs font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 active:bg-gray-300 px-3 py-2 rounded-lg text-center block whitespace-nowrap"
-        >
-          Summary
-        </Link>
-      )
-    } else {
-      action = (
-        <Link
-          to={`/e/${eventSlug}/${teamSlug}`}
-          onClick={(e) => e.stopPropagation()}
-          className="text-xs font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-3 py-2 rounded-lg text-center block whitespace-nowrap"
-        >
-          Open Tracker
-        </Link>
-      )
-    }
+  if (inEvent && !isPast && !isClosed) {
+    action = (
+      <Link
+        to={`/e/${eventSlug}/${teamSlug}`}
+        onClick={(e) => e.stopPropagation()}
+        className="text-xs font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-3 py-2 rounded-lg text-center block whitespace-nowrap"
+      >
+        Open Tracker
+      </Link>
+    )
   }
 
   // Whole-card click navigates to the unified game detail page. Cursor
