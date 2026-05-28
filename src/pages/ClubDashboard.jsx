@@ -34,44 +34,59 @@ export default function ClubDashboard() {
       if (eventsError) throw eventsError;
       setEvents(eventsData || []);
 
-      // Fetch all event teams with club team details
-      const { data: eventTeamsData, error: teamsError } = await supabase
-        .from('event_teams')
-        .select('*, club_teams(*), events(slug)')
-        .order('club_teams(team_name)');
+      // v2 schema: there is no event_teams junction table. The
+      // "teams participating in an event" relationship is derived
+      // from games that reference both event_id and team_id. We pull
+      // games with their team info and aggregate.
+      const { data: gamesData, error: gamesError } = await supabase
+        .from('games')
+        .select('id, team_id, event_id, is_closed, teams(id, name, gender, slug)')
+        .not('event_id', 'is', null);
 
-      if (teamsError) throw teamsError;
+      if (gamesError) throw gamesError;
 
-      // Fetch games to check if any are open for each event team
-      const eventTeamIds = (eventTeamsData || []).map(et => et.id);
-      let gamesData = [];
-      if (eventTeamIds.length > 0) {
-        const { data } = await supabase
-          .from('games')
-          .select('id, event_team_id, is_closed')
-          .in('event_team_id', eventTeamIds);
-        gamesData = data || [];
-      }
-
-      // Create a map of event_team_id -> hasOpenGames
-      const openGamesMap = {};
-      eventTeamIds.forEach(id => {
-        const teamGames = gamesData.filter(g => g.event_team_id === id);
-        openGamesMap[id] = teamGames.some(g => !g.is_closed);
-      });
-
-      // Group by event and attach hasOpenGames
+      // Aggregate: for each event, build a map of team_id -> team
+      // entry with hasOpenGames. A team is "open" if it has any
+      // un-closed game at that event.
       const byEvent = {};
-      (eventTeamsData || []).forEach(et => {
-        if (!byEvent[et.event_id]) {
-          byEvent[et.event_id] = [];
+      (gamesData || []).forEach(game => {
+        if (!game.teams) return; // skip orphaned games
+        const eventId = game.event_id;
+        const teamId = game.team_id;
+
+        if (!byEvent[eventId]) byEvent[eventId] = {};
+
+        if (!byEvent[eventId][teamId]) {
+          // First sighting of this team at this event
+          byEvent[eventId][teamId] = {
+            id: teamId,
+            slug: game.teams.slug,
+            hasOpenGames: !game.is_closed,
+            // Wrap in club_teams to match the shape EventCard expects.
+            // (Holdover from v1 schema where club_teams was a real
+            // junction-joined entity. Renaming the render code is a
+            // wider change — left for the broader v2 migration sweep.)
+            club_teams: {
+              team_name: game.teams.name,
+              gender: game.teams.gender === 'M' ? 'Boys'
+                : game.teams.gender === 'F' ? 'Girls'
+                : game.teams.gender
+            }
+          };
+        } else if (!game.is_closed) {
+          // Already saw this team; this game is open → mark open
+          byEvent[eventId][teamId].hasOpenGames = true;
         }
-        byEvent[et.event_id].push({
-          ...et,
-          hasOpenGames: openGamesMap[et.id] || false
-        });
       });
-      setEventTeams(byEvent);
+
+      // Convert team maps to sorted arrays
+      const result = {};
+      Object.entries(byEvent).forEach(([eventId, teamMap]) => {
+        result[eventId] = Object.values(teamMap).sort((a, b) =>
+          a.club_teams.team_name.localeCompare(b.club_teams.team_name)
+        );
+      });
+      setEventTeams(result);
 
     } catch (err) {
       console.error('Error loading data:', err);
