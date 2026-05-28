@@ -88,7 +88,7 @@ export default function EventLanding() {
             const gameIds = teamGames.map((g) => g.id);
 
             // "Live window" — same rule used by PublicTeamPage.EventCard.
-            // Unclosed game today, in the future, or within the last 14
+            // Unclosed game today, in the future, or within the last 7
             // days. This is what gates whether the "Live Tracker / View
             // Games" CTA renders. The earlier rule (any open game + event
             // not past) misfired on long-running conference events:
@@ -98,7 +98,7 @@ export default function EventLanding() {
             // for discrete events that get past their end without any
             // explicit close action, but the recency check is what
             // catches the conference-wrapper case.
-            const RECENT_DAYS = 14;
+            const RECENT_DAYS = 7;
             const todayMs = (() => {
               const d = new Date();
               d.setHours(0, 0, 0, 0);
@@ -236,6 +236,18 @@ export default function EventLanding() {
   }
 
   const active = isEventActive();
+  // Event-level live indicator. Old rule was just isEventActive() — fine
+  // for a 3-day showcase but wrong for a season-long conference event
+  // where today is always "in range" but no actual game is happening
+  // this week. New rule: pulsing LIVE pill in the header only shows if
+  // today is within the event range AND at least one team has a game in
+  // the 7-day live window. For discrete showcases this is unchanged
+  // behavior (both halves true during the event); for conference
+  // wrappers this correctly suppresses the pill on dead weeks.
+  const hasAnyLiveWindow = Object.values(attendanceStats).some(
+    (s) => s.hasLiveWindow
+  );
+  const showLivePill = active && hasAnyLiveWindow;
   // `past` previously gated the Live Tracker CTA. Now superseded by the
   // per-team `hasLiveWindow` check (computed in fetchData above), which
   // handles both discrete-event-ended and long-running-conference-stale
@@ -279,7 +291,7 @@ export default function EventLanding() {
           </div>
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl sm:text-2xl font-bold text-white">{event?.event_name}</h1>
-            {active && (
+            {showLivePill && (
               <span className="bg-green-500/20 text-green-300 text-sm font-medium px-2.5 py-0.5 rounded flex items-center gap-1 border border-green-500/30">
                 <span className="bg-green-400 h-2 w-2 rounded-full animate-pulse"></span>
                 LIVE

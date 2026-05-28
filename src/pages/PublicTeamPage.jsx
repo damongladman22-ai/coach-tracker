@@ -2208,14 +2208,14 @@ function EventCard({ event, games, attendance, teamSlug }) {
   }
 
   // "Live window" — any unclosed game that's today, in the future, or
-  // within the last 14 days (where late attendance logging still
-  // happens). For discrete showcases that ended last weekend this stays
-  // true and Live Tracker remains the CTA. For long-running conference
-  // wrappers where the most recent game was 3+ weeks ago this becomes
-  // false and Summary takes over, without admins having to close every
-  // past game one-by-one. The old allClosed-only check missed this case
-  // because conference games rarely get closed individually.
-  const RECENT_DAYS = 14
+  // within the last 7 days (where late attendance logging still
+  // happens). For discrete showcases that ended a few days ago this
+  // stays true and Live Tracker remains the CTA. For long-running
+  // conference wrappers where the most recent game was 8+ days ago this
+  // becomes false and Summary takes over, without admins having to close
+  // every past game one-by-one. The old allClosed-only check missed
+  // this case because conference games rarely get closed individually.
+  const RECENT_DAYS = 7
   const todayMs = (() => {
     const d = new Date()
     d.setHours(0, 0, 0, 0)
