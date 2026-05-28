@@ -4,6 +4,8 @@ import { supabase } from '../lib/supabase';
 import { isValidEmail } from '../lib/validation';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
+import HamburgerMenu from '../components/HamburgerMenu';
+import GenderBadge from '../components/GenderBadge';
 
 // US States for filter dropdown
 const US_STATES = [
@@ -20,8 +22,10 @@ const US_STATES = [
 const DIVISIONS = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'Junior College'];
 
 export default function CoachDirectory() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isAdminContext = searchParams.get('context') === 'admin';
+  const urlSchoolId = searchParams.get('school');
+  const urlGender = searchParams.get('gender');
   
   const [coaches, setCoaches] = useState([]);
   const [schools, setSchools] = useState([]);
@@ -39,12 +43,49 @@ export default function CoachDirectory() {
   const [conferenceFilter, setConferenceFilter] = useState('');
   const [showOnlyWithEmail, setShowOnlyWithEmail] = useState(false);
   const [showInactive, setShowInactive] = useState(false);
-  // Hide schools whose women's soccer programs no longer exist by
-  // default. Parents/players shouldn't see defunct programs cluttering
-  // the directory. Admins on the same page can toggle on to see them.
-  const [showInactiveSchools, setShowInactiveSchools] = useState(false);
   const [showFilters, setShowFilters] = useState(false); // Mobile filter toggle
   const [togglingActive, setTogglingActive] = useState(null); // coach id whose active state is being toggled
+  // School-id filter from URL. When set (e.g. /directory?school=123) the
+  // directory locks to a single school's coaches and shows a dismissable
+  // banner above results. Useful for deep-links from the team page's
+  // recruiting hero panel pills. Cleared by tapping × on the banner or by
+  // "Clear all filters", both of which also drop the URL param.
+  const [schoolIdFilter, setSchoolIdFilter] = useState(urlSchoolId || '');
+
+  // Gender filter: 'W' (women's) or 'M' (men's).
+  // - URL ?gender=W|M (e.g. from team page deep-links): wins over both
+  //   admin defaults and localStorage. Persists like a normal selection
+  //   so the next visit reflects the override — see persistence rationale
+  //   in the useEffect below.
+  // - Admin context (no URL param): defaults to 'W'; admin toggles to 'M'
+  //   when working on the other side.
+  // - Parent/player context (no URL param): defaults to 'W' on first
+  //   visit, but their last selection is persisted in localStorage so
+  //   they only have to pick once. (A "Both" option was removed — a
+  //   parent is either looking for boys' or girls' coaches; combining
+  //   the two creates noise without value.)
+  const [genderFilter, setGenderFilter] = useState(() => {
+    if (urlGender === 'M' || urlGender === 'W') return urlGender;
+    if (isAdminContext) return 'W';
+    try {
+      const stored = localStorage.getItem('coachDirectoryGenderFilter');
+      if (stored === 'M' || stored === 'W') return stored;
+    } catch (_e) {
+      // localStorage unavailable — fall through to default
+    }
+    return 'W';
+  });
+
+  // Persist parent/player gender choice (admins don't need persistence — they
+  // typically work in short focused sessions).
+  useEffect(() => {
+    if (isAdminContext) return;
+    try {
+      localStorage.setItem('coachDirectoryGenderFilter', genderFilter);
+    } catch (_e) {
+      // ignore
+    }
+  }, [genderFilter, isAdminContext]);
   
   // Debounce timer ref
   const searchTimerRef = useRef(null);
@@ -101,7 +142,7 @@ export default function CoachDirectory() {
           setEmailLinksEnabled(settingData.value === 'true');
         }
 
-        // Fetch all coaches with school info
+        // Fetch all coaches with school info (incl. program_gender on the school)
         let allCoaches = [];
         let from = 0;
         const batchSize = 1000;
@@ -111,7 +152,7 @@ export default function CoachDirectory() {
             .from('coaches')
             .select(`
               id, first_name, last_name, email, phone, title, is_active,
-              schools (id, school, city, state, division, conference, is_active)
+              schools (id, school, city, state, division, conference, program_gender)
             `)
             .order('last_name')
             .range(from, from + batchSize - 1);
@@ -130,14 +171,14 @@ export default function CoachDirectory() {
         
         setCoaches(allCoaches);
         
-        // Fetch all schools for reference
+        // Fetch all schools for reference (incl. program_gender)
         let allSchools = [];
         from = 0;
         
         while (true) {
           const { data, error } = await supabase
             .from('schools')
-            .select('id, school, city, state, division, conference, is_active')
+            .select('id, school, city, state, division, conference, program_gender')
             .order('school')
             .range(from, from + batchSize - 1);
           
@@ -187,6 +228,17 @@ export default function CoachDirectory() {
     return coaches.filter(coach => {
       const school = coach.schools;
       if (!school) return false;
+
+      // School-id filter (URL deep-link). Most restrictive — applied first.
+      if (schoolIdFilter && String(school.id) !== String(schoolIdFilter)) {
+        return false;
+      }
+
+      // Gender filter — coach's school must match selected program_gender.
+      // Treat null/undefined as 'W' (back-compat with pre-migration data).
+      if ((school.program_gender || 'W') !== genderFilter) {
+        return false;
+      }
       
       // Search query (coach name or school name)
       if (searchQuery) {
@@ -224,19 +276,10 @@ export default function CoachDirectory() {
       if (!showInactive && !isActive) {
         return false;
       }
-
-      // School-level inactive filter — hide coaches at defunct programs
-      // unless the user explicitly turns the toggle on. Coaches still
-      // shown when toggle is on render with a "Program inactive" badge
-      // next to the school name (see the render block below).
-      const schoolActive = school.is_active !== false;
-      if (!showInactiveSchools && !schoolActive) {
-        return false;
-      }
       
       return true;
     });
-  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, showInactiveSchools, matchesSearch]);
+  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, schoolIdFilter, matchesSearch]);
 
   // Group by school for display
   const groupedBySchool = useMemo(() => {
@@ -272,7 +315,7 @@ export default function CoachDirectory() {
   // Reset to page 1 when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, showInactiveSchools]);
+  }, [searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, schoolIdFilter]);
 
   // Stats
   const stats = useMemo(() => ({
@@ -289,13 +332,41 @@ export default function CoachDirectory() {
     setConferenceFilter('');
     setShowOnlyWithEmail(false);
     setShowInactive(false);
-    setShowInactiveSchools(false);
+    setSchoolIdFilter('');
+    // Strip the school URL param so reloads / back navigation don't bring
+    // the lock back. Preserve other params (context, gender) since those
+    // are session-state, not filters the user is clearing.
+    if (searchParams.has('school')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('school');
+      setSearchParams(next, { replace: true });
+    }
   };
+
+  // Clear just the school-id filter (× on the "Showing only" banner).
+  // Other filters and search remain so the user can keep exploring within
+  // the broader directory without losing context they set themselves.
+  const clearSchoolFilter = () => {
+    setSchoolIdFilter('');
+    if (searchParams.has('school')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('school');
+      setSearchParams(next, { replace: true });
+    }
+  };
+
+  // Look up the school object pointed at by schoolIdFilter so the banner
+  // can show its name. Schools may not have loaded yet on first render —
+  // banner falls back to the raw id in that brief window.
+  const lockedSchool = useMemo(() => {
+    if (!schoolIdFilter) return null;
+    return schools.find((s) => String(s.id) === String(schoolIdFilter)) || null;
+  }, [schoolIdFilter, schools]);
 
   // Export filtered coaches to CSV
   const exportToCSV = () => {
     // Build CSV header
-    const headers = ['School', 'City', 'State', 'Division', 'Conference', 'School Active', 'First Name', 'Last Name', 'Title', 'Email', 'Phone', 'Coach Active'];
+    const headers = ['School', 'City', 'State', 'Division', 'Conference', 'First Name', 'Last Name', 'Title', 'Email', 'Phone', 'Active'];
     
     // Build CSV rows from filtered coaches
     const rows = filteredCoaches.map(coach => {
@@ -306,7 +377,6 @@ export default function CoachDirectory() {
         school?.state || '',
         school?.division || '',
         school?.conference || '',
-        school?.is_active === false ? 'No' : 'Yes',
         coach.first_name || '',
         coach.last_name || '',
         coach.title || '',
@@ -316,11 +386,11 @@ export default function CoachDirectory() {
       ];
     });
     
-    // Sort by school name, then last name (last name is now col 7 after adding School Active at col 5)
+    // Sort by school name, then last name
     rows.sort((a, b) => {
       const schoolCompare = a[0].localeCompare(b[0]);
       if (schoolCompare !== 0) return schoolCompare;
-      return a[7].localeCompare(b[7]);
+      return a[6].localeCompare(b[6]); // Last name
     });
     
     // Convert to CSV string
@@ -593,20 +663,80 @@ export default function CoachDirectory() {
             <span className="text-xl font-bold sm:hidden">Directory</span>
           </Link>
           <nav className="flex items-center gap-4">
-            <Link to={isAdminContext ? "/admin" : "/home"} className="text-sm text-gray-300 hover:text-white">
-              {isAdminContext ? "Dashboard" : "Events"}
-            </Link>
-            <Link to={isAdminContext ? "/help?context=admin" : "/help?context=parent"} className="text-sm text-gray-300 hover:text-white">
-              Help
-            </Link>
+            {isAdminContext ? (
+              <>
+                <Link to="/admin" className="text-sm text-gray-300 hover:text-white">
+                  Dashboard
+                </Link>
+                <Link to="/help?context=admin" className="text-sm text-gray-300 hover:text-white">
+                  Help
+                </Link>
+              </>
+            ) : (
+              <HamburgerMenu />
+            )}
           </nav>
         </div>
         <div className="h-1 bg-gradient-to-r from-blue-500 via-cyan-400 to-blue-500"></div>
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-6">
+        {/* School lock banner — shown when arrived via a deep link like
+            /directory?school=123. Makes it obvious that results are
+            scoped to one school, with a clear way out. */}
+        {schoolIdFilter && (
+          <div className="bg-cyan-50 border border-cyan-200 rounded-lg px-4 py-3 mb-4 flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1 text-sm text-cyan-900">
+              <span className="text-cyan-700">Showing only:</span>{' '}
+              <span className="font-semibold">
+                {lockedSchool?.school || `school #${schoolIdFilter}`}
+              </span>
+              {lockedSchool?.city && lockedSchool?.state && (
+                <span className="text-cyan-700 ml-2">
+                  · {lockedSchool.city}, {lockedSchool.state}
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={clearSchoolFilter}
+              aria-label="Clear school filter — show all coaches"
+              className="flex-shrink-0 inline-flex items-center gap-1 text-sm text-cyan-700 hover:text-cyan-900 font-medium px-2 py-1 rounded hover:bg-cyan-100"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+              Show all
+            </button>
+          </div>
+        )}
+
         {/* Search and Filters */}
         <div className="bg-white rounded-lg shadow p-4 mb-6">
+          {/* Gender pills */}
+          <div className="flex items-center gap-2 text-sm mb-3 flex-wrap">
+            <span className="text-gray-600 mr-1">Program:</span>
+            {[
+              { key: 'W', label: "Women's" },
+              { key: 'M', label: "Men's" },
+            ].map(opt => {
+              const active = genderFilter === opt.key;
+              return (
+                <button
+                  key={opt.key}
+                  onClick={() => setGenderFilter(opt.key)}
+                  className={`px-3 py-1.5 rounded-full border transition ${
+                    active
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Search - always visible */}
           <div className="flex gap-2">
             <div className="flex-1">
@@ -626,9 +756,9 @@ export default function CoachDirectory() {
               <svg className="w-5 h-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
               </svg>
-              {(stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive || showInactiveSchools) && (
+              {(stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive) && (
                 <span className="bg-blue-600 text-white text-xs w-5 h-5 rounded-full flex items-center justify-center">
-                  {[stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, showInactiveSchools].filter(Boolean).length}
+                  {[stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive].filter(Boolean).length}
                 </span>
               )}
             </button>
@@ -708,20 +838,11 @@ export default function CoachDirectory() {
                   />
                   <span className="text-sm text-gray-600">Show inactive coaches</span>
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer py-2 min-h-[44px]">
-                  <input
-                    type="checkbox"
-                    checked={showInactiveSchools}
-                    onChange={e => setShowInactiveSchools(e.target.checked)}
-                    className="w-5 h-5 rounded text-blue-600"
-                  />
-                  <span className="text-sm text-gray-600">Show inactive schools</span>
-                </label>
               </div>
             </div>
             
             {/* Clear filters */}
-            {(searchInput || searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive || showInactiveSchools) && (
+            {(searchInput || searchQuery || stateFilter || divisionFilter || conferenceFilter || showOnlyWithEmail || showInactive || schoolIdFilter) && (
               <div className="mt-4 pt-4 border-t">
                 <button
                   onClick={clearFilters}
@@ -785,13 +906,9 @@ export default function CoachDirectory() {
                 <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-4 py-3 text-white">
                   <div className="flex justify-between items-start gap-2">
                     <div className="min-w-0 flex-1">
-                      <h3 className="font-semibold text-lg truncate">
-                        {school.school}
-                        {school.is_active === false && (
-                          <span className="ml-2 inline-block text-xs font-normal bg-orange-200 text-orange-900 px-2 py-0.5 rounded-full align-middle whitespace-nowrap">
-                            Program inactive
-                          </span>
-                        )}
+                      <h3 className="font-semibold text-lg truncate flex items-center gap-2">
+                        <span className="truncate">{school.school}</span>
+                        <GenderBadge gender={school.program_gender} size="xs" />
                       </h3>
                       <p className="text-blue-100 text-sm truncate">
                         {school.city}, {school.state} • {school.division}

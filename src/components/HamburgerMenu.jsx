@@ -160,18 +160,22 @@ export default function HamburgerMenu({ className = '', dark = true }) {
             <DrawerButton onClick={openFeedback} icon={FeedbackIcon}>
               Submit Feedback
             </DrawerButton>
-          </nav>
 
-          {/* Secondary nav (admin) — separated, smaller */}
-          <div className="absolute bottom-0 inset-x-0 border-t border-gray-200 py-2 px-2">
-            <Link
-              to="/admin"
-              onClick={close}
-              className="block px-3 py-2 text-xs text-gray-400 hover:text-gray-700 hover:bg-gray-50 rounded"
-            >
-              Admin Login
-            </Link>
-          </div>
+            {/* Secondary nav (admin) — rendered inline as a normal block,
+                separated by a top border. Previously sat in an
+                absolute-positioned bottom strip which could be hidden by
+                safe-area padding or just blend into the background; the
+                inline placement is reliable across viewports. */}
+            <div className="mt-2 pt-2 border-t border-gray-200 px-2">
+              <Link
+                to="/admin"
+                onClick={close}
+                className="block px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded"
+              >
+                Admin Login
+              </Link>
+            </div>
+          </nav>
         </div>
       </div>
     </>
