@@ -32,12 +32,6 @@ export default function ClubDashboard() {
   const [selectedSeason, setSelectedSeason] = useState(null)
   const [teams, setTeams] = useState([])
   const [teamStats, setTeamStats] = useState({})
-  // Cross-club recruiting buzz over the trailing 7 days (Sprint 4).
-  // Null until first load; { coaches, schools, teams, topSchools } when
-  // there's been recent attendance activity. The home page's
-  // RecruitingBuzz section hides entirely when buzz.coaches is 0, so
-  // off-season the dashboard stays clean.
-  const [buzz, setBuzz] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -148,20 +142,13 @@ export default function ClubDashboard() {
           }
         })
 
-        // Schools-per-team (existing attendance aggregation) + recruiting
-        // buzz over the trailing 7 days (Sprint 4). One query covers both:
-        // existing per-team school totals are computed from all rows; the
-        // buzz section filters in JS by created_at >= 7 days ago. Selecting
-        // id/created_at/coach_id alongside the existing fields adds modest
-        // payload but avoids a second round-trip.
+        // Schools-per-team (existing attendance aggregation)
         const allGameIds = (games || []).map((g) => g.id)
         let attRows = []
         if (allGameIds.length > 0) {
           const { data: att } = await supabase
             .from('attendance')
-            .select(
-              'id, created_at, game_id, coach_id, coaches(school_id, schools(id, school))'
-            )
+            .select('game_id, coaches(school_id)')
             .in('game_id', allGameIds)
           attRows = att || []
         }
@@ -172,86 +159,6 @@ export default function ClubDashboard() {
           if (!gameToSchools.has(a.game_id))
             gameToSchools.set(a.game_id, new Set())
           gameToSchools.get(a.game_id).add(sid)
-        })
-
-        // Buzz: trailing 7 days of recruiting activity. Filtered on
-        // game_date (when the game actually happened), NOT attendance
-        // created_at (when the row was inserted). The user-facing
-        // concept of "this week's buzz" is recent coach activity at
-        // games — backfilling an old game's attendance today shouldn't
-        // surface those coaches as "this week." Grouped by school, with
-        // the most-watched team per school so the pill click-through
-        // can land on the contextual team × college page (not the
-        // generic directory).
-        const sevenDaysAgo = new Date()
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-        sevenDaysAgo.setHours(0, 0, 0, 0)
-        const gameIdToTeamId = new Map()
-        const gameIdToDate = new Map()
-        ;(games || []).forEach((g) => {
-          gameIdToTeamId.set(g.id, g.team_id)
-          if (g.game_date) {
-            gameIdToDate.set(g.id, parseDate(g.game_date))
-          }
-        })
-        const recentCoachIds = new Set()
-        const recentSchoolIds = new Set()
-        const recentTeamIds = new Set()
-        const recentBySchool = new Map() // schoolId -> { name, games:Set, teamCounts:Map }
-        attRows.forEach((a) => {
-          const gameDate = gameIdToDate.get(a.game_id)
-          if (!gameDate || gameDate < sevenDaysAgo) return
-          const schoolId = a.coaches?.school_id
-          const schoolName = a.coaches?.schools?.school
-          const teamId = gameIdToTeamId.get(a.game_id)
-          if (!schoolId || !teamId) return
-          recentCoachIds.add(a.coach_id)
-          recentSchoolIds.add(schoolId)
-          recentTeamIds.add(teamId)
-          if (!recentBySchool.has(schoolId)) {
-            recentBySchool.set(schoolId, {
-              id: schoolId,
-              name: schoolName || `School ${schoolId}`,
-              games: new Set(),
-              teamCounts: new Map(),
-            })
-          }
-          const entry = recentBySchool.get(schoolId)
-          entry.games.add(a.game_id)
-          entry.teamCounts.set(
-            teamId,
-            (entry.teamCounts.get(teamId) || 0) + 1
-          )
-        })
-        const topSchools = Array.from(recentBySchool.values())
-          .map((s) => {
-            // Pick the team this school has watched the most at,
-            // breaking ties by the first team that hit the max count.
-            // That team becomes the deep-link target for the pill so
-            // parents land on the most-relevant contextual recruiting
-            // view (not a directory).
-            let topTeamId = null
-            let maxCount = 0
-            s.teamCounts.forEach((count, teamId) => {
-              if (count > maxCount) {
-                maxCount = count
-                topTeamId = teamId
-              }
-            })
-            return {
-              id: s.id,
-              name: s.name,
-              gameCount: s.games.size,
-              topTeamId,
-            }
-          })
-          .sort((a, b) => b.gameCount - a.gameCount)
-          .slice(0, 5)
-        setBuzz({
-          coaches: recentCoachIds.size,
-          schools: recentSchoolIds.size,
-          teams: recentTeamIds.size,
-          topSchools,
         })
 
         const stats = {}
@@ -274,7 +181,6 @@ export default function ClubDashboard() {
         setTeamStats(stats)
       } else {
         setTeamStats({})
-        setBuzz(null)
       }
     } catch (err) {
       console.error('Error loading dashboard:', err)
@@ -300,6 +206,92 @@ export default function ClubDashboard() {
     const favSet = new Set(favorites)
     return filteredTeams.filter((t) => favSet.has(t.id))
   }, [filteredTeams, favorites])
+
+  // Postseason pipeline data — walks every team's own conference standings
+  // row, classifies the qualification text into one of four tiers, and
+  // sorts within each tier. Hidden entirely when no team has qualified
+  // for anything yet (preseason). Drives the hero section above My Teams.
+  const postseasonData = useMemo(() => {
+    if (teams.length === 0) return null
+
+    // Tier order = display order. Highest prestige first. "match" is a
+    // predicate on the raw qualification string from AthleteOne. Order
+    // matters when strings could overlap; first match wins.
+    const TIERS = [
+      {
+        key: 'cl',
+        label: 'Champions League',
+        icon: '🏆',
+        accent: 'amber',
+        match: (q) => /^Champions League/i.test(q),
+      },
+      {
+        key: 'nac',
+        label: 'North American Cup',
+        icon: '🥈',
+        accent: 'sky',
+        match: (q) => /North American Cup/i.test(q),
+      },
+      {
+        key: 'showcase',
+        label: 'Showcase Cup',
+        icon: '🥉',
+        accent: 'orange',
+        match: (q) => /Showcase Cup/i.test(q),
+      },
+      {
+        key: 'rl',
+        label: 'Regional League Playoffs',
+        icon: '🛡️',
+        accent: 'cyan',
+        match: (q) => /Regional League Playoffs/i.test(q),
+      },
+    ]
+    const buckets = TIERS.map((t) => ({ ...t, teams: [] }))
+    let totalQualified = 0
+
+    for (const team of teams) {
+      const standings = team.athleteone_metadata?.conference_standings
+      const aoTeamId = team.athleteone_team_id
+      if (!Array.isArray(standings) || !aoTeamId) continue
+      const ourRow = standings.find((r) => r.team_id === aoTeamId)
+      if (!ourRow) continue
+      const qual = (ourRow.qualification || '').trim()
+      if (!qual || /^n\/?a$/i.test(qual)) continue
+      const tierIdx = TIERS.findIndex((t) => t.match(qual))
+      if (tierIdx < 0) continue
+
+      // Champions League appends a national seed number: "Champions
+      // League 7". Other brackets don't have seeds. Lower seed = better.
+      let seed = null
+      if (TIERS[tierIdx].key === 'cl') {
+        const m = qual.match(/(\d+)\s*$/)
+        if (m) seed = parseInt(m[1], 10)
+      }
+      buckets[tierIdx].teams.push({
+        team,
+        qualification: qual,
+        seed,
+        place: ourRow.place ?? null,
+      })
+      totalQualified++
+    }
+
+    // Sort within each tier: CL by seed (best first); others by
+    // conference place.
+    for (const bucket of buckets) {
+      if (bucket.key === 'cl') {
+        bucket.teams.sort((a, b) => (a.seed ?? 9999) - (b.seed ?? 9999))
+      } else {
+        bucket.teams.sort((a, b) => (a.place ?? 9999) - (b.place ?? 9999))
+      }
+    }
+
+    const populated = buckets.filter((b) => b.teams.length > 0)
+    if (populated.length === 0) return null
+    return { tiers: populated, totalQualified, totalTeams: teams.length }
+  }, [teams])
+
 
   // Group teams
   const groupedTeams = useMemo(() => {
@@ -340,33 +332,6 @@ export default function ClubDashboard() {
     return Array.from(s)
   }, [teams])
 
-  // Live-now strip data (Sprint 4). Flatten teams that have at least one
-  // live game into a list, preserving the existing per-team live-game
-  // detection logic. Sorted by team name so the strip is stable across
-  // re-renders. Renders nothing when the array is empty — off-game-day
-  // the strip disappears entirely.
-  const liveNowItems = useMemo(() => {
-    return teams
-      .map((t) => {
-        const live = teamStats[t.id]?.liveGames || []
-        if (live.length === 0) return null
-        return { team: t, liveGames: live }
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.team.name.localeCompare(b.team.name))
-  }, [teams, teamStats])
-
-  // Lookup: team id -> slug, used by the buzz pill links to build
-  // /t/<slug>/college/<schoolId> URLs without re-querying. Only includes
-  // teams from the current season; if a school's most-watched team is
-  // missing (shouldn't happen but guard anyway) we fall back to the
-  // directory link.
-  const teamSlugById = useMemo(() => {
-    const m = new Map()
-    teams.forEach((t) => m.set(t.id, t.slug))
-    return m
-  }, [teams])
-
   return (
     <PullToRefresh
       onRefresh={async () => {
@@ -404,25 +369,10 @@ export default function ClubDashboard() {
           <ErrorMessage error={error} onRetry={() => load(selectedSeason.id)} />
         ) : (
           <>
-            {/* Live now strip (Sprint 4) — only renders when at least one
-                team is currently in a live event. Smart routing on each
-                card: single game → that game's tracker, multiple → the
-                team's event page so the parent can pick. */}
-            {liveNowItems.length > 0 && (
-              <LiveNowSection items={liveNowItems} teamStats={teamStats} />
-            )}
-
-            {/* Recruiting buzz this week (Sprint 4) — only renders when
-                there's been attendance activity in the last 7 days.
-                Three top-line numbers establish scope, top schools as
-                pills that drill into the team × college detail page
-                for the most-watched team. Hides entirely off-season. */}
-            {buzz && buzz.coaches > 0 && (
-              <RecruitingBuzzSection
-                buzz={buzz}
-                teamSlugById={teamSlugById}
-              />
-            )}
+            {/* Postseason Pipeline — hero section celebrating OP teams
+                advancing to postseason competition. Hidden until at
+                least one team has earned a bracket berth. */}
+            <PostseasonPipelineSection postseason={postseasonData} />
 
             {/* My Teams (favorites) — pinned above the grouped lists */}
             {favoriteTeams.length > 0 && (
@@ -556,188 +506,6 @@ function ControlGroup({ label, children }) {
       <span>{label}:</span>
       {children}
     </label>
-  )
-}
-
-/**
- * LiveNowSection — Sprint 4 home-page strip surfacing teams currently in
- * an active event with a today's-not-closed game.
- *
- * Each row is a tap target to that team's live tracker:
- *   - Single live game → /e/<eventSlug>/<teamSlug>/game/<gameId> (direct)
- *   - Multiple live games → /e/<eventSlug>/<teamSlug> (picker)
- *
- * The pulsing emerald dot in the section heading matches the LIVE
- * TRACKER button gradient on the existing team cards below, so the
- * cross-club strip and the per-team button read as the same concept.
- *
- * "N logged" pill surfaces today's attendance count for the live game
- * so parents can see momentum without tapping in. Hidden when zero —
- * an empty pill would clutter the row.
- */
-function LiveNowSection({ items, teamStats }) {
-  return (
-    <section className="mb-5">
-      <h2 className="text-[10px] uppercase tracking-wide font-semibold text-emerald-700 mb-2 flex items-center gap-1.5 px-1">
-        <span
-          className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"
-          aria-hidden="true"
-        />
-        Live now
-      </h2>
-      <div className="space-y-2">
-        {items.map(({ team, liveGames }) => (
-          <LiveNowCard
-            key={team.id}
-            team={team}
-            liveGames={liveGames}
-            schoolsCount={teamStats[team.id]?.schools ?? 0}
-          />
-        ))}
-      </div>
-    </section>
-  )
-}
-
-/**
- * LiveNowCard — one row inside LiveNowSection. Team name + event name +
- * "N colleges" pill (the team's total college count for the season, not
- * just this game — gives a quick recruiting-pressure read).
- *
- * Routing logic matches what TeamCard's LIVE TRACKER button does, so
- * tapping either path lands in the same place.
- */
-function LiveNowCard({ team, liveGames, schoolsCount }) {
-  const first = liveGames[0]
-  const href =
-    liveGames.length === 1
-      ? `/e/${first.eventSlug}/${team.slug}/game/${first.gameId}`
-      : `/e/${first.eventSlug}/${team.slug}`
-  return (
-    <Link
-      to={href}
-      className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md hover:border-emerald-200 transition-all p-3 sm:p-4"
-    >
-      <div className="min-w-0 flex-1">
-        <p className="font-medium text-gray-900 truncate text-sm sm:text-base">
-          {team.name}
-        </p>
-        <p className="text-xs text-gray-500 truncate mt-0.5">
-          {first.eventName}
-        </p>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        {schoolsCount > 0 && (
-          <span className="text-[11px] font-medium bg-cyan-50 text-cyan-700 px-2 py-0.5 rounded whitespace-nowrap">
-            {schoolsCount}{' '}
-            {schoolsCount === 1 ? 'college' : 'colleges'}
-          </span>
-        )}
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
-          className="text-gray-400"
-        >
-          <path d="m9 18 6-6-6-6" />
-        </svg>
-      </div>
-    </Link>
-  )
-}
-
-/**
- * RecruitingBuzzSection — Sprint 4 home-page card surfacing the
- * trailing-7-days recruiting activity across all teams.
- *
- * Three top-line numbers (coaches · schools · teams) establish scope
- * without becoming a dashboard. Top-5 schools below as pills, each
- * routing into the contextual team × college detail page for whichever
- * team that school has watched most over the window — the goal is
- * landing parents in the contextual story, not a flat directory.
- *
- * Falls back to /directory?school=<id> if the most-watched team is
- * somehow missing from the current season's team list (shouldn't
- * happen, but defends against cross-season weirdness).
- */
-function RecruitingBuzzSection({ buzz, teamSlugById }) {
-  return (
-    <section className="mb-5">
-      <h2 className="text-[10px] uppercase tracking-wide font-semibold text-cyan-700 mb-2 flex items-center gap-1.5 px-1">
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          aria-hidden="true"
-        >
-          <path d="m3 17 6-6 4 4 8-8" />
-          <path d="M14 7h7v7" />
-        </svg>
-        Recruiting buzz this week
-      </h2>
-      <div className="bg-gradient-to-br from-cyan-50 to-blue-50 border border-cyan-200 rounded-lg p-4 sm:p-5">
-        <div className="flex gap-6 mb-4">
-          <BuzzStat n={buzz.coaches} label={buzz.coaches === 1 ? 'Coach' : 'Coaches'} />
-          <BuzzStat n={buzz.schools} label={buzz.schools === 1 ? 'School' : 'Schools'} />
-          <BuzzStat n={buzz.teams} label={buzz.teams === 1 ? 'Team' : 'Teams'} />
-        </div>
-        {buzz.topSchools.length > 0 && (
-          <>
-            <p className="text-[10px] uppercase tracking-wide font-medium text-cyan-700 mb-2">
-              Top interest
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {buzz.topSchools.map((s) => {
-                const teamSlug = s.topTeamId
-                  ? teamSlugById.get(s.topTeamId)
-                  : null
-                const href = teamSlug
-                  ? `/t/${encodeURIComponent(teamSlug)}/college/${encodeURIComponent(s.id)}`
-                  : `/directory?school=${encodeURIComponent(s.id)}`
-                return (
-                  <Link
-                    key={s.id}
-                    to={href}
-                    className="text-xs px-2.5 py-1 bg-white border border-cyan-200 text-cyan-900 rounded-full whitespace-nowrap hover:bg-cyan-100 hover:border-cyan-300 transition-colors"
-                    title={`See which coaches from ${s.name} watched our teams`}
-                  >
-                    {s.name}
-                    <span className="text-cyan-600 font-medium ml-1">
-                      · {s.gameCount}
-                    </span>
-                  </Link>
-                )
-              })}
-            </div>
-          </>
-        )}
-      </div>
-    </section>
-  )
-}
-
-/**
- * BuzzStat — single number + uppercase label cell inside the buzz card.
- * Tighter than the page-level MetricCardsRow on the team page so the
- * three of them fit on a 380px viewport without scaling.
- */
-function BuzzStat({ n, label }) {
-  return (
-    <div>
-      <p className="text-2xl font-bold text-cyan-900 leading-none tabular-nums">
-        {n}
-      </p>
-      <p className="text-[10px] uppercase tracking-wide font-medium text-cyan-700 mt-1.5">
-        {label}
-      </p>
-    </div>
   )
 }
 
@@ -973,3 +741,185 @@ function isoDate(d) {
   const day = String(d.getDate()).padStart(2, '0')
   return `${y}-${m}-${day}`
 }
+
+// ===========================================================================
+// Postseason Pipeline section + supporting components
+//
+// The hero block on /home that celebrates OP teams qualifying for ECNL
+// postseason brackets. Dark slate-900 backdrop so tier cards (amber for
+// Champions League, sky for NAC, etc) pop. Renders nothing when no team
+// has earned a berth yet — preseason home page stays clean.
+// ===========================================================================
+
+// Per-tier palette. Tailwind JIT requires literal class strings, so we
+// can't compose these from accent names — each tier's full classes
+// listed here.
+const TIER_PALETTES = {
+  amber: {
+    cardBg: 'bg-gradient-to-br from-amber-50 to-yellow-100',
+    cardBorder: 'border-amber-300',
+    cardAccent: 'text-amber-900',
+    cardLabel: 'text-amber-700',
+    headerBadge: 'bg-amber-400/20 text-amber-100',
+  },
+  sky: {
+    cardBg: 'bg-gradient-to-br from-sky-50 to-blue-100',
+    cardBorder: 'border-sky-300',
+    cardAccent: 'text-sky-900',
+    cardLabel: 'text-sky-700',
+    headerBadge: 'bg-sky-400/20 text-sky-100',
+  },
+  orange: {
+    cardBg: 'bg-gradient-to-br from-orange-50 to-amber-100',
+    cardBorder: 'border-orange-300',
+    cardAccent: 'text-orange-900',
+    cardLabel: 'text-orange-700',
+    headerBadge: 'bg-orange-400/20 text-orange-100',
+  },
+  cyan: {
+    cardBg: 'bg-gradient-to-br from-cyan-50 to-teal-100',
+    cardBorder: 'border-cyan-300',
+    cardAccent: 'text-cyan-900',
+    cardLabel: 'text-cyan-700',
+    headerBadge: 'bg-cyan-400/20 text-cyan-100',
+  },
+}
+
+function PostseasonPipelineSection({ postseason }) {
+  if (!postseason) return null
+
+  return (
+    <section className="mb-6 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 rounded-xl p-4 sm:p-6 text-white shadow-lg overflow-hidden relative">
+      {/* Subtle decorative gradient sweep */}
+      <div className="absolute -top-12 -right-12 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+
+      <div className="relative">
+        <div className="mb-4">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight">
+            Postseason Pipeline
+          </h2>
+          <p className="text-sm text-slate-300 mt-0.5">
+            <span className="font-semibold text-white">
+              {postseason.totalQualified}
+            </span>{' '}
+            OP {postseason.totalQualified === 1 ? 'team' : 'teams'} advancing to
+            postseason
+          </p>
+        </div>
+
+        <div className="space-y-4">
+          {postseason.tiers.map((tier) => (
+            <PostseasonTier key={tier.key} tier={tier} />
+          ))}
+        </div>
+
+        {postseason.totalTeams > postseason.totalQualified && (
+          <p className="text-xs text-slate-400 mt-4 italic">
+            {postseason.totalTeams - postseason.totalQualified} more teams
+            competing — see team pages for full standings
+          </p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function PostseasonTier({ tier }) {
+  const palette = TIER_PALETTES[tier.accent] || TIER_PALETTES.cyan
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-2 px-0.5">
+        <span className="text-lg" aria-hidden="true">
+          {tier.icon}
+        </span>
+        <h3 className="font-semibold text-white text-sm sm:text-base">
+          {tier.label}
+        </h3>
+        <span
+          className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${palette.headerBadge}`}
+        >
+          {tier.teams.length}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        {tier.teams.map((entry) => (
+          <PostseasonTeamCard
+            key={entry.team.id}
+            entry={entry}
+            palette={palette}
+            tier={tier}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PostseasonTeamCard({ entry, palette, tier }) {
+  const { team, seed, place } = entry
+  // Champions League cards lead with the seed (the only tier that has
+  // one); other tiers lead with the bracket label since "Qualified" is
+  // implicit. Hover lift on the card invites the tap-to-team gesture.
+  const isCL = tier.key === 'cl'
+
+  return (
+    <Link
+      to={`/t/${team.slug}`}
+      className={`block ${palette.cardBg} border ${palette.cardBorder} rounded-lg p-3 hover:shadow-md hover:-translate-y-0.5 transition`}
+    >
+      {isCL ? (
+        <>
+          <div
+            className={`text-[10px] uppercase tracking-wider font-bold ${palette.cardLabel}`}
+          >
+            National Seed
+          </div>
+          <div
+            className={`text-2xl font-extrabold ${palette.cardAccent} leading-none mt-0.5`}
+          >
+            #{seed ?? '?'}
+          </div>
+        </>
+      ) : (
+        <>
+          <div
+            className={`text-[10px] uppercase tracking-wider font-bold ${palette.cardLabel}`}
+          >
+            Qualified
+          </div>
+          <div
+            className={`text-base sm:text-lg font-bold ${palette.cardAccent} leading-tight mt-0.5`}
+          >
+            {tier.label}
+          </div>
+        </>
+      )}
+      <div className="text-sm font-medium text-gray-900 mt-2 truncate">
+        {team.name}
+      </div>
+      {place != null && (
+        <div className="text-xs text-gray-600">
+          {ordinalPlace(place)} in conference
+        </div>
+      )}
+    </Link>
+  )
+}
+
+function ordinalPlace(n) {
+  const v = n % 100
+  const suffix =
+    v >= 11 && v <= 13
+      ? 'th'
+      : n % 10 === 1
+        ? 'st'
+        : n % 10 === 2
+          ? 'nd'
+          : n % 10 === 3
+            ? 'rd'
+            : 'th'
+  return `${n}${suffix}`
+}
+
