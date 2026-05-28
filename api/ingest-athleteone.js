@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
   let q = supabase
     .from('teams')
-    .select('id, name, club_id, season_id, athleteone_org_id, athleteone_event_id, athleteone_team_id, athleteone_club_id, athleteone_age_group_id, athleteone_sync_games')
+    .select('id, name, club_id, season_id, athleteone_org_id, athleteone_event_id, athleteone_team_id, athleteone_club_id, athleteone_age_group_id, athleteone_standings_org_id, athleteone_standings_season_id, athleteone_sync_games')
     .not('athleteone_team_id', 'is', null)
   if (teamFilter) q = q.eq('id', teamFilter)
 
@@ -85,6 +85,8 @@ export default async function handler(req, res) {
       if (conferenceResult.ok) {
         standings.conference_standings = conferenceResult.standings
         standings.conference_age_group_id = conferenceResult.age_group_id
+        standings.conference_org_id = conferenceResult.org_id
+        standings.conference_season_id = conferenceResult.season_id
         standings.conference_synced_at = new Date().toISOString()
       } else {
         standings.parse_warnings = standings.parse_warnings || []
@@ -108,6 +110,12 @@ export default async function handler(req, res) {
             : 0,
           conference_age_group_id: conferenceResult.ok
             ? conferenceResult.age_group_id
+            : null,
+          conference_org_id: conferenceResult.ok
+            ? conferenceResult.org_id
+            : null,
+          conference_season_id: conferenceResult.ok
+            ? conferenceResult.season_id
             : null,
           conference_error: conferenceResult.ok ? null : conferenceResult.reason,
         },
@@ -949,23 +957,40 @@ function parseTeamInfoTime(s) {
 // Calls the separate get-conference-standings endpoint to fetch the full
 // league table (not just our team's row, which is all the team-info HTML
 // gives us). Five positional path params:
-//   event_id / 9 / 69 / age_group_id / standing_type
+//   event_id / org_id / season_id / age_group_id / standing_type
 //
-// The 9 and 69 constants are stable for ECNL Girls (the only realm we've
-// probed). For ECNL Boys / RL / Pre-ECNL these may differ — extend after
-// verification.
+// org_id and season_id vary per ECNL program. Known pairs:
+//   ECNL Girls: 9 / 69
+//   ECNL Boys: 12 / 70
+// RL and Pre-ECNL variants are likely different again — add to
+// KNOWN_STANDINGS_PAIRS below as they're discovered. The
+// discoverStandingsParams walk tries each pair in turn on first sync
+// per team and caches the working one back to the team row.
 //
 // standing_type: 0 = Conference, 1 = Champions League. We only fetch
 // Conference here; could expand later if useful.
 const CONFERENCE_STANDINGS_BASE =
   'https://api.athleteone.com/api/Script/get-conference-standings'
 
-async function fetchConferenceStandings(eventId, ageGroupId) {
+// Known (org_id, season_id) pairs to try during auto-discovery. Add
+// new pairs as we identify them — RL Girls, RL Boys, Pre-ECNL Girls,
+// Pre-ECNL Boys. Order matters slightly for efficiency: the most
+// commonly-used program goes first.
+const KNOWN_STANDINGS_PAIRS = [
+  [9, 69], // ECNL Girls
+  [12, 70], // ECNL Boys
+]
+
+async function fetchConferenceStandings(eventId, orgId, seasonId, ageGroupId) {
   const url =
     CONFERENCE_STANDINGS_BASE +
     '/' +
     eventId +
-    '/9/69/' +
+    '/' +
+    orgId +
+    '/' +
+    seasonId +
+    '/' +
     (ageGroupId || 0) +
     '/0'
   try {
@@ -1178,59 +1203,103 @@ function parseStandingsRow(rowHtml, division) {
   }
 }
 
-// Auto-discover the AthleteOne age_group_id for this team within its
-// event. Returns the id (or null on failure). Does not persist — caller
-// decides based on commit mode.
+// Auto-discover the full set of standings URL parameters for this team:
+// (org_id, season_id, age_group_id). Returns the triple or null. Does
+// not persist — caller decides based on commit mode.
 //
 // Strategy:
-//   1. Sentinel call with age_group_id=0. AthleteOne returns a default
-//      age group plus the embedded dropdown of all options.
-//   2. If our team_id is present in the sentinel response, read the
-//      selected option (1 API call total).
-//   3. Otherwise iterate the dropdown options, fetching each and
-//      checking for our team_id (up to N+1 calls, ~7 max for ECNL).
+//   For each known (org_id, season_id) pair:
+//     1. Sentinel call with age_group_id=0. If response contains our
+//        team_id, read the selected age_group_id from the dropdown
+//        (1 API call) — done.
+//     2. Otherwise iterate the dropdown options for this pair, fetching
+//        each and checking for our team_id.
+//   Failing all pairs, return null.
 //
-// Only runs on first sync per team (athleteone_age_group_id is null).
-async function discoverAgeGroupId(eventId, ourTeamId) {
-  const sentinel = await fetchConferenceStandings(eventId, 0)
-  if (!sentinel.ok) return null
-  if (htmlContainsTeamId(sentinel.html, ourTeamId)) {
-    return parseSelectedAgeGroup(sentinel.html)
-  }
-  const candidates = parseAgeGroupOptions(sentinel.html)
-  for (const candidate of candidates) {
-    const r = await fetchConferenceStandings(eventId, candidate)
-    if (r.ok && htmlContainsTeamId(r.html, ourTeamId)) {
-      return candidate
+// Worst case is N × (M+1) API calls where N is the number of known
+// pairs and M is the number of age groups per pair (~6 for ECNL).
+// Only runs on first sync per team — cached afterwards.
+async function discoverStandingsParams(eventId, ourTeamId) {
+  for (const [orgId, seasonId] of KNOWN_STANDINGS_PAIRS) {
+    const sentinel = await fetchConferenceStandings(
+      eventId,
+      orgId,
+      seasonId,
+      0
+    )
+    if (!sentinel.ok) continue
+    if (htmlContainsTeamId(sentinel.html, ourTeamId)) {
+      const ageGroupId = parseSelectedAgeGroup(sentinel.html)
+      if (ageGroupId) {
+        return { org_id: orgId, season_id: seasonId, age_group_id: ageGroupId }
+      }
+    }
+    const candidates = parseAgeGroupOptions(sentinel.html)
+    for (const candidate of candidates) {
+      const r = await fetchConferenceStandings(
+        eventId,
+        orgId,
+        seasonId,
+        candidate
+      )
+      if (r.ok && htmlContainsTeamId(r.html, ourTeamId)) {
+        return {
+          org_id: orgId,
+          season_id: seasonId,
+          age_group_id: candidate,
+        }
+      }
     }
   }
   return null
 }
 
 // Sync the full conference standings for one team into its metadata.
-// Idempotent: with cached age_group_id, makes a single API call. Without,
-// auto-discovers (N+1 calls max), persists in commit mode, then fetches.
+// Idempotent: with all three URL params cached (org/season/age_group),
+// makes a single API call. Without any of them, auto-discovers all
+// three together, persists in commit mode, then fetches. Resilient to
+// partial cache state — if only some params are cached, falls back to
+// full discovery.
 async function syncConferenceStandings(supabase, team, commit) {
   if (!team.athleteone_event_id || !team.athleteone_team_id) {
     return { ok: false, reason: 'missing event/team id' }
   }
+  let orgId = team.athleteone_standings_org_id || null
+  let seasonId = team.athleteone_standings_season_id || null
   let ageGroupId = team.athleteone_age_group_id || null
-  if (!ageGroupId) {
-    ageGroupId = await discoverAgeGroupId(
+
+  // Need all three to skip discovery. Otherwise re-discover the lot —
+  // partial caches risk using mismatched (org/season) with an
+  // age_group_id from a different namespace.
+  if (!orgId || !seasonId || !ageGroupId) {
+    const discovered = await discoverStandingsParams(
       team.athleteone_event_id,
       team.athleteone_team_id
     )
-    if (!ageGroupId) {
-      return { ok: false, reason: 'could not discover age_group_id' }
+    if (!discovered) {
+      return { ok: false, reason: 'could not discover standings params' }
     }
+    orgId = discovered.org_id
+    seasonId = discovered.season_id
+    ageGroupId = discovered.age_group_id
     if (commit) {
       await supabase
         .from('teams')
-        .update({ athleteone_age_group_id: ageGroupId })
+        .update({
+          athleteone_standings_org_id: orgId,
+          athleteone_standings_season_id: seasonId,
+          athleteone_age_group_id: ageGroupId,
+        })
         .eq('id', team.id)
     }
   }
-  const r = await fetchConferenceStandings(team.athleteone_event_id, ageGroupId)
+
+  const r = await fetchConferenceStandings(
+    team.athleteone_event_id,
+    orgId,
+    seasonId,
+    ageGroupId
+  )
   if (!r.ok) return { ok: false, reason: r.error }
   const standings = parseConferenceStandings(r.html)
   if (standings.length === 0) {
@@ -1238,6 +1307,8 @@ async function syncConferenceStandings(supabase, team, commit) {
   }
   return {
     ok: true,
+    org_id: orgId,
+    season_id: seasonId,
     age_group_id: ageGroupId,
     standings: standings,
   }
