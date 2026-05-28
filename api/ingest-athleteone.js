@@ -23,6 +23,46 @@ export default async function handler(req, res) {
   const commit = String(req.query.commit || '').toLowerCase() === 'true'
   const teamFilter = req.query.teamId ? parseInt(req.query.teamId, 10) : null
   const listOnly = String(req.query.list_only || '').toLowerCase() === 'true'
+  const probeMode = String(req.query.probe || '').toLowerCase() === 'true'
+
+  // PROBE MODE: brute-force search for the best (org_id, season_id) pair
+  // for a given team. Doesn't sync — just reports the winning pair so we
+  // can add it to KNOWN_STANDINGS_PAIRS. Required for programs (RL,
+  // Pre-ECNL) whose constants we don't yet know.
+  //
+  // Usage:
+  //   GET /api/ingest-athleteone?probe=true&teamId=N
+  //
+  // Strategy:
+  //   1. Use existing discovery to find ANY working pair (gets us an
+  //      age_group_id where this team appears).
+  //   2. Brute-probe (org, season) over a wider grid keeping age_group_id
+  //      fixed. Each call cheap because age_group_id is set.
+  //   3. Score each by populated qualifications. Best wins.
+  if (probeMode) {
+    if (!teamFilter) {
+      return res.status(400).json({ error: 'probe mode requires teamId' })
+    }
+    const { data: team } = await supabase
+      .from('teams')
+      .select('id, name, athleteone_event_id, athleteone_team_id, athleteone_age_group_id, athleteone_standings_org_id, athleteone_standings_season_id')
+      .eq('id', teamFilter)
+      .single()
+    if (!team) {
+      return res.status(404).json({ error: 'team not found' })
+    }
+    if (!team.athleteone_event_id || !team.athleteone_team_id) {
+      return res.status(400).json({ error: 'team missing event/team id' })
+    }
+    const probeResult = await probeBestStandingsPair(team)
+    return res.status(200).json({
+      team_id: team.id,
+      name: team.name,
+      event_id: team.athleteone_event_id,
+      athleteone_team_id: team.athleteone_team_id,
+      ...probeResult,
+    })
+  }
 
   let q = supabase
     .from('teams')
@@ -1217,7 +1257,79 @@ function parseStandingsRow(rowHtml, division) {
   }
 }
 
-// Auto-discover the full set of standings URL parameters for this team:
+// PROBE: brute-force search over a wide (org, season) grid to find the
+// pair that returns the most populated qualifications for this team.
+// Run once per program-of-unknown-constants — feed the result into
+// KNOWN_STANDINGS_PAIRS and discovery for siblings is fast forever after.
+//
+// Two phases:
+//   1. Find ANY working triple via current discovery (gets age_group_id).
+//   2. With that age_group_id fixed, parallel-probe (org, season) over a
+//      grid. Each call is one fetch, so we can run 30+ in parallel and
+//      keep within Vercel Hobby's 10s timeout.
+async function probeBestStandingsPair(team) {
+  // Phase 1: bootstrap an age_group_id via existing discovery
+  const eventId = team.athleteone_event_id
+  const ourTeamId = team.athleteone_team_id
+  let ageGroupId = team.athleteone_age_group_id
+
+  if (!ageGroupId) {
+    const bootstrap = await discoverStandingsParams(eventId, ourTeamId)
+    if (!bootstrap) {
+      return {
+        ok: false,
+        reason: 'could not find any working pair to bootstrap age_group_id',
+      }
+    }
+    ageGroupId = bootstrap.age_group_id
+  }
+
+  // Phase 2: probe (org, season) grid with that age_group_id fixed
+  const ORG_RANGE = Array.from({ length: 20 }, (_, i) => i + 1) // 1..20
+  const SEASON_RANGE = Array.from({ length: 21 }, (_, i) => i + 60) // 60..80
+  const pairs = []
+  for (const org of ORG_RANGE) {
+    for (const season of SEASON_RANGE) {
+      pairs.push([org, season])
+    }
+  }
+
+  const teamIdMarker = 'data-team-id="' + ourTeamId + '"'
+  const results = []
+  const BATCH = 30
+
+  for (let i = 0; i < pairs.length; i += BATCH) {
+    const batch = pairs.slice(i, i + BATCH)
+    const responses = await Promise.all(
+      batch.map(([org, season]) =>
+        fetchConferenceStandings(eventId, org, season, ageGroupId)
+      )
+    )
+    for (let j = 0; j < batch.length; j++) {
+      const [org, season] = batch[j]
+      const r = responses[j]
+      if (!r.ok || !r.html.includes(teamIdMarker)) continue
+      const rows = parseConferenceStandings(r.html)
+      let score = 0
+      for (const row of rows) {
+        const q = (row.qualification || '').trim()
+        if (q && !/^n\/?a$/i.test(q)) score++
+      }
+      results.push({ org, season, score, rows: rows.length })
+    }
+  }
+
+  results.sort((a, b) => b.score - a.score || a.org - b.org)
+  return {
+    ok: true,
+    age_group_id: ageGroupId,
+    total_pairs_returning_data: results.length,
+    top_5: results.slice(0, 5),
+    winner: results[0] || null,
+  }
+}
+
+
 // (org_id, season_id, age_group_id). Returns the triple or null.
 //
 // Strategy:
