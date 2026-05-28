@@ -1137,7 +1137,7 @@ function ConferenceStandingsModal({
                     visible, bold-weighted to match the Pts column it
                     sits beside. */}
                 <th className="text-center px-2 py-2 font-semibold">PPG</th>
-                <th className="text-center px-2 sm:px-3 py-2 font-semibold">
+                <th className="hidden sm:table-cell text-center px-2 sm:px-3 py-2 font-semibold">
                   Pts
                 </th>
               </tr>
@@ -1229,7 +1229,7 @@ function ConferenceStandingsModal({
                         <td className="text-center px-2 py-2.5 tabular-nums font-bold text-gray-900">
                           {row.ppg != null ? row.ppg.toFixed(2) : '—'}
                         </td>
-                        <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums text-gray-700">
+                        <td className="hidden sm:table-cell text-center px-2 sm:px-3 py-2.5 tabular-nums text-gray-700">
                           {row.pts ?? 0}
                         </td>
                       </tr>
