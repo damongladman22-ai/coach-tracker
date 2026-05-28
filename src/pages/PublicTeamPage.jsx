@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getActiveSeasonId } from '../lib/season'
@@ -958,20 +959,27 @@ function ConferenceStandingsModal({
     if (e.target === e.currentTarget) onClose()
   }
 
-  return (
+  // Render through a portal to document.body so the modal escapes any
+  // parent stacking context (PullToRefresh wraps the page in a transform
+  // that creates one, which can sink fixed children below sibling
+  // backdrops). Inline styles for max-height bypass any Tailwind
+  // arbitrary-value JIT compilation concerns.
+  const modal = (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="standings-modal-title"
       onClick={onBackdropClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-3 sm:p-6"
+      style={{ zIndex: 9999 }}
+      className="fixed inset-0 flex items-center justify-center bg-black/60 p-3 sm:p-6"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden"
+        style={{ maxHeight: '90vh', minHeight: '240px' }}
+        className="bg-white rounded-xl shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-gray-200">
+        <div className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-gray-200 flex-shrink-0">
           <div className="min-w-0 flex-1">
             <h2
               id="standings-modal-title"
@@ -1016,7 +1024,7 @@ function ConferenceStandingsModal({
         </div>
 
         {/* Table — scrollable when content overflows the modal */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto min-h-0">
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
               <tr className="text-[11px] uppercase tracking-wider text-gray-600">
@@ -1043,16 +1051,22 @@ function ConferenceStandingsModal({
               </tr>
             </thead>
             <tbody>
-              {standings.map((row) => {
+              {standings.map((row, idx) => {
+                if (!row) return null
                 const isOurs = ourTeamId && row.team_id === ourTeamId
                 return (
                   <tr
-                    key={row.team_id}
+                    key={row.team_id || `row-${idx}`}
                     className={`border-b border-gray-100 ${
                       isOurs
-                        ? 'bg-cyan-50 border-l-4 border-l-cyan-500'
+                        ? 'bg-cyan-50'
                         : 'hover:bg-gray-50'
                     }`}
+                    style={
+                      isOurs
+                        ? { boxShadow: 'inset 4px 0 0 0 #06b6d4' }
+                        : undefined
+                    }
                   >
                     <td className="text-center px-2 sm:px-3 py-2.5 tabular-nums font-semibold text-gray-700">
                       {row.place}
@@ -1112,7 +1126,7 @@ function ConferenceStandingsModal({
         </div>
 
         {/* Footer */}
-        <div className="px-4 sm:px-5 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3 text-[11px] sm:text-xs text-gray-500">
+        <div className="px-4 sm:px-5 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between gap-3 text-[11px] sm:text-xs text-gray-500 flex-shrink-0">
           <span className="truncate">
             {standings.length} team{standings.length === 1 ? '' : 's'}
             {teamName && ourRow && ` · You: ${teamName}`}
@@ -1124,6 +1138,12 @@ function ConferenceStandingsModal({
       </div>
     </div>
   )
+
+  // Portal into document.body so the modal is a top-level child of the
+  // document, escaping any parent transform/filter/perspective that would
+  // otherwise establish a stacking context and trap the fixed positioning.
+  if (typeof document === 'undefined') return null
+  return createPortal(modal, document.body)
 }
 
 function StarIcon({ filled }) {
