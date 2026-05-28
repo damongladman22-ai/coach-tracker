@@ -117,9 +117,12 @@ export default function TeamGameDetail() {
       // links built from this page point at the correct team even if the
       // slug in the URL was stale or wrong. We do verify the slugs match
       // below and use the team's authoritative slug for the back link.
+      // athleteone_metadata pulls in conference_standings (when synced),
+      // which we cross-reference against game.opponent for opponent
+      // logo + record display in the hero card below.
       const { data: teamData, error: teamErr } = await supabase
         .from('teams')
-        .select('id, name, slug, gender')
+        .select('id, name, slug, gender, athleteone_team_id, athleteone_metadata')
         .eq('id', gameData.team_id)
         .maybeSingle()
       if (teamErr || !teamData) {
@@ -248,6 +251,16 @@ export default function TeamGameDetail() {
     )
   }, [game])
 
+  // Opponent enrichment from the team's conference_standings (AthleteOne
+  // ingest). Matched by exact team_name — same source as games.opponent,
+  // so in-conference opponents resolve reliably; non-conference returns
+  // null and the hero falls through to plain matchup text.
+  const opponentInfo = (() => {
+    if (!game?.opponent) return null
+    const rows = team?.athleteone_metadata?.conference_standings || []
+    return rows.find((r) => r.team_name === game.opponent) || null
+  })()
+
   return (
     <PullToRefresh onRefresh={load}>
       <div className="min-h-screen bg-gray-50">
@@ -311,7 +324,11 @@ export default function TeamGameDetail() {
               {/* Game identity card — the headline of the page. Score
                   badge sits next to the matchup so the result is the
                   first thing parents scan; date/time/location live
-                  below as secondary info. */}
+                  below as secondary info. Opponent logo (when synced
+                  via AthleteOne) sits to the left of the matchup at
+                  hero-card scale (40px) for instant brand recognition;
+                  the line beneath surfaces the opponent's conference
+                  place + record + PPG. */}
               <div className="bg-white rounded-lg shadow-md p-4 sm:p-5 mb-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -335,11 +352,36 @@ export default function TeamGameDetail() {
                         </>
                       )}
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
-                      {game.is_home
-                        ? `vs ${game.opponent || '—'}`
-                        : `at ${game.opponent || '—'}`}
-                    </h1>
+                    <div className="flex items-center gap-3">
+                      {opponentInfo?.logo_url && (
+                        <img
+                          src={opponentInfo.logo_url}
+                          alt=""
+                          loading="lazy"
+                          className="h-10 w-10 sm:h-12 sm:w-12 object-contain rounded flex-shrink-0"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none'
+                          }}
+                        />
+                      )}
+                      <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight min-w-0">
+                        {game.is_home
+                          ? `vs ${game.opponent || '—'}`
+                          : `at ${game.opponent || '—'}`}
+                      </h1>
+                    </div>
+                    {opponentInfo &&
+                      opponentInfo.place != null &&
+                      opponentInfo.wins != null && (
+                        <p className="text-sm text-gray-600 mt-1.5">
+                          {ordinal(opponentInfo.place)} in conference ·{' '}
+                          {opponentInfo.wins}-{opponentInfo.losses}-
+                          {opponentInfo.draws}
+                          {opponentInfo.ppg != null && (
+                            <> · {opponentInfo.ppg.toFixed(2)} PPG</>
+                          )}
+                        </p>
+                      )}
                     <p className="text-sm text-gray-600 mt-1">
                       {dateLabel}
                       {timeLabel ? ` · ${timeLabel}` : ''}
@@ -748,4 +790,23 @@ function LockIcon() {
       <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
   )
+}
+
+// Turns a number into "1st", "2nd", "3rd", "4th"... Used to render the
+// opponent's conference place in the hero card. Kept local rather than
+// imported to avoid a one-line cross-file dependency.
+function ordinal(n) {
+  if (n == null) return ''
+  const v = n % 100
+  const suffix =
+    v >= 11 && v <= 13
+      ? 'th'
+      : n % 10 === 1
+        ? 'st'
+        : n % 10 === 2
+          ? 'nd'
+          : n % 10 === 3
+            ? 'rd'
+            : 'th'
+  return `${n}${suffix}`
 }
