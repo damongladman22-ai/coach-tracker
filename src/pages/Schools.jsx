@@ -1,8 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import AdminLayout from '../components/AdminLayout'
-import GenderBadge from '../components/GenderBadge'
-import { programGenderLabel } from '../lib/lookups'
 
 // US States list with full names
 const US_STATES = [
@@ -68,15 +66,16 @@ export default function Schools({ session }) {
   const [showCoachForm, setShowCoachForm] = useState(null)
   const [coachFormData, setCoachFormData] = useState({ first_name: '', last_name: '', email: '', phone: '', title: '' })
   const [togglingActive, setTogglingActive] = useState(null) // coach id being toggled
+  const [togglingSchoolActive, setTogglingSchoolActive] = useState(null) // school id being toggled
   const [showInactiveCoaches, setShowInactiveCoaches] = useState(true) // default ON for admin view
+  // Show inactive schools by default for admins — they need visibility to
+  // manage status. Toggle lets them hide the list when it gets noisy.
+  // (Parent-facing Coach Directory uses the inverse default.)
+  const [showInactiveSchools, setShowInactiveSchools] = useState(true)
   
   // Pagination
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 50
-
-  // Gender filter for the table. 'W' by default for back-compat with existing
-  // workflow; admins flip to 'M' to manage men's programs, or 'ALL' to see both.
-  const [genderFilter, setGenderFilter] = useState('W')
   
   // Add School state
   const [showAddSchool, setShowAddSchool] = useState(false)
@@ -86,8 +85,7 @@ export default function Schools({ session }) {
     state: '',
     type: 'Public',
     conference: '',
-    division: 'NCAA D1',
-    program_gender: 'W'
+    division: 'NCAA D1'
   })
   const [addingSchool, setAddingSchool] = useState(false)
   
@@ -100,8 +98,7 @@ export default function Schools({ session }) {
     state: '',
     type: 'Public',
     conference: '',
-    division: 'NCAA D1',
-    program_gender: 'W'
+    division: 'NCAA D1'
   })
   const [savingSchool, setSavingSchool] = useState(false)
 
@@ -185,8 +182,7 @@ export default function Schools({ session }) {
         state: '',
         type: 'Public',
         conference: '',
-        division: 'NCAA D1',
-        program_gender: genderFilter === 'M' ? 'M' : 'W'
+        division: 'NCAA D1'
       })
     }
     setAddingSchool(false)
@@ -201,8 +197,7 @@ export default function Schools({ session }) {
       state: school.state || '',
       type: school.type || 'Public',
       conference: school.conference || '',
-      division: school.division || 'NCAA D1',
-      program_gender: school.program_gender || 'W'
+      division: school.division || 'NCAA D1'
     })
     setShowEditSchool(true)
   }
@@ -234,7 +229,14 @@ export default function Schools({ session }) {
 
   const deleteSchool = async (school, e) => {
     e.stopPropagation()
-    if (!confirm(`Delete "${school.school}"? This will also delete all coaches associated with this school.`)) return
+    if (!confirm(
+      `Delete "${school.school}"?\n\n` +
+      `This will also delete all coaches at this school AND their attendance history.\n\n` +
+      `Tip: If the women's soccer program was discontinued (cut, suspended, school closed), ` +
+      `click "Mark Inactive" instead — that hides the school from the public directory ` +
+      `but preserves coach and attendance history. Use Delete only for data errors ` +
+      `(duplicates the dedup missed, wrong-entity imports).`
+    )) return
     
     const { error } = await supabase
       .from('schools')
@@ -329,22 +331,64 @@ export default function Schools({ session }) {
     }
   }
 
-  const filteredSchools = useMemo(() => {
-    const term = search.toLowerCase()
-    return schools.filter(school => {
-      // Gender filter (default 'W', 'M' for men's, 'ALL' to show both)
-      if (genderFilter !== 'ALL' && (school.program_gender || 'W') !== genderFilter) {
-        return false
-      }
-      // Text search
-      if (!term) return true
-      return (
-        school.school.toLowerCase().includes(term) ||
-        school.state?.toLowerCase().includes(term) ||
-        school.conference?.toLowerCase().includes(term)
+  // Mark a school inactive (program cut / suspended / school closed) or
+  // restore it. Independent of coaches.is_active — does NOT auto-cascade
+  // to the school's coaches. After marking inactive, the admin can
+  // separately decide what to do with each coach (reassign, mark
+  // inactive, leave alone). Confirmation dialog spells this out so the
+  // admin doesn't expect the cascade.
+  const toggleSchoolActive = async (school, e) => {
+    e.stopPropagation()
+    const isCurrentlyActive = school.is_active !== false
+    const nextActive = !isCurrentlyActive
+
+    if (isCurrentlyActive) {
+      const ok = confirm(
+        `Mark "${school.school}" as inactive?\n\n` +
+        `Use this when the women's soccer program no longer exists ` +
+        `(cut, suspended, school closed). The school will be hidden ` +
+        `from the public Coach Directory and parent search.\n\n` +
+        `Note: Coaches at this school are NOT automatically marked ` +
+        `inactive. You can mark them individually after.\n\n` +
+        `Historical attendance is preserved. You can undo this later.`
       )
-    })
-  }, [schools, search, genderFilter])
+      if (!ok) return
+    }
+
+    setTogglingSchoolActive(school.id)
+    try {
+      const { error } = await supabase
+        .from('schools')
+        .update({ is_active: nextActive })
+        .eq('id', school.id)
+
+      if (error) throw error
+
+      setSchools(prev => prev.map(s =>
+        s.id === school.id ? { ...s, is_active: nextActive } : s
+      ))
+    } catch (err) {
+      alert('Error updating: ' + err.message)
+    } finally {
+      setTogglingSchoolActive(null)
+    }
+  }
+
+  // Active filter applied before the search filter so the inactive
+  // count we surface in the toggle label reflects the full DB, not
+  // just rows matching the current search. Treat undefined/null
+  // is_active as TRUE (pre-migration rows default to active).
+  const inactiveSchoolCount = schools.filter(s => s.is_active === false).length
+
+  const filteredSchools = schools.filter(school => {
+    // Hide inactive schools when toggle is off
+    if (!showInactiveSchools && school.is_active === false) return false
+    return (
+      school.school.toLowerCase().includes(search.toLowerCase()) ||
+      school.state?.toLowerCase().includes(search.toLowerCase()) ||
+      school.conference?.toLowerCase().includes(search.toLowerCase())
+    )
+  })
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredSchools.length / ITEMS_PER_PAGE)
@@ -357,17 +401,6 @@ export default function Schools({ session }) {
     setCurrentPage(1)
   }
 
-  // Reset to page 1 when gender filter changes
-  const handleGenderFilterChange = (g) => {
-    setGenderFilter(g)
-    setCurrentPage(1)
-    // Also update the add-school form default so new schools land in the
-    // currently-visible bucket.
-    if (g === 'M' || g === 'W') {
-      setSchoolFormData(prev => ({ ...prev, program_gender: g }))
-    }
-  }
-
   // Change page and scroll to top
   const goToPage = (page) => {
     setCurrentPage(page)
@@ -376,36 +409,8 @@ export default function Schools({ session }) {
 
   return (
     <AdminLayout session={session} title="Schools & Coaches">
-      {/* Gender filter pills */}
-      <div className="mb-4 flex items-center gap-2 text-sm">
-        <span className="text-gray-600 mr-1">Showing:</span>
-        {[
-          { key: 'W', label: "Women's" },
-          { key: 'M', label: "Men's" },
-          { key: 'ALL', label: 'Both' },
-        ].map(opt => {
-          const active = genderFilter === opt.key
-          return (
-            <button
-              key={opt.key}
-              onClick={() => handleGenderFilterChange(opt.key)}
-              className={`px-3 py-1.5 rounded-full border transition ${
-                active
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-              }`}
-            >
-              {opt.label}
-            </button>
-          )
-        })}
-        <span className="ml-auto text-xs text-gray-500">
-          {filteredSchools.length.toLocaleString()} {filteredSchools.length === 1 ? 'school' : 'schools'}
-        </span>
-      </div>
-
       {/* Search and Add School */}
-      <div className="mb-6 flex flex-col md:flex-row gap-4">
+      <div className="mb-3 flex flex-col md:flex-row gap-4">
         <input
           type="text"
           value={search}
@@ -419,6 +424,28 @@ export default function Schools({ session }) {
         >
           + Add School
         </button>
+      </div>
+
+      {/* Inactive-schools toggle.
+          Defaults ON for admins (need visibility to manage status).
+          Count surfaces how many inactive rows exist so the admin
+          knows whether the toggle is doing anything. */}
+      <div className="mb-6">
+        <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+          <input
+            type="checkbox"
+            checked={showInactiveSchools}
+            onChange={(e) => {
+              setShowInactiveSchools(e.target.checked)
+              setCurrentPage(1)
+            }}
+            className="w-4 h-4 rounded text-blue-600"
+          />
+          Show inactive schools
+          {inactiveSchoolCount > 0 && (
+            <span className="text-gray-500">({inactiveSchoolCount} inactive)</span>
+          )}
+        </label>
       </div>
 
       {/* Add School Modal */}
@@ -502,18 +529,6 @@ export default function Schools({ session }) {
                   className="w-full px-3 py-2 border rounded-lg"
                   placeholder="e.g., SEC"
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Program Gender *</label>
-                <select
-                  value={schoolFormData.program_gender}
-                  onChange={(e) => setSchoolFormData({ ...schoolFormData, program_gender: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                >
-                  <option value="W">Women's</option>
-                  <option value="M">Men's</option>
-                </select>
               </div>
             </div>
             
@@ -618,18 +633,6 @@ export default function Schools({ session }) {
                   placeholder="e.g., SEC"
                 />
               </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Program Gender *</label>
-                <select
-                  value={editSchoolFormData.program_gender}
-                  onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, program_gender: e.target.value })}
-                  className="w-full px-3 py-2 border rounded-lg"
-                >
-                  <option value="W">Women's</option>
-                  <option value="M">Men's</option>
-                </select>
-              </div>
             </div>
             
             <div className="flex gap-3 mt-6">
@@ -673,16 +676,25 @@ export default function Schools({ session }) {
         <div className="text-center py-8">Loading...</div>
       ) : (
         <div className="space-y-2">
-          {displayedSchools.map((school) => (
-            <div key={school.id} className="bg-white rounded-lg shadow-md overflow-hidden">
+          {displayedSchools.map((school) => {
+            const isActive = school.is_active !== false
+            return (
+            <div
+              key={school.id}
+              className={`bg-white rounded-lg shadow-md overflow-hidden ${isActive ? '' : 'opacity-60'}`}
+            >
               <div 
                 className="p-4 cursor-pointer hover:bg-gray-50 flex justify-between items-center"
                 onClick={() => toggleSchool(school.id)}
               >
                 <div className="flex-1">
-                  <h3 className="font-semibold text-gray-900 flex items-center gap-2">
-                    <span>{school.school}</span>
-                    <GenderBadge gender={school.program_gender} size="xs" />
+                  <h3 className={`font-semibold text-gray-900 ${isActive ? '' : 'line-through'}`}>
+                    {school.school}
+                    {!isActive && (
+                      <span className="ml-2 text-xs font-normal bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full no-underline align-middle">
+                        Inactive
+                      </span>
+                    )}
                   </h3>
                   <p className="text-sm text-gray-600">
                     {school.city}, {school.state} • {school.division} • {school.conference}
@@ -695,14 +707,26 @@ export default function Schools({ session }) {
                   >
                     Edit
                   </button>
-                  {session && (
-                    <button
-                      onClick={(e) => deleteSchool(school, e)}
-                      className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded-lg"
-                    >
-                      Delete
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => toggleSchoolActive(school, e)}
+                    disabled={togglingSchoolActive === school.id}
+                    className={`text-sm px-3 py-2 rounded-lg disabled:opacity-50 ${
+                      isActive
+                        ? 'text-orange-600 hover:text-orange-800 hover:bg-orange-50'
+                        : 'text-green-600 hover:text-green-800 hover:bg-green-50'
+                    }`}
+                    title={isActive ? 'Mark this school inactive (program no longer exists)' : 'Restore this school to active'}
+                  >
+                    {togglingSchoolActive === school.id
+                      ? '...'
+                      : isActive ? 'Mark Inactive' : 'Mark Active'}
+                  </button>
+                  <button
+                    onClick={(e) => deleteSchool(school, e)}
+                    className="text-red-600 hover:text-red-800 hover:bg-red-50 text-sm px-3 py-2 rounded-lg"
+                  >
+                    Delete
+                  </button>
                   <span className="text-gray-400 ml-2 p-2">
                     {expandedSchool === school.id ? '▼' : '▶'}
                   </span>
@@ -875,17 +899,15 @@ export default function Schools({ session }) {
                                 ? '...'
                                 : isActive ? 'Mark Inactive' : 'Mark Active'}
                             </button>
-                            {session && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  deleteCoach(coach.id, school.id)
-                                }}
-                                className="text-red-600 hover:text-red-800 text-xs"
-                              >
-                                Delete
-                              </button>
-                            )}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                deleteCoach(coach.id, school.id)
+                              }}
+                              className="text-red-600 hover:text-red-800 text-xs"
+                            >
+                              Delete
+                            </button>
                           </div>
                         </div>
                             )
@@ -898,7 +920,8 @@ export default function Schools({ session }) {
                 </div>
               )}
             </div>
-          ))}
+            )
+          })}
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
