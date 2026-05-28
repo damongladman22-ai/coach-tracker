@@ -1217,6 +1217,24 @@ function parseStandingsRow(rowHtml, division) {
   const teamId = parseInt(teamMatch[1], 10)
   const teamName = stripTags(teamMatch[2]).trim()
 
+  // Each row has a single <img alt="team logo" src="..."> at the start
+  // of the team-info cell. Source paths vary — /ClubImages/ for real club
+  // logos, /PlayerForm/ or /PlayerImage/ as fallbacks when a club hasn't
+  // uploaded its own (the filename usually still hints at the logo,
+  // e.g. "73806358..._CFSC Logo no o.png" for Cleveland Force). We just
+  // trust the URL and let the consumer render it.
+  const logoMatch = cell1.match(/<img[^>]+src="([^"]+)"/i)
+  const logoUrl = logoMatch ? logoMatch[1] : null
+
+  // Also grab the data-club-id attribute that sits on the team span —
+  // useful downstream for cross-team club-level rollups (one club may
+  // have multiple teams in the standings). Falls back to null if the
+  // attribute is missing.
+  const clubMatch = cell1.match(
+    /<span\s+class="individual-team-item"[^>]*data-club-id="(\d+)"/i
+  )
+  const clubId = clubMatch ? parseInt(clubMatch[1], 10) : null
+
   const qualMatch = cell1.match(
     /Qualification:\s*<\/span\s*>\s*<span[^>]*>([\s\S]*?)<\/span\s*>/i
   )
@@ -1237,6 +1255,8 @@ function parseStandingsRow(rowHtml, division) {
     place: place,
     team_id: teamId,
     team_name: teamName,
+    club_id: clubId,
+    logo_url: logoUrl,
     qualification: qualification,
     division: division,
     gp: intOrNull(cells[2]),
