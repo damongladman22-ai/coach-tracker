@@ -254,6 +254,9 @@ export default function Schools({ session }) {
   }
 
   const addCoach = async (schoolId) => {
+    // Admin add from the Schools page. source='manual' tags this row so the
+    // Coach Refresh pipeline leaves it alone. See
+    // PitchSide_Ingest_Pipeline_Reference.docx.
     const { error } = await supabase
       .from('coaches')
       .insert([{ 
@@ -262,7 +265,8 @@ export default function Schools({ session }) {
         last_name: coachFormData.last_name,
         email: coachFormData.email || null,
         phone: coachFormData.phone || null,
-        title: coachFormData.title || null
+        title: coachFormData.title || null,
+        source: 'manual'
       }])
     
     if (!error) {

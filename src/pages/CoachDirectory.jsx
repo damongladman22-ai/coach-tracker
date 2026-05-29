@@ -515,7 +515,10 @@ export default function CoachDirectory() {
 
         setToast({ show: true, message: 'Coach updated!', type: 'success' });
       } else if (showAddCoach) {
-        // Add new coach
+        // Add new coach. source='manual' tags this row so the Coach Refresh
+        // pipeline leaves it alone (its deactivation pass operates on
+        // source='scraped' only). See PitchSide_Ingest_Pipeline_Reference.docx
+        // for the cross-pipeline source-priority chain.
         const { data, error } = await supabase
           .from('coaches')
           .insert({
@@ -524,7 +527,8 @@ export default function CoachDirectory() {
             last_name: coachForm.last_name.trim(),
             title: coachForm.title.trim() || null,
             email: coachForm.email.trim() || null,
-            phone: coachForm.phone.trim() || null
+            phone: coachForm.phone.trim() || null,
+            source: 'manual'
           })
           .select('*, schools(*)')
           .single();

@@ -185,12 +185,17 @@ export default function GameAttendance() {
   const addNewCoach = async () => {
     if (!newCoach.first_name || !newCoach.last_name || !selectedSchool) return
 
+    // Parent-side add-on-the-fly during attendance logging. source='manual'
+    // tags this row so the Coach Refresh pipeline leaves it alone. Without
+    // this tag, refresh's missing-from-source pass would false-positive
+    // deactivate these on every run. See PitchSide_Ingest_Pipeline_Reference.docx.
     const { data, error } = await supabase
       .from('coaches')
       .insert([{ 
         first_name: newCoach.first_name,
         last_name: newCoach.last_name,
-        school_id: selectedSchool.id
+        school_id: selectedSchool.id,
+        source: 'manual'
       }])
       .select()
       .single()

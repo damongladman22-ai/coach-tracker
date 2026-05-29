@@ -692,7 +692,10 @@ export default function ImportCoaches({ session }) {
           return;
         }
         
-        // Insert new coaches in batches of 100
+        // Insert new coaches in batches of 100. source='imported' tags these
+        // rows in the source priority chain — refresh pipeline may update
+        // contact fields but will not deactivate them. See
+        // PitchSide_Ingest_Pipeline_Reference.docx.
         const BATCH_SIZE = 100;
         let totalImported = 0;
         
@@ -706,7 +709,8 @@ export default function ImportCoaches({ session }) {
               school_id: row.matchedSchool.id,
               email: row.email || null,
               phone: row.phone || null,
-              title: row.title || null
+              title: row.title || null,
+              source: 'imported'
             })))
             .select();
           
