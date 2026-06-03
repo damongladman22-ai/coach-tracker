@@ -87,19 +87,20 @@ function App() {
             <Route path="/admin/club-settings" element={session ? <ClubSettings session={session} /> : <AdminLogin />} />
             <Route path="/admin/events" element={session ? <Events session={session} /> : <AdminLogin />} />
             <Route path="/admin/events/:eventId" element={session ? <EventDetail session={session} /> : <AdminLogin />} />
-            <Route path="/admin/schools" element={session ? <Schools session={session} /> : <AdminLogin />} />
-            <Route path="/admin/import" element={session ? <ImportCoaches session={session} /> : <AdminLogin />} />
             <Route path="/admin/events/:eventId/matrix/:teamId" element={session ? <AttendanceMatrix session={session} /> : <AdminLogin />} />
             <Route path="/admin/games/:gameId" element={session ? <AdminGameAttendance session={session} /> : <AdminLogin />} />
             <Route path="/admin/games/:gameId/videos" element={session ? <AdminGameVideos session={session} /> : <AdminLogin />} />
             <Route path="/admin/import-games" element={session ? <ImportGames session={session} /> : <AdminLogin />} />
-            <Route path="/admin/dedup" element={session ? <DedupCoaches session={session} /> : <AdminLogin />} />
-            <Route path="/admin/dedup-schools" element={session ? <DedupSchools session={session} /> : <AdminLogin />} />
             <Route path="/admin/admins" element={session ? <ManageAdmins session={session} /> : <AdminLogin />} />
             <Route path="/admin/feedback" element={session ? <Feedback session={session} /> : <AdminLogin />} />
 
-            {/* Owner Routes — super-admin only. The page enforces the role; RLS backs it server-side. */}
+            {/* Owner Routes — platform owner only. OwnerLayout enforces the super-admin
+                role for the whole section; RLS backs it server-side. */}
             <Route path="/owner/coach-review" element={session ? <OwnerCoachReview session={session} /> : <AdminLogin />} />
+            <Route path="/owner/schools" element={session ? <Schools session={session} /> : <AdminLogin />} />
+            <Route path="/owner/import" element={session ? <ImportCoaches session={session} /> : <AdminLogin />} />
+            <Route path="/owner/dedup" element={session ? <DedupCoaches session={session} /> : <AdminLogin />} />
+            <Route path="/owner/dedup-schools" element={session ? <DedupSchools session={session} /> : <AdminLogin />} />
           
             {/* Parent Routes (no auth required) */}
             <Route path="/home" element={<ClubDashboard />} />

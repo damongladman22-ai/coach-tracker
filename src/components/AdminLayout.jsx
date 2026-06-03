@@ -15,52 +15,32 @@ import OPLogo from './OPLogo'
  * down menu that lived inline under the header. Body scroll locks while
  * open; Escape and backdrop tap close it.
  */
-export default function AdminLayout({ session, title, children }) {
+export default function AdminLayout({ session, title, children, links, section = 'Admin' }) {
   const navigate = useNavigate()
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [isSuper, setIsSuper] = useState(false)
-
-  // Show owner-only nav (Coach Review) only to platform owners. RLS enforces
-  // the actual access; this just controls link visibility.
-  useEffect(() => {
-    let cancelled = false
-    const email = session?.user?.email
-    if (!email) return
-    supabase
-      .from('allowed_admins')
-      .select('role')
-      .eq('email', email)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (!cancelled) setIsSuper(data?.role === 'super_admin')
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [session])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
     navigate('/admin')
   }
 
+  // Default (club-admin) nav. Owner surfaces are NOT here — they live in
+  // OwnerLayout, which passes its own `links`. AdminLayout just renders whatever
+  // nav it's given.
   const navLinks = [
     { to: '/admin', label: 'Dashboard' },
     { to: '/admin/seasons', label: 'Seasons' },
     { to: '/admin/teams', label: 'Teams' },
     { to: '/admin/athleteone-discover', label: 'Discover Teams' },
     { to: '/admin/events', label: 'Events' },
-    { to: '/admin/schools', label: 'Schools' },
     { to: '/directory?context=admin', label: 'Directory' },
     { to: '/admin/feedback', label: 'Feedback' },
     { to: '/admin/admins', label: 'Admins' },
     { to: '/help?context=admin', label: 'Help' },
   ]
 
-  // Owner-only links appended for super-admins (club admins never see these).
-  const links = isSuper
-    ? [...navLinks, { to: '/owner/coach-review', label: 'Coach Review' }]
-    : navLinks
+  const navItems = links || navLinks
+  const homeTo = navItems[0]?.to || '/admin'
 
   // Drawer behavior: lock body scroll + Escape to close, mirroring the parent
   // HamburgerMenu so the two feel like the same component on mobile.
@@ -87,13 +67,18 @@ export default function AdminLayout({ session, title, children }) {
         <div className="op-gradient-border"></div>
         <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-6">
-            <Link to="/admin" className="flex items-center gap-3 hover:opacity-90 transition-opacity">
+            <Link to={homeTo} className="flex items-center gap-3 hover:opacity-90 transition-opacity">
               <OPLogo className="h-10 w-auto" />
               <span className="text-xl font-bold text-white">PitchSide</span>
             </Link>
+            {section && section !== 'Admin' && (
+              <span className="hidden sm:inline text-xs font-semibold uppercase tracking-wider text-amber-300 border border-amber-300/40 rounded px-2 py-0.5">
+                {section}
+              </span>
+            )}
             {/* Desktop Nav */}
             <nav className="hidden md:flex space-x-4">
-              {links.slice(1).map((link) => (
+              {navItems.slice(1).map((link) => (
                 <Link
                   key={link.to}
                   to={link.to}
@@ -174,7 +159,7 @@ export default function AdminLayout({ session, title, children }) {
                 PitchSide
               </div>
               <div className="text-sm font-semibold text-gray-900 mt-0.5">
-                Admin
+                {section}
               </div>
             </div>
             <button
@@ -201,7 +186,7 @@ export default function AdminLayout({ session, title, children }) {
 
           {/* Nav items */}
           <nav className="py-2 overflow-y-auto" style={{ maxHeight: 'calc(100% - 160px)' }}>
-            {links.map((link) => (
+            {navItems.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}

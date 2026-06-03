@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import AdminLayout from '../components/AdminLayout'
+import OwnerLayout from '../components/OwnerLayout'
 
 export default function DedupCoaches({ session }) {
   const [coaches, setCoaches] = useState([])
@@ -372,14 +372,14 @@ export default function DedupCoaches({ session }) {
 
   if (loading) {
     return (
-      <AdminLayout session={session} title="Dedup Coaches">
+      <OwnerLayout session={session} title="Dedup Coaches">
         <div className="text-center py-8">Loading coaches...</div>
-      </AdminLayout>
+      </OwnerLayout>
     )
   }
 
   return (
-    <AdminLayout session={session} title="Dedup Coaches">
+    <OwnerLayout session={session} title="Dedup Coaches">
       {/* Toast */}
       {toast && (
         <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg ${
@@ -613,6 +613,6 @@ export default function DedupCoaches({ session }) {
           <li>Use "Clear all ignored pairs" to review previously ignored pairs again</li>
         </ul>
       </div>
-    </AdminLayout>
+    </OwnerLayout>
   )
 }

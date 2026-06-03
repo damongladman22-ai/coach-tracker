@@ -1,15 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import AdminLayout from '../components/AdminLayout'
+import OwnerLayout from '../components/OwnerLayout'
 
 /**
  * OwnerCoachReview — the platform-owner review queue for coach-data changes
  * produced by the refresh pipeline (coach_review_queue).
  *
- * Owner-only: gated on the super_admin role (RLS also enforces this server-side;
- * this guard just keeps a non-owner from seeing the surface at all). This step
- * is read-and-verify — approve / reject / apply land in the next step.
+ * Lives in the /owner section; OwnerLayout enforces the super_admin gate, so
+ * this component renders only for owners (RLS backs it server-side). Supports
+ * approve / reject / apply, per-row and bulk, mirroring the pipeline's apply.py.
  */
 
 const TYPE_ORDER = ['new_coach', 'contact_update', 'deactivation']
@@ -59,7 +58,6 @@ const APPROVE_LABEL = {
 }
 
 export default function OwnerCoachReview({ session }) {
-  const [authz, setAuthz] = useState('checking') // checking | allowed | denied
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [rows, setRows] = useState([])
@@ -67,33 +65,6 @@ export default function OwnerCoachReview({ session }) {
   const [busyIds, setBusyIds] = useState({})
   const [bulkKey, setBulkKey] = useState(null)
   const [actionError, setActionError] = useState(null)
-
-  // ── Super-admin guard ───────────────────────────────────────────────
-  useEffect(() => {
-    let cancelled = false
-    async function check() {
-      const email = session?.user?.email
-      if (!email) {
-        if (!cancelled) setAuthz('denied')
-        return
-      }
-      const { data, error } = await supabase
-        .from('allowed_admins')
-        .select('role')
-        .eq('email', email)
-        .maybeSingle()
-      if (cancelled) return
-      if (error || !data || data.role !== 'super_admin') {
-        setAuthz('denied')
-      } else {
-        setAuthz('allowed')
-      }
-    }
-    check()
-    return () => {
-      cancelled = true
-    }
-  }, [session])
 
   // ── Load the pending queue (paginated; the queue can exceed 1000 rows) ──
   async function loadQueue() {
@@ -124,8 +95,8 @@ export default function OwnerCoachReview({ session }) {
   }
 
   useEffect(() => {
-    if (authz === 'allowed') loadQueue()
-  }, [authz])
+    loadQueue()
+  }, [])
 
   // ── Actions ─────────────────────────────────────────────────────────
   function setBusy(id, on) {
@@ -261,30 +232,6 @@ export default function OwnerCoachReview({ session }) {
     await loadQueue()
   }
 
-  // ── Guard states ────────────────────────────────────────────────────
-  if (authz === 'checking') {
-    return (
-      <AdminLayout session={session} title="Coach Review">
-        <div className="text-gray-500">Checking access…</div>
-      </AdminLayout>
-    )
-  }
-  if (authz === 'denied') {
-    return (
-      <AdminLayout session={session} title="Coach Review">
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-2">Not authorized</h2>
-          <p className="text-gray-600">
-            The coach review queue is limited to platform owners.
-          </p>
-          <Link to="/admin" className="text-blue-600 hover:text-blue-700 text-sm mt-4 inline-block">
-            ← Back to Dashboard
-          </Link>
-        </div>
-      </AdminLayout>
-    )
-  }
-
   // ── Build groups ────────────────────────────────────────────────────
   let groups = []
   if (groupMode === 'type') {
@@ -312,7 +259,7 @@ export default function OwnerCoachReview({ session }) {
   }, {})
 
   return (
-    <AdminLayout session={session} title="Coach Review">
+    <OwnerLayout session={session} title="Coach Review">
       {/* Controls */}
       <div className="bg-white rounded-lg shadow p-4 mb-6 flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-gray-600">
@@ -407,7 +354,7 @@ export default function OwnerCoachReview({ session }) {
           ))}
         </div>
       )}
-    </AdminLayout>
+    </OwnerLayout>
   )
 }
 

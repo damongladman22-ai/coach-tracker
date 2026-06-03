@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import AdminLayout from '../components/AdminLayout'
+import OwnerLayout from '../components/OwnerLayout'
 
 // US States list with full names
 const US_STATES = [
@@ -412,7 +412,7 @@ export default function Schools({ session }) {
   }
 
   return (
-    <AdminLayout session={session} title="Schools & Coaches">
+    <OwnerLayout session={session} title="Schools & Coaches">
       {/* Search and Add School */}
       <div className="mb-3 flex flex-col md:flex-row gap-4">
         <input
@@ -986,6 +986,6 @@ export default function Schools({ session }) {
           )}
         </div>
       )}
-    </AdminLayout>
+    </OwnerLayout>
   )
 }

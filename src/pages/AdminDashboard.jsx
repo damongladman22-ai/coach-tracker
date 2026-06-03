@@ -4,8 +4,10 @@ import { supabase } from '../lib/supabase'
 import { getPublicBaseUrl } from '../lib/publicUrl'
 import AdminLayout from '../components/AdminLayout'
 import ThumbnailBackfill from '../components/ThumbnailBackfill'
+import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
 
 export default function AdminDashboard({ session }) {
+  const isSuper = useIsSuperAdmin(session) === 'allowed'
   const [copied, setCopied] = useState(false)
   const [settings, setSettings] = useState({
     summary_email_enabled: true,
@@ -150,39 +152,55 @@ export default function AdminDashboard({ session }) {
           <h2 className="text-xl font-semibold text-gray-800 mb-2">Events</h2>
           <p className="text-gray-600">Create and manage tournaments & showcases</p>
         </Link>
-
-        <Link
-          to="/admin/schools"
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
-        >
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Schools & Coaches</h2>
-          <p className="text-gray-600">View schools and manage coaches</p>
-        </Link>
-
-        <Link
-          to="/admin/import"
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-dashed border-gray-300"
-        >
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Import Coaches</h2>
-          <p className="text-gray-600">Bulk import coaches from Excel or CSV</p>
-        </Link>
-
-        <Link
-          to="/admin/dedup"
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-dashed border-gray-300"
-        >
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Dedup Coaches</h2>
-          <p className="text-gray-600">Find and merge duplicate coaches</p>
-        </Link>
-
-        <Link
-          to="/admin/dedup-schools"
-          className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-dashed border-gray-300"
-        >
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Dedup Schools</h2>
-          <p className="text-gray-600">Find and merge duplicate schools</p>
-        </Link>
       </div>
+
+      {/* Owner Tools — platform owner only; the entry point into the /owner section. */}
+      {isSuper && (
+        <>
+          <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Owner Tools</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <Link
+              to="/owner/coach-review"
+              className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+            >
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Coach Review</h2>
+              <p className="text-gray-600">Review and apply queued coach changes</p>
+            </Link>
+
+            <Link
+              to="/owner/schools"
+              className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow"
+            >
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Schools & Coaches</h2>
+              <p className="text-gray-600">View schools and manage coaches</p>
+            </Link>
+
+            <Link
+              to="/owner/import"
+              className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-dashed border-gray-300"
+            >
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Import Coaches</h2>
+              <p className="text-gray-600">Bulk import coaches from Excel or CSV</p>
+            </Link>
+
+            <Link
+              to="/owner/dedup"
+              className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-dashed border-gray-300"
+            >
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Dedup Coaches</h2>
+              <p className="text-gray-600">Find and merge duplicate coaches</p>
+            </Link>
+
+            <Link
+              to="/owner/dedup-schools"
+              className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow border-2 border-dashed border-gray-300"
+            >
+              <h2 className="text-xl font-semibold text-gray-800 mb-2">Dedup Schools</h2>
+              <p className="text-gray-600">Find and merge duplicate schools</p>
+            </Link>
+          </div>
+        </>
+      )}
 
       {/* Club Configuration Section */}
       <h2 className="text-lg font-semibold text-gray-700 mt-8 mb-4">Club Configuration</h2>

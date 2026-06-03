@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import AdminLayout from '../components/AdminLayout';
+import OwnerLayout from '../components/OwnerLayout';
 import GenderBadge from '../components/GenderBadge';
 import { programGenderLabel } from '../lib/lookups';
 import * as XLSX from 'xlsx';
@@ -803,7 +803,7 @@ export default function ImportCoaches({ session }) {
   }, [updateOnlyBlanks]);
 
   return (
-    <AdminLayout session={session}>
+    <OwnerLayout session={session}>
       <div className="max-w-6xl mx-auto">
         <h1 className="text-2xl font-bold mb-6">Bulk Import Coaches</h1>
         
@@ -1502,14 +1502,14 @@ export default function ImportCoaches({ session }) {
                 
                 <div className="mt-4 flex flex-wrap gap-4">
                   <button
-                    onClick={() => navigate('/admin/schools')}
+                    onClick={() => navigate('/owner/schools')}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                   >
                     View Schools & Coaches
                   </button>
                   {importMode === 'add' && (
                     <button
-                      onClick={() => navigate('/admin/dedup')}
+                      onClick={() => navigate('/owner/dedup')}
                       className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
                     >
                       Run Dedup Tool
@@ -1533,6 +1533,6 @@ export default function ImportCoaches({ session }) {
           </>
         )}
       </div>
-    </AdminLayout>
+    </OwnerLayout>
   );
 }
