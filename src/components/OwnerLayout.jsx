@@ -14,13 +14,18 @@ import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
  * Index 0 of the nav is the "home" target behind the brand logo; for the owner
  * section that's the club Dashboard, giving a one-tap path back to /admin.
  */
-const OWNER_LINKS = [
-  { to: '/admin', label: 'Dashboard' },
-  { to: '/owner/coach-review', label: 'Coach Review' },
-  { to: '/owner/schools', label: 'Schools' },
-  { to: '/owner/import', label: 'Import Coaches' },
-  { to: '/owner/dedup', label: 'Dedup Coaches' },
-  { to: '/owner/dedup-schools', label: 'Dedup Schools' },
+const OWNER_GROUPS = [
+  { items: [{ to: '/admin', label: 'Dashboard', icon: 'home' }] },
+  {
+    heading: 'Owner',
+    items: [
+      { to: '/owner/coach-review', label: 'Coach Review', icon: 'clipboard' },
+      { to: '/owner/schools', label: 'Schools', icon: 'building' },
+      { to: '/owner/import', label: 'Import Coaches', icon: 'upload' },
+      { to: '/owner/dedup', label: 'Dedup Coaches', icon: 'layers' },
+      { to: '/owner/dedup-schools', label: 'Dedup Schools', icon: 'layers' },
+    ],
+  },
 ]
 
 export default function OwnerLayout({ session, title, children }) {
@@ -49,7 +54,7 @@ export default function OwnerLayout({ session, title, children }) {
   }
 
   return (
-    <AdminLayout session={session} title={title} links={OWNER_LINKS} section="Owner">
+    <AdminLayout session={session} title={title} groups={OWNER_GROUPS} section="Owner">
       {children}
     </AdminLayout>
   )
