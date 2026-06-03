@@ -18,6 +18,26 @@ import OPLogo from './OPLogo'
 export default function AdminLayout({ session, title, children }) {
   const navigate = useNavigate()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [isSuper, setIsSuper] = useState(false)
+
+  // Show owner-only nav (Coach Review) only to platform owners. RLS enforces
+  // the actual access; this just controls link visibility.
+  useEffect(() => {
+    let cancelled = false
+    const email = session?.user?.email
+    if (!email) return
+    supabase
+      .from('allowed_admins')
+      .select('role')
+      .eq('email', email)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!cancelled) setIsSuper(data?.role === 'super_admin')
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [session])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -36,6 +56,11 @@ export default function AdminLayout({ session, title, children }) {
     { to: '/admin/admins', label: 'Admins' },
     { to: '/help?context=admin', label: 'Help' },
   ]
+
+  // Owner-only links appended for super-admins (club admins never see these).
+  const links = isSuper
+    ? [...navLinks, { to: '/owner/coach-review', label: 'Coach Review' }]
+    : navLinks
 
   // Drawer behavior: lock body scroll + Escape to close, mirroring the parent
   // HamburgerMenu so the two feel like the same component on mobile.
@@ -68,7 +93,7 @@ export default function AdminLayout({ session, title, children }) {
             </Link>
             {/* Desktop Nav */}
             <nav className="hidden md:flex space-x-4">
-              {navLinks.slice(1).map((link) => (
+              {links.slice(1).map((link) => (
                 <Link
                   key={link.to}
                   to={link.to}
@@ -176,7 +201,7 @@ export default function AdminLayout({ session, title, children }) {
 
           {/* Nav items */}
           <nav className="py-2 overflow-y-auto" style={{ maxHeight: 'calc(100% - 160px)' }}>
-            {navLinks.map((link) => (
+            {links.map((link) => (
               <Link
                 key={link.to}
                 to={link.to}

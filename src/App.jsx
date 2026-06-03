@@ -41,6 +41,7 @@ const DedupCoaches = lazy(() => import('./pages/DedupCoaches'))
 const DedupSchools = lazy(() => import('./pages/DedupSchools'))
 const ManageAdmins = lazy(() => import('./pages/ManageAdmins'))
 const Feedback = lazy(() => import('./pages/Feedback'))
+const OwnerCoachReview = lazy(() => import('./pages/OwnerCoachReview'))
 
 function App() {
   const [session, setSession] = useState(null)
@@ -96,6 +97,9 @@ function App() {
             <Route path="/admin/dedup-schools" element={session ? <DedupSchools session={session} /> : <AdminLogin />} />
             <Route path="/admin/admins" element={session ? <ManageAdmins session={session} /> : <AdminLogin />} />
             <Route path="/admin/feedback" element={session ? <Feedback session={session} /> : <AdminLogin />} />
+
+            {/* Owner Routes — super-admin only. The page enforces the role; RLS backs it server-side. */}
+            <Route path="/owner/coach-review" element={session ? <OwnerCoachReview session={session} /> : <AdminLogin />} />
           
             {/* Parent Routes (no auth required) */}
             <Route path="/home" element={<ClubDashboard />} />
