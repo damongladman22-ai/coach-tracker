@@ -44,12 +44,29 @@ function fullName(first, last) {
   return [first, last].filter(Boolean).join(' ').trim()
 }
 
+function coachLabel(row) {
+  return (
+    fullName(row.current_first_name, row.current_last_name) ||
+    fullName(row.first_name, row.last_name) ||
+    'this coach'
+  )
+}
+
+const APPROVE_LABEL = {
+  new_coach: 'Add',
+  contact_update: 'Apply',
+  deactivation: 'Deactivate',
+}
+
 export default function OwnerCoachReview({ session }) {
   const [authz, setAuthz] = useState('checking') // checking | allowed | denied
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [rows, setRows] = useState([])
   const [groupMode, setGroupMode] = useState('type') // 'type' | 'school'
+  const [busyIds, setBusyIds] = useState({})
+  const [bulkKey, setBulkKey] = useState(null)
+  const [actionError, setActionError] = useState(null)
 
   // ── Super-admin guard ───────────────────────────────────────────────
   useEffect(() => {
@@ -109,6 +126,140 @@ export default function OwnerCoachReview({ session }) {
   useEffect(() => {
     if (authz === 'allowed') loadQueue()
   }, [authz])
+
+  // ── Actions ─────────────────────────────────────────────────────────
+  function setBusy(id, on) {
+    setBusyIds((m) => {
+      const next = { ...m }
+      if (on) next[id] = true
+      else delete next[id]
+      return next
+    })
+  }
+
+  function removeRow(id) {
+    setRows((rs) => rs.filter((r) => r.id !== id))
+  }
+
+  // Write the proposed change into `coaches`, mirroring the pipeline's apply.py
+  // token-for-token via raw_change_type. Legacy rows (no raw_change_type) fall
+  // back to safe field patches only — never a name.
+  async function applyChangeToCoaches(row) {
+    const raw = (row.raw_change_type || '').toLowerCase()
+
+    if (row.change_type === 'new_coach' || raw.includes('new_coach')) {
+      const { error } = await supabase.from('coaches').insert({
+        school_id: row.school_id,
+        first_name: row.first_name || '',
+        last_name: row.last_name || '',
+        title: row.title || null,
+        email: row.email || null,
+        phone: row.phone || null,
+        is_active: true,
+        source: 'scraped',
+      })
+      if (error) throw error
+      return
+    }
+
+    if (row.change_type === 'deactivation' || raw.includes('no_longer_listed')) {
+      if (!row.existing_coach_id) return
+      const { error } = await supabase
+        .from('coaches')
+        .update({ is_active: false })
+        .eq('id', row.existing_coach_id)
+      if (error) throw error
+      return
+    }
+
+    // contact_update — patch only the field(s) the pipeline flagged.
+    if (!row.existing_coach_id) return
+    const patch = {}
+    if (raw) {
+      if (raw.includes('email_changed')) patch.email = row.email
+      if (raw.includes('title_changed')) patch.title = row.title
+      if (raw.includes('phone_changed')) patch.phone = row.phone
+      if (raw.includes('name_corrected')) {
+        if (row.first_name) patch.first_name = row.first_name
+        if (row.last_name) patch.last_name = row.last_name
+      }
+    } else {
+      if (row.email && row.email !== row.current_email) patch.email = row.email
+      if (row.title && row.title !== row.current_title) patch.title = row.title
+      if (row.phone && row.phone !== row.current_phone) patch.phone = row.phone
+    }
+    if (Object.keys(patch).length === 0) return
+    const { error } = await supabase.from('coaches').update(patch).eq('id', row.existing_coach_id)
+    if (error) throw error
+  }
+
+  async function markResolved(row, status) {
+    const { error } = await supabase
+      .from('coach_review_queue')
+      .update({
+        status,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: session?.user?.email || null,
+      })
+      .eq('id', row.id)
+    if (error) throw error
+  }
+
+  async function approveRow(row) {
+    if (row.change_type === 'deactivation') {
+      if (!window.confirm(`Mark ${coachLabel(row)} inactive? Attendance history is preserved.`)) return
+    }
+    setActionError(null)
+    setBusy(row.id, true)
+    try {
+      await applyChangeToCoaches(row)
+      await markResolved(row, 'applied')
+      removeRow(row.id)
+    } catch (e) {
+      setActionError(`Couldn’t apply ${coachLabel(row)}: ${e.message || e}`)
+    } finally {
+      setBusy(row.id, false)
+    }
+  }
+
+  async function rejectRow(row) {
+    setActionError(null)
+    setBusy(row.id, true)
+    try {
+      await markResolved(row, 'rejected')
+      removeRow(row.id)
+    } catch (e) {
+      setActionError(`Couldn’t reject ${coachLabel(row)}: ${e.message || e}`)
+    } finally {
+      setBusy(row.id, false)
+    }
+  }
+
+  async function bulkApprove(group) {
+    const n = group.rows.length
+    if (
+      !window.confirm(
+        `Approve all ${n} change${n === 1 ? '' : 's'} in “${group.label}”? This writes them to the coach database.`
+      )
+    )
+      return
+    setActionError(null)
+    setBulkKey(group.key)
+    const failures = []
+    for (const row of group.rows) {
+      try {
+        await applyChangeToCoaches(row)
+        await markResolved(row, 'applied')
+      } catch (e) {
+        failures.push(`${coachLabel(row)}: ${e.message || e}`)
+      }
+    }
+    setBulkKey(null)
+    if (failures.length) {
+      setActionError(`${failures.length} of ${n} couldn’t be applied — first: ${failures[0]}`)
+    }
+    await loadQueue()
+  }
 
   // ── Guard states ────────────────────────────────────────────────────
   if (authz === 'checking') {
@@ -210,6 +361,12 @@ export default function OwnerCoachReview({ session }) {
         </div>
       )}
 
+      {actionError && (
+        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4 mb-6 text-sm">
+          {actionError}
+        </div>
+      )}
+
       {loading ? (
         <div className="text-gray-500">Loading…</div>
       ) : rows.length === 0 ? (
@@ -220,13 +377,30 @@ export default function OwnerCoachReview({ session }) {
         <div className="space-y-8">
           {groups.map((group) => (
             <section key={group.key}>
-              <div className="flex items-center gap-2 mb-3">
-                <h2 className="text-lg font-semibold text-gray-800">{group.label}</h2>
-                <span className="text-sm text-gray-400">({group.rows.length})</span>
+              <div className="flex items-center justify-between gap-2 mb-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-800">{group.label}</h2>
+                  <span className="text-sm text-gray-400">({group.rows.length})</span>
+                </div>
+                <button
+                  onClick={() => bulkApprove(group)}
+                  disabled={bulkKey === group.key}
+                  className="text-sm px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+                >
+                  {bulkKey === group.key ? 'Approving…' : `Approve all (${group.rows.length})`}
+                </button>
               </div>
               <div className="space-y-3">
                 {group.rows.map((r) => (
-                  <ReviewRow key={r.id} row={r} showType={groupMode === 'school'} showSchool={groupMode === 'type'} />
+                  <ReviewRow
+                    key={r.id}
+                    row={r}
+                    showType={groupMode === 'school'}
+                    showSchool={groupMode === 'type'}
+                    busy={!!busyIds[r.id] || bulkKey === group.key}
+                    onApprove={() => approveRow(r)}
+                    onReject={() => rejectRow(r)}
+                  />
                 ))}
               </div>
             </section>
@@ -238,7 +412,7 @@ export default function OwnerCoachReview({ session }) {
 }
 
 // ── Single change card ──────────────────────────────────────────────────
-function ReviewRow({ row, showType, showSchool }) {
+function ReviewRow({ row, showType, showSchool, busy, onApprove, onReject }) {
   const school = row.schools?.school || '(unknown school)'
   const schoolMeta = [row.schools?.division, row.schools?.state].filter(Boolean).join(' · ')
 
@@ -282,6 +456,23 @@ function ReviewRow({ row, showType, showSchool }) {
 
       <div className="mt-3">
         <ChangeBody row={row} />
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <button
+          onClick={onApprove}
+          disabled={busy}
+          className="text-sm px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+        >
+          {busy ? '…' : APPROVE_LABEL[row.change_type] || 'Approve'}
+        </button>
+        <button
+          onClick={onReject}
+          disabled={busy}
+          className="text-sm px-3 py-1.5 rounded-md border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          Reject
+        </button>
       </div>
     </div>
   )
