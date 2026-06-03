@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
 import OPLogo from './OPLogo'
 
 /**
@@ -44,6 +45,20 @@ const CLUB_GROUPS = [
   },
 ]
 
+// Appended to the sidebar for platform owners only (super-admins). Visibility
+// lives here; access to the pages themselves is gated by OwnerLayout + RLS.
+const OWNER_GROUP = {
+  heading: 'Owner',
+  divider: true,
+  items: [
+    { to: '/owner/coach-review', label: 'Coach Review', icon: 'clipboard' },
+    { to: '/owner/schools', label: 'Schools', icon: 'building' },
+    { to: '/owner/import', label: 'Import Coaches', icon: 'upload' },
+    { to: '/owner/dedup', label: 'Dedup Coaches', icon: 'layers' },
+    { to: '/owner/dedup-schools', label: 'Dedup Schools', icon: 'layers' },
+  ],
+}
+
 const ICONS = {
   home: 'M3 11.5 12 4l9 7.5M5 10v9h5v-5h4v5h5v-9',
   calendar:
@@ -85,9 +100,10 @@ function Icon({ name, className = 'h-5 w-5' }) {
 
 const pathOf = (to) => to.split('?')[0]
 
-export default function AdminLayout({ session, title, children, groups, section = 'Admin' }) {
+export default function AdminLayout({ session, title, children, section = 'Admin' }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const isSuper = useIsSuperAdmin(session) === 'allowed'
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -97,7 +113,7 @@ export default function AdminLayout({ session, title, children, groups, section 
     }
   })
 
-  const navGroups = groups || CLUB_GROUPS
+  const navGroups = isSuper ? [...CLUB_GROUPS, OWNER_GROUP] : CLUB_GROUPS
 
   useEffect(() => {
     try {
@@ -139,8 +155,9 @@ export default function AdminLayout({ session, title, children, groups, section 
     <nav className="flex-1 overflow-y-auto py-2">
       {navGroups.map((group, gi) => (
         <div key={gi} className="px-2">
+          {group.divider && !compact && <div className="mx-3 my-2 border-t border-white/10" />}
           {group.heading && !compact && (
-            <div className="px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            <div className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">
               {group.heading}
             </div>
           )}

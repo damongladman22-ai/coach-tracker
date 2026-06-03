@@ -3,31 +3,14 @@ import AdminLayout from './AdminLayout'
 import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
 
 /**
- * OwnerLayout — shell for the walled-off /owner section (platform owner only).
+ * OwnerLayout — the access gate for the /owner section (platform owner only).
  *
- * The owner/admin boundary lives here: this is the single place the super-admin
- * check is enforced for owner pages, and it carries the owner nav. AdminLayout
- * is just the chrome (header, drawer, logout) and renders whatever nav it's
- * given — it has no owner-specific logic. RLS is the real security gate; this
- * controls visibility and keeps club admins out of the owner surfaces.
- *
- * Index 0 of the nav is the "home" target behind the brand logo; for the owner
- * section that's the club Dashboard, giving a one-tap path back to /admin.
+ * It does two things: enforce the super-admin check for owner pages, and set
+ * the "Owner" section badge. It does NOT define its own nav — AdminLayout shows
+ * the unified sidebar (club groups + the Owner group for super-admins) on every
+ * page, so an owner has one consistent menu wherever they are. RLS is the real
+ * security gate; this keeps non-owners out of the owner surfaces.
  */
-const OWNER_GROUPS = [
-  { items: [{ to: '/admin', label: 'Dashboard', icon: 'home' }] },
-  {
-    heading: 'Owner',
-    items: [
-      { to: '/owner/coach-review', label: 'Coach Review', icon: 'clipboard' },
-      { to: '/owner/schools', label: 'Schools', icon: 'building' },
-      { to: '/owner/import', label: 'Import Coaches', icon: 'upload' },
-      { to: '/owner/dedup', label: 'Dedup Coaches', icon: 'layers' },
-      { to: '/owner/dedup-schools', label: 'Dedup Schools', icon: 'layers' },
-    ],
-  },
-]
-
 export default function OwnerLayout({ session, title, children }) {
   const status = useIsSuperAdmin(session)
 
@@ -54,7 +37,7 @@ export default function OwnerLayout({ session, title, children }) {
   }
 
   return (
-    <AdminLayout session={session} title={title} groups={OWNER_GROUPS} section="Owner">
+    <AdminLayout session={session} title={title} section="Owner">
       {children}
     </AdminLayout>
   )
