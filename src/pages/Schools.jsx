@@ -57,6 +57,20 @@ const US_STATES = [
   { code: 'WY', name: 'Wyoming' }
 ]
 
+function GenderBadge({ g }) {
+  if (g !== 'M' && g !== 'W') return null
+  const isW = g === 'W'
+  return (
+    <span
+      className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full align-middle no-underline ${
+        isW ? 'bg-rose-100 text-rose-700' : 'bg-sky-100 text-sky-700'
+      }`}
+    >
+      {isW ? "Women's" : "Men's"}
+    </span>
+  )
+}
+
 export default function Schools({ session }) {
   const [schools, setSchools] = useState([])
   const [coaches, setCoaches] = useState({})
@@ -561,7 +575,10 @@ export default function Schools({ session }) {
       {showEditSchool && editingSchool && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
-            <h2 className="text-lg font-semibold mb-4">Edit School</h2>
+            <h2 className="text-lg font-semibold mb-4">
+              Edit School
+              <GenderBadge g={editingSchool.program_gender} />
+            </h2>
             
             <div className="space-y-3">
               <div>
@@ -711,6 +728,7 @@ export default function Schools({ session }) {
                 <div className="flex-1">
                   <h3 className={`font-semibold text-gray-900 ${isActive ? '' : 'line-through'}`}>
                     {school.school}
+                    <GenderBadge g={school.program_gender} />
                     {!isActive && (
                       <span className="ml-2 text-xs font-normal bg-gray-200 text-gray-700 px-2 py-0.5 rounded-full no-underline align-middle">
                         Inactive
