@@ -98,7 +98,8 @@ export default function Schools({ session }) {
     state: '',
     type: 'Public',
     conference: '',
-    division: 'NCAA D1'
+    division: 'NCAA D1',
+    coach_page_url: ''
   })
   const [savingSchool, setSavingSchool] = useState(false)
 
@@ -197,7 +198,8 @@ export default function Schools({ session }) {
       state: school.state || '',
       type: school.type || 'Public',
       conference: school.conference || '',
-      division: school.division || 'NCAA D1'
+      division: school.division || 'NCAA D1',
+      coach_page_url: school.coach_page_url || ''
     })
     setShowEditSchool(true)
   }
@@ -636,6 +638,21 @@ export default function Schools({ session }) {
                   className="w-full px-3 py-2 border rounded-lg"
                   placeholder="e.g., SEC"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Coach Staff Page URL</label>
+                <input
+                  type="url"
+                  value={editSchoolFormData.coach_page_url}
+                  onChange={(e) => setEditSchoolFormData({ ...editSchoolFormData, coach_page_url: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg"
+                  placeholder="https://athletics.example.edu/sports/womens-soccer/coaches"
+                />
+                <p className="mt-1 text-xs text-gray-500">
+                  The page the refresh pipeline scrapes for this school's coaching staff. Leave blank to let
+                  discovery find it. (Roster / commit URLs for College Profiles will be added separately.)
+                </p>
               </div>
             </div>
             
