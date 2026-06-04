@@ -570,6 +570,64 @@ async function checkAdminAuth(supabase, req) {
 //    works against it)
 //  - Never deletes — preserves attendance even if a game disappears upstream
 //  - Skips rows with manual_override=TRUE so admin overrides stick
+
+// ECNL sub-events whose name signals postseason play are typed Tournament;
+// any other real sub-event (city showcases, cups) is a Showcase.
+const POSTSEASON_RE = /playoff|championship|nationals?|finals?/i
+
+// Classify one game to an event row + game type.
+//
+// The decisive signal is the game's own athleteone_event_id (parsed off the
+// opponent span):
+//   - equals the team's season-shape event id -> league game (season event, League)
+//   - any other id -> sub-event game: resolve to the narrowest NON-season event
+//       whose date window contains the game, typed Tournament (postseason name)
+//       or Showcase
+//   - missing -> legacy fallback: narrowest containing event by date, typed
+//       League (never regress an un-tagged row)
+//
+// events: [{ id, name, start_date, end_date, _width }] (id may be absent in preview)
+// typeIds: { league, showcase, tournament }
+function classifyGame(g, events, typeIds, seasonAoEventId) {
+  const d = g.game_date
+  if (!events || events.length === 0) {
+    return { event: null, game_type_id: typeIds.league, bucket: 'no-events' }
+  }
+  const seasonEvent = events.reduce((a, b) => (b._width > a._width ? b : a))
+  const containing = (list) =>
+    list.find(
+      (e) => e.start_date && e.end_date && d >= e.start_date && d <= e.end_date
+    ) || null
+  const aoEv = g.athleteone_event_id
+
+  // League game: its event id matches the team's season-shape event.
+  if (aoEv != null && seasonAoEventId != null && String(aoEv) === String(seasonAoEventId)) {
+    return { event: seasonEvent, game_type_id: typeIds.league, bucket: 'league' }
+  }
+
+  // Sub-event game: narrowest NON-season event whose window holds the date.
+  if (aoEv != null && seasonAoEventId != null) {
+    const subs = events
+      .filter((e) => e !== seasonEvent)
+      .sort((a, b) => a._width - b._width)
+    const sub = containing(subs)
+    if (sub) {
+      const isPost = POSTSEASON_RE.test(sub.name || '')
+      return {
+        event: sub,
+        game_type_id: isPost ? typeIds.tournament : typeIds.showcase,
+        bucket: isPost ? 'tournament' : 'showcase',
+      }
+    }
+    // Tagged as a sub-event but no matching window — don't mislabel as league.
+    return { event: null, game_type_id: typeIds.tournament, bucket: 'tournament-nowindow' }
+  }
+
+  // Legacy fallback (no event id parsed): old narrowest-containing behavior.
+  const any = containing(events.slice().sort((a, b) => a._width - b._width))
+  return { event: any, game_type_id: typeIds.league, bucket: 'legacy' }
+}
+
 async function syncGames(supabase, team, teamInfoHtml, events) {
   const games = parseGamesFromTeamInfo(
     teamInfoHtml,
@@ -584,42 +642,30 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     }
   }
 
-  // Pre-sort events by date-range width (narrowest first). A showcase like
-  // "ECNL South Carolina" (3 days) wins over the league season (~11 months)
-  // when both contain a given game date.
-  const sortedEvents = (events || [])
-    .map((e) => ({
-      id: e.id,
-      start_date: e.start_date,
-      end_date: e.end_date,
-      _width: dateDaysBetween(e.start_date, e.end_date),
-    }))
-    .sort((a, b) => a._width - b._width)
-
-  function findEventIdForGame(gameDate) {
-    if (!gameDate) return null
-    for (const e of sortedEvents) {
-      if (
-        e.start_date &&
-        e.end_date &&
-        gameDate >= e.start_date &&
-        gameDate <= e.end_date
-      ) {
-        return e.id
-      }
-    }
-    return null
-  }
-
-  // Find default League game type
-  let defaultGameTypeId = null
+  // Resolve game-type ids by name (case-insensitive). Showcase/Tournament
+  // fall back gracefully so a missing type never yields a null game_type_id.
   const { data: gameTypes } = await supabase
     .from('game_types')
     .select('id, name')
-  if (gameTypes) {
-    const league = gameTypes.find((gt) => /league/i.test(gt.name || ''))
-    if (league) defaultGameTypeId = league.id
+  const byName = (re) => {
+    const t = (gameTypes || []).find((gt) => re.test(gt.name || ''))
+    return t ? t.id : null
   }
+  const leagueTypeId = byName(/league/i)
+  const typeIds = {
+    league: leagueTypeId,
+    showcase: byName(/showcase/i) || byName(/tournament/i) || leagueTypeId,
+    tournament: byName(/tournament/i) || leagueTypeId,
+  }
+
+  // Events with computed window width, consumed by classifyGame.
+  const evMeta = (events || []).map((e) => ({
+    id: e.id,
+    name: e.event_name || e.name || '',
+    start_date: e.start_date,
+    end_date: e.end_date,
+    _width: dateDaysBetween(e.start_date, e.end_date),
+  }))
 
   // Find which ao_game_ids have manual_override=TRUE so we skip them
   const aoIds = games.map((g) => g.athleteone_game_id).filter((id) => id != null)
@@ -636,23 +682,28 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     }
   }
 
+  const bucketCounts = {}
   const upsertRows = games
     .filter((g) => !overrideSet.has(g.athleteone_game_id))
-    .map((g) => ({
-      team_id: team.id,
-      athleteone_game_id: g.athleteone_game_id,
-      game_date: g.game_date,
-      game_time: g.game_time,
-      opponent: g.opponent,
-      is_home: g.is_home,
-      location: g.location,
-      our_score: g.our_score,
-      opponent_score: g.opponent_score,
-      game_type_id: defaultGameTypeId,
-      source: 'athleteone',
-      timezone: 'America/New_York',
-      event_id: findEventIdForGame(g.game_date),
-    }))
+    .map((g) => {
+      const c = classifyGame(g, evMeta, typeIds, team.athleteone_event_id)
+      bucketCounts[c.bucket] = (bucketCounts[c.bucket] || 0) + 1
+      return {
+        team_id: team.id,
+        athleteone_game_id: g.athleteone_game_id,
+        game_date: g.game_date,
+        game_time: g.game_time,
+        opponent: g.opponent,
+        is_home: g.is_home,
+        location: g.location,
+        our_score: g.our_score,
+        opponent_score: g.opponent_score,
+        game_type_id: c.game_type_id,
+        source: 'athleteone',
+        timezone: 'America/New_York',
+        event_id: c.event ? c.event.id : null,
+      }
+    })
 
   if (upsertRows.length === 0) {
     return {
@@ -679,6 +730,7 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     total_parsed: games.length,
     with_scores: scoredCount,
     linked_to_event: linkedCount,
+    by_bucket: bucketCounts,
   }
 }
 
@@ -983,6 +1035,14 @@ function parseGamesFromTeamInfo(html, ourTeamIdStr) {
       /<span\s+class="individual-team-item"[^>]*data-club-id="(\d+)"[^>]*data-team-id="(\d+)"[^>]*>([^<]+)<\/span>/i
     )
 
+    // The opponent span also carries data-event-id = the event this game
+    // belongs to. This is the only reliable game->event signal: game rows
+    // otherwise have no event id, and the events tab labels every card with
+    // the overloaded league event_id. Captured here, consumed by classifyGame.
+    const evIdMatch = tr.match(
+      /class="individual-team-item"[^>]*\bdata-event-id="(\d+)"/i
+    )
+
     // Opponent logo lives in the SAME flexbox cell as the team-item
     // span — typically the <img> just before it. Grab any image src
     // inside the row whose tag also sits before the opponent span;
@@ -1006,6 +1066,7 @@ function parseGamesFromTeamInfo(html, ourTeamIdStr) {
       opponent: oppMatch ? oppMatch[3].trim() : null,
       opponent_club_id: oppMatch ? parseInt(oppMatch[1], 10) : null,
       opponent_team_id: oppMatch ? parseInt(oppMatch[2], 10) : null,
+      athleteone_event_id: evIdMatch ? parseInt(evIdMatch[1], 10) : null,
       opponent_logo_url: logoMatch ? logoMatch[1] : null,
       is_home: isHome,
       location: venueMatch
