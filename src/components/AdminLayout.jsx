@@ -195,13 +195,35 @@ export default function AdminLayout({ session, title, children, section = 'Admin
           collapsed ? 'md:w-16' : 'md:w-60'
         }`}
       >
-        {/* Brand */}
+        {/* Brand + collapse toggle (top) */}
         <div className="flex items-center gap-2 px-3 h-16 border-b border-white/10">
           <Link to="/admin" className="flex items-center gap-2 min-w-0 hover:opacity-90 transition-opacity">
             <OPLogo className="h-8 w-auto shrink-0" />
             {!collapsed && <span className="text-lg font-bold text-white truncate">PitchSide</span>}
           </Link>
+          {!collapsed && (
+            <button
+              onClick={() => setCollapsed((c) => !c)}
+              title="Collapse"
+              aria-label="Collapse sidebar"
+              className="ml-auto rounded-md p-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Icon name="chevron" className="h-5 w-5 shrink-0" />
+            </button>
+          )}
         </div>
+        {collapsed && (
+          <div className="flex justify-center border-b border-white/10 py-2">
+            <button
+              onClick={() => setCollapsed((c) => !c)}
+              title="Expand"
+              aria-label="Expand sidebar"
+              className="rounded-md p-1.5 text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            >
+              <Icon name="chevron" className="h-5 w-5 shrink-0 rotate-180" />
+            </button>
+          </div>
+        )}
 
         {section && section !== 'Admin' && !collapsed && (
           <div className="px-3 pt-3">
@@ -213,7 +235,7 @@ export default function AdminLayout({ session, title, children, section = 'Admin
 
         {renderGroups(collapsed)}
 
-        {/* Footer: user + logout + collapse toggle */}
+        {/* Footer: user + logout */}
         <div className="border-t border-white/10 p-2">
           {!collapsed && session?.user?.email && (
             <div className="px-3 py-1 text-xs text-gray-400 truncate">{session.user.email}</div>
@@ -227,17 +249,6 @@ export default function AdminLayout({ session, title, children, section = 'Admin
           >
             <Icon name="logout" className="h-5 w-5 shrink-0" />
             {!collapsed && <span>Log Out</span>}
-          </button>
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            title={collapsed ? 'Expand' : 'Collapse'}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className={`mt-1 flex items-center gap-3 w-full rounded-md px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/10 transition-colors ${
-              collapsed ? 'justify-center' : ''
-            }`}
-          >
-            <Icon name="chevron" className={`h-5 w-5 shrink-0 transition-transform ${collapsed ? 'rotate-180' : ''}`} />
-            {!collapsed && <span>Collapse</span>}
           </button>
         </div>
       </aside>
