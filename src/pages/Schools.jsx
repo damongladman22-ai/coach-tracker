@@ -76,6 +76,7 @@ export default function Schools({ session }) {
   const [coaches, setCoaches] = useState({})
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [genderFilter, setGenderFilter] = useState('all') // 'all' | 'W' | 'M'
   const [expandedSchool, setExpandedSchool] = useState(null)
   const [showCoachForm, setShowCoachForm] = useState(null)
   const [coachFormData, setCoachFormData] = useState({ first_name: '', last_name: '', email: '', phone: '', title: '' })
@@ -400,13 +401,22 @@ export default function Schools({ session }) {
   // is_active as TRUE (pre-migration rows default to active).
   const inactiveSchoolCount = schools.filter(s => s.is_active === false).length
 
+  const term = search.trim().toLowerCase()
+  const genderSynonym = { women: 'W', womens: 'W', woman: 'W', men: 'M', mens: 'M', man: 'M' }[term]
+
   const filteredSchools = schools.filter(school => {
     // Hide inactive schools when toggle is off
     if (!showInactiveSchools && school.is_active === false) return false
+    // Gender filter (dropdown)
+    if (genderFilter !== 'all' && school.program_gender !== genderFilter) return false
+    if (!term) return true
+    // Typing a gender word ("men"/"women") filters by gender (whole-term match,
+    // so "men" doesn't accidentally hit "women's")
+    if (genderSynonym) return school.program_gender === genderSynonym
     return (
-      school.school.toLowerCase().includes(search.toLowerCase()) ||
-      school.state?.toLowerCase().includes(search.toLowerCase()) ||
-      school.conference?.toLowerCase().includes(search.toLowerCase())
+      school.school.toLowerCase().includes(term) ||
+      school.state?.toLowerCase().includes(term) ||
+      school.conference?.toLowerCase().includes(term)
     )
   })
 
@@ -436,8 +446,21 @@ export default function Schools({ session }) {
           value={search}
           onChange={handleSearchChange}
           className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="Search schools by name, state, or conference..."
+          placeholder="Search by name, state, conference, or 'men' / 'women'..."
         />
+        <select
+          value={genderFilter}
+          onChange={(e) => {
+            setGenderFilter(e.target.value)
+            setCurrentPage(1)
+          }}
+          className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          aria-label="Filter by program gender"
+        >
+          <option value="all">All genders</option>
+          <option value="W">Women's</option>
+          <option value="M">Men's</option>
+        </select>
         <button
           onClick={() => setShowAddSchool(true)}
           className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
