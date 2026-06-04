@@ -571,9 +571,10 @@ async function checkAdminAuth(supabase, req) {
 //  - Never deletes — preserves attendance even if a game disappears upstream
 //  - Skips rows with manual_override=TRUE so admin overrides stick
 
-// ECNL sub-events whose name signals postseason play are typed Tournament;
-// any other real sub-event (city showcases, cups) is a Showcase.
-const POSTSEASON_RE = /playoff|championship|nationals?|finals?/i
+// ECNL/RL sub-events whose name signals postseason play are typed Playoff
+// (RL "… Playoffs" included); any other real sub-event (city showcases, cups)
+// is a Showcase. \b on national/final avoids matching "International…".
+const POSTSEASON_RE = /playoff|championship|\bnational|\bfinal/i
 
 // Classify one game to an event row + game type.
 //
@@ -581,13 +582,13 @@ const POSTSEASON_RE = /playoff|championship|nationals?|finals?/i
 // opponent span):
 //   - equals the team's season-shape event id -> league game (season event, League)
 //   - any other id -> sub-event game: resolve to the narrowest NON-season event
-//       whose date window contains the game, typed Tournament (postseason name)
+//       whose date window contains the game, typed Playoff (postseason name)
 //       or Showcase
 //   - missing -> legacy fallback: narrowest containing event by date, typed
 //       League (never regress an un-tagged row)
 //
 // events: [{ id, name, start_date, end_date, _width }] (id may be absent in preview)
-// typeIds: { league, showcase, tournament }
+// typeIds: { league, showcase, playoff, tournament }
 function classifyGame(g, events, typeIds, seasonAoEventId) {
   const d = g.game_date
   if (!events || events.length === 0) {
@@ -615,8 +616,8 @@ function classifyGame(g, events, typeIds, seasonAoEventId) {
       const isPost = POSTSEASON_RE.test(sub.name || '')
       return {
         event: sub,
-        game_type_id: isPost ? typeIds.tournament : typeIds.showcase,
-        bucket: isPost ? 'tournament' : 'showcase',
+        game_type_id: isPost ? typeIds.playoff : typeIds.showcase,
+        bucket: isPost ? 'playoff' : 'showcase',
       }
     }
     // Tagged as a sub-event but no matching window — don't mislabel as league.
@@ -655,6 +656,7 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
   const typeIds = {
     league: leagueTypeId,
     showcase: byName(/showcase/i) || byName(/tournament/i) || leagueTypeId,
+    playoff: byName(/playoff/i) || byName(/tournament/i) || leagueTypeId,
     tournament: byName(/tournament/i) || leagueTypeId,
   }
 
