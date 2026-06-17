@@ -26,6 +26,15 @@ const INDICATOR_HEIGHT = 60 // px where the spinner finally rests when refreshin
  *    doesn't fight ours.
  *  - iOS rubber-band overscroll on top can still occur briefly; our indicator
  *    sits above it.
+ *
+ * IMPORTANT — containing-block hazard:
+ *  A CSS `transform` (or `will-change: transform`) on the content wrapper makes
+ *  that wrapper the containing block for any `position: fixed` descendant, which
+ *  silently re-anchors fixed modals / sheets / floating buttons to the wrapper
+ *  box (the full page height) instead of the viewport. To avoid that, we apply
+ *  the transform and will-change ONLY while the user is actively pulling or a
+ *  refresh is in flight. When idle (the normal state), the wrapper carries no
+ *  transform and no will-change, so fixed children behave normally.
  */
 export default function PullToRefresh({ onRefresh, children }) {
   const [pullDistance, setPullDistance] = useState(0)
@@ -119,13 +128,26 @@ export default function PullToRefresh({ onRefresh, children }) {
   // Spinner rotation while pulling — visualizes "the harder you pull, the more it rotates"
   const indicatorRotation = (pullDistance / PULL_THRESHOLD) * 270
 
-  // While refreshing OR while user is actively pulling, push the content down
-  // by the pull distance so the indicator has room above. When idle, content
-  // sits flush at the top.
-  const contentTransform =
-    pullDistance > 0
-      ? `translate3d(0, ${pullDistance}px, 0)`
-      : 'translate3d(0, 0, 0)'
+  // Whether a gesture is in progress. ONLY when this is true do we put a
+  // transform + will-change on the content wrapper — otherwise an idle page
+  // would permanently re-anchor every fixed-position child to this wrapper
+  // (see the containing-block note above).
+  const motionActive = pullDistance > 0 || refreshing
+
+  // While motion is active, translate content down by the pull distance and
+  // track the finger 1:1 (no transition). When idle, drop the transform and
+  // will-change entirely; the snap-back from the last offset to none animates
+  // via the transition.
+  const contentStyle = motionActive
+    ? {
+        transform: `translate3d(0, ${pullDistance}px, 0)`,
+        transition: 'none',
+        willChange: 'transform',
+      }
+    : {
+        transform: 'none',
+        transition: 'transform 250ms ease-out',
+      }
 
   return (
     <>
@@ -155,17 +177,8 @@ export default function PullToRefresh({ onRefresh, children }) {
         </div>
       </div>
 
-      {/* Page content — translated downward during pull */}
-      <div
-        style={{
-          transform: contentTransform,
-          transition:
-            pullDistance === 0 ? 'transform 250ms ease-out' : 'none',
-          willChange: 'transform',
-        }}
-      >
-        {children}
-      </div>
+      {/* Page content — translated downward during pull only */}
+      <div style={contentStyle}>{children}</div>
     </>
   )
 }

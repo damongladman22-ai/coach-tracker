@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { listSeasons } from '../lib/season'
 
 /**
@@ -23,6 +24,15 @@ import { listSeasons } from '../lib/season'
  *    let admins see events across all seasons.
  *  - Tap a season → fires onChange(seasonRecord) and closes after a brief
  *    delay so the checkmark animation registers.
+ *
+ * IMPORTANT — the overlay is rendered through a portal into document.body.
+ * The picker is often mounted inside a wrapper that carries a CSS transform
+ * (e.g. PullToRefresh's content div). A transformed ancestor becomes the
+ * containing block for `position: fixed` descendants, which would pin this
+ * sheet to the bottom of the whole page instead of the viewport — the
+ * backdrop covers the screen but the sheet renders off-screen below the fold.
+ * Portaling to <body> takes the overlay out of that transformed subtree so
+ * `fixed` resolves against the viewport like a modal should.
  *
  * Props:
  *  - value:    selected season record (null = "All Seasons" when allowAll)
@@ -96,6 +106,184 @@ export default function SeasonSelector({
     setTimeout(() => setOpen(false), 140)
   }
 
+  // The full-screen overlay (backdrop + bottom sheet). Always rendered so the
+  // open/close opacity + translate transitions have something to animate; it's
+  // pointer-events-none and opacity-0 when closed. Portaled into <body> below.
+  const overlay = (
+    <div
+      className={`fixed inset-0 z-50 transition-opacity duration-300 ${
+        open ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      }`}
+      aria-hidden={!open}
+    >
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={() => setOpen(false)}
+        aria-label="Close season picker"
+        role="button"
+        tabIndex={-1}
+      />
+
+      {/* Sheet */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Select Season"
+        className={`absolute bottom-0 inset-x-0 bg-white rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out ${
+          open ? 'translate-y-0' : 'translate-y-full'
+        }`}
+        style={{
+          maxHeight: 'min(85vh, 720px)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
+      >
+        {/* Grab handle — visual cue (no drag behavior without a lib) */}
+        <div className="mx-auto mt-3 mb-2 h-1.5 w-12 rounded-full bg-gray-300" />
+
+        <div className="flex items-center justify-between px-5 pt-1 pb-3">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Select Season
+          </h2>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Close season picker"
+            className="rounded-full p-2 text-gray-500 hover:bg-gray-100 active:bg-gray-200"
+          >
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div
+          className="overflow-y-auto px-2 pb-4"
+          style={{ maxHeight: 'calc(min(85vh, 720px) - 80px)' }}
+        >
+          {seasons.length === 0 ? (
+            <div className="px-3 py-10 text-center text-sm text-gray-500">
+              No seasons configured yet.
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {allowAll && (
+                <li>
+                  <button
+                    type="button"
+                    onClick={() => handleSelect(null)}
+                    className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
+                      allSeasonsSelected
+                        ? 'bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200'
+                        : 'hover:bg-gray-50 active:bg-gray-100'
+                    }`}
+                    style={{ minHeight: 56 }}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className={`truncate text-base font-medium ${
+                          allSeasonsSelected
+                            ? 'text-cyan-900'
+                            : 'text-gray-900'
+                        }`}
+                      >
+                        All Seasons
+                      </div>
+                      <div className="mt-0.5 text-xs text-gray-500">
+                        Show across every year
+                      </div>
+                    </div>
+                    {allSeasonsSelected && (
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-cyan-600 flex-shrink-0"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 6 9 17l-5-5" />
+                      </svg>
+                    )}
+                  </button>
+                </li>
+              )}
+              {seasons.map((season) => {
+                const isSelected =
+                  !allSeasonsSelected && displayed?.id === season.id
+                const isActive = !!season.is_active
+                return (
+                  <li key={season.id}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelect(season)}
+                      className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
+                        isSelected
+                          ? 'bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200'
+                          : 'hover:bg-gray-50 active:bg-gray-100'
+                      }`}
+                      style={{ minHeight: 56 }}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div
+                          className={`truncate text-base font-medium ${
+                            isSelected ? 'text-cyan-900' : 'text-gray-900'
+                          }`}
+                        >
+                          {season.name}
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-500">
+                          {formatRange(season.start_date, season.end_date)}
+                        </div>
+                      </div>
+                      <div className="flex flex-shrink-0 items-center gap-2">
+                        {isActive && (
+                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                            Active
+                          </span>
+                        )}
+                        {isSelected && (
+                          <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="text-cyan-600"
+                            aria-hidden="true"
+                          >
+                            <path d="M20 6 9 17l-5-5" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <>
       <SelectorTrigger
@@ -107,179 +295,11 @@ export default function SeasonSelector({
         onClick={() => setOpen(true)}
       />
 
-      {/* Bottom sheet — always rendered, hidden via opacity/translate when closed */}
-      <div
-        className={`fixed inset-0 z-50 transition-opacity duration-300 ${
-          open ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-        aria-hidden={!open}
-      >
-        {/* Backdrop */}
-        <div
-          className="absolute inset-0 bg-black/40"
-          onClick={() => setOpen(false)}
-          aria-label="Close season picker"
-          role="button"
-          tabIndex={-1}
-        />
-
-        {/* Sheet */}
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Select Season"
-          className={`absolute bottom-0 inset-x-0 bg-white rounded-t-2xl shadow-2xl transition-transform duration-300 ease-out ${
-            open ? 'translate-y-0' : 'translate-y-full'
-          }`}
-          style={{
-            maxHeight: 'min(85vh, 720px)',
-            paddingBottom: 'env(safe-area-inset-bottom)',
-          }}
-        >
-          {/* Grab handle — visual cue (no drag behavior without a lib) */}
-          <div className="mx-auto mt-3 mb-2 h-1.5 w-12 rounded-full bg-gray-300" />
-
-          <div className="flex items-center justify-between px-5 pt-1 pb-3">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Select Season
-            </h2>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Close season picker"
-              className="rounded-full p-2 text-gray-500 hover:bg-gray-100 active:bg-gray-200"
-            >
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          <div
-            className="overflow-y-auto px-2 pb-4"
-            style={{ maxHeight: 'calc(min(85vh, 720px) - 80px)' }}
-          >
-            {seasons.length === 0 ? (
-              <div className="px-3 py-10 text-center text-sm text-gray-500">
-                No seasons configured yet.
-              </div>
-            ) : (
-              <ul className="space-y-1">
-                {allowAll && (
-                  <li>
-                    <button
-                      type="button"
-                      onClick={() => handleSelect(null)}
-                      className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
-                        allSeasonsSelected
-                          ? 'bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200'
-                          : 'hover:bg-gray-50 active:bg-gray-100'
-                      }`}
-                      style={{ minHeight: 56 }}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div
-                          className={`truncate text-base font-medium ${
-                            allSeasonsSelected
-                              ? 'text-cyan-900'
-                              : 'text-gray-900'
-                          }`}
-                        >
-                          All Seasons
-                        </div>
-                        <div className="mt-0.5 text-xs text-gray-500">
-                          Show across every year
-                        </div>
-                      </div>
-                      {allSeasonsSelected && (
-                        <svg
-                          width="20"
-                          height="20"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="text-cyan-600 flex-shrink-0"
-                          aria-hidden="true"
-                        >
-                          <path d="M20 6 9 17l-5-5" />
-                        </svg>
-                      )}
-                    </button>
-                  </li>
-                )}
-                {seasons.map((season) => {
-                  const isSelected =
-                    !allSeasonsSelected && displayed?.id === season.id
-                  const isActive = !!season.is_active
-                  return (
-                    <li key={season.id}>
-                      <button
-                        type="button"
-                        onClick={() => handleSelect(season)}
-                        className={`flex w-full items-center justify-between gap-3 rounded-lg px-3 py-3 text-left transition-colors ${
-                          isSelected
-                            ? 'bg-cyan-50 hover:bg-cyan-100 active:bg-cyan-200'
-                            : 'hover:bg-gray-50 active:bg-gray-100'
-                        }`}
-                        style={{ minHeight: 56 }}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div
-                            className={`truncate text-base font-medium ${
-                              isSelected ? 'text-cyan-900' : 'text-gray-900'
-                            }`}
-                          >
-                            {season.name}
-                          </div>
-                          <div className="mt-0.5 text-xs text-gray-500">
-                            {formatRange(season.start_date, season.end_date)}
-                          </div>
-                        </div>
-                        <div className="flex flex-shrink-0 items-center gap-2">
-                          {isActive && (
-                            <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
-                              Active
-                            </span>
-                          )}
-                          {isSelected && (
-                            <svg
-                              width="20"
-                              height="20"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="text-cyan-600"
-                              aria-hidden="true"
-                            >
-                              <path d="M20 6 9 17l-5-5" />
-                            </svg>
-                          )}
-                        </div>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* Portal the overlay to <body> so a transformed ancestor (PullToRefresh)
+          can't capture its `position: fixed` and pin it off-screen. */}
+      {typeof document !== 'undefined'
+        ? createPortal(overlay, document.body)
+        : null}
     </>
   )
 }
