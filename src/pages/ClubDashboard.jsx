@@ -27,12 +27,48 @@ import { useFavorite, useFavorites } from '../hooks/useFavorite'
  *    routing: one live game → direct to that game; multiple → event-team page
  *  - Next-game one-liner ("Plays Sat 2pm · vs ABC") when there's an upcoming
  *    game and no live one
+ *
+ * Performance model (do not regress):
+ *  - Loads in two phases. Phase 1 fetches teams + events in PARALLEL (both
+ *    only depend on the season). As soon as teams return, the page renders —
+ *    the team cards appear immediately instead of waiting on everything.
+ *  - Phase 2 fetches games (which needs the team IDs from phase 1) and fills
+ *    in each card's record / live button / next-game line. While phase 2 is
+ *    in flight the cards show a quiet "–" for their numbers, then fill in.
+ *  - Phase 2 is non-fatal: if games fail or time out, the cards stay visible
+ *    without records rather than blanking the whole page.
+ *  - Every query is wrapped in withTimeout(), so a stalled request surfaces a
+ *    retryable error instead of hanging on "Loading…" forever.
+ *  - We intentionally do NOT fetch the attendance table here. It was only ever
+ *    used to compute a per-team "schools watched" count that the dashboard
+ *    never renders, and it was the heaviest, fastest-growing query on the page.
  */
+
+/**
+ * withTimeout — reject if a promise hasn't settled within `ms`.
+ * Supabase query builders are thenable, so this works directly on them and on
+ * Promise.all([...]) of them. It stops us waiting, not the underlying request —
+ * that's fine, the point is to never leave the UI stuck on a hung fetch.
+ */
+function withTimeout(promise, ms, label) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out. Please retry.`)),
+      ms
+    )
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+const QUERY_TIMEOUT_MS = 15000
+
 export default function ClubDashboard() {
   const [selectedSeason, setSelectedSeason] = useState(null)
   const [teams, setTeams] = useState([])
   const [teamStats, setTeamStats] = useState({})
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(true) // gates the full page (phase 1)
+  const [statsLoading, setStatsLoading] = useState(true) // gates per-card stats (phase 2)
   const [error, setError] = useState(null)
 
   // Filter/sort state
@@ -52,45 +88,73 @@ export default function ClubDashboard() {
   const load = async (seasonId) => {
     try {
       setLoading(true)
+      setStatsLoading(true)
       setError(null)
 
-      // Teams in selected season
-      const { data: teamsData, error: teamsErr } = await supabase
-        .from('teams')
-        .select(
-          '*, age_groups(id, name, sort_order), programs(id, name, sort_order)'
-        )
-        .eq('season_id', seasonId)
-        .eq('active', true)
-      if (teamsErr) throw teamsErr
-      const teamList = (teamsData || []).sort((a, b) =>
+      // -------------------------------------------------------------------
+      // Phase 1 — teams + events, in parallel. Both only need the season.
+      // Teams are the page content, so the moment this resolves we render.
+      // -------------------------------------------------------------------
+      const [teamsRes, eventsRes] = await withTimeout(
+        Promise.all([
+          supabase
+            .from('teams')
+            .select(
+              '*, age_groups(id, name, sort_order), programs(id, name, sort_order)'
+            )
+            .eq('season_id', seasonId)
+            .eq('active', true),
+          supabase
+            .from('events')
+            .select('id, start_date, end_date, slug, event_name')
+            .eq('season_id', seasonId),
+        ]),
+        QUERY_TIMEOUT_MS,
+        'Loading teams'
+      )
+
+      if (teamsRes.error) throw teamsRes.error
+
+      const teamList = (teamsRes.data || []).sort((a, b) =>
         a.name.localeCompare(b.name)
       )
       setTeams(teamList)
+      setLoading(false) // ← cards render now; stats fill in during phase 2
 
-      // Events in selected season (needed for live-game detection)
-      const { data: eventsData } = await supabase
-        .from('events')
-        .select('id, start_date, end_date, slug, event_name')
-        .eq('season_id', seasonId)
+      const eventsData = eventsRes.data || []
 
-      if (teamList.length > 0) {
+      if (teamList.length === 0) {
+        setTeamStats({})
+        setStatsLoading(false)
+        return
+      }
+
+      // -------------------------------------------------------------------
+      // Phase 2 — games (needs team IDs from phase 1). Drives each card's
+      // record, LIVE button, and next-game line. Non-fatal: a failure here
+      // leaves the cards visible without records rather than blanking the page.
+      // -------------------------------------------------------------------
+      try {
         const teamIds = teamList.map((t) => t.id)
 
-        // Games — extended select with date/time/opponent/event-slug so we
-        // can drive the LIVE button + next-game line on each card.
-        const { data: games } = await supabase
-          .from('games')
-          .select(
-            'id, team_id, event_id, is_closed, our_score, opponent_score, game_date, game_time, opponent, is_home, events(id, slug, event_name)'
-          )
-          .in('team_id', teamIds)
+        const gamesRes = await withTimeout(
+          supabase
+            .from('games')
+            .select(
+              'id, team_id, event_id, is_closed, our_score, opponent_score, game_date, game_time, opponent, is_home, events(id, slug, event_name)'
+            )
+            .in('team_id', teamIds),
+          QUERY_TIMEOUT_MS,
+          'Loading games'
+        )
+        if (gamesRes.error) throw gamesRes.error
+        const games = gamesRes.data || []
 
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const todayStr = isoDate(today)
         const activeEventIds = new Set(
-          (eventsData || [])
+          eventsData
             .filter((ev) => {
               const start = parseDate(ev.start_date)
               const end = ev.end_date ? parseDate(ev.end_date) : start
@@ -108,7 +172,7 @@ export default function ClubDashboard() {
         const teamGames = new Map()
         const teamLive = new Map()
         const teamNext = new Map()
-        ;(games || []).forEach((g) => {
+        games.forEach((g) => {
           if (!teamGames.has(g.team_id)) teamGames.set(g.team_id, [])
           teamGames.get(g.team_id).push(g)
 
@@ -142,51 +206,28 @@ export default function ClubDashboard() {
           }
         })
 
-        // Schools-per-team (existing attendance aggregation)
-        const allGameIds = (games || []).map((g) => g.id)
-        let attRows = []
-        if (allGameIds.length > 0) {
-          const { data: att } = await supabase
-            .from('attendance')
-            .select('game_id, coaches(school_id)')
-            .in('game_id', allGameIds)
-          attRows = att || []
-        }
-        const gameToSchools = new Map()
-        attRows.forEach((a) => {
-          const sid = a.coaches?.school_id
-          if (!sid) return
-          if (!gameToSchools.has(a.game_id))
-            gameToSchools.set(a.game_id, new Set())
-          gameToSchools.get(a.game_id).add(sid)
-        })
-
         const stats = {}
         teamList.forEach((t) => {
           const list = teamGames.get(t.id) || []
-          const ids = list.map((g) => g.id)
-          const allSchools = new Set()
-          ids.forEach((gid) => {
-            const s = gameToSchools.get(gid)
-            if (s) s.forEach((sid) => allSchools.add(sid))
-          })
           stats[t.id] = {
-            games: ids.length,
-            schools: allSchools.size,
+            games: list.length,
             record: computeRecord(list),
             liveGames: teamLive.get(t.id) || [],
             nextGame: teamNext.get(t.id) || null,
           }
         })
         setTeamStats(stats)
-      } else {
-        setTeamStats({})
+      } catch (statsErr) {
+        // Non-fatal: keep the team list on screen, just without records.
+        console.error('Error loading team stats:', statsErr)
+      } finally {
+        setStatsLoading(false)
       }
     } catch (err) {
       console.error('Error loading dashboard:', err)
       setError(err.message)
-    } finally {
       setLoading(false)
+      setStatsLoading(false)
     }
   }
 
@@ -378,6 +419,7 @@ export default function ClubDashboard() {
                       key={`fav-${t.id}`}
                       team={t}
                       stats={teamStats[t.id]}
+                      statsLoading={statsLoading}
                     />
                   ))}
                 </div>
@@ -473,6 +515,7 @@ export default function ClubDashboard() {
                             key={t.id}
                             team={t}
                             stats={teamStats[t.id]}
+                            statsLoading={statsLoading}
                           />
                         ))}
                       </div>
@@ -510,10 +553,15 @@ function ControlGroup({ label, children }) {
  *
  * Using a div+onClick (not <Link>) because we have nested actionable elements
  * (star, LIVE button), and nested <Link>s are invalid HTML.
+ *
+ * `statsLoading` is true while phase 2 (games) is still in flight. Until the
+ * team's stats arrive, the mini-stat row shows a quiet "–" instead of a
+ * misleading 0-0-0 record, and the live/next-game cues are simply omitted.
  */
-function TeamCard({ team, stats }) {
+function TeamCard({ team, stats, statsLoading }) {
   const navigate = useNavigate()
   const [isFavorite, setFavorite] = useFavorite(team.id)
+  const pending = statsLoading && !stats
   const r = stats?.record
   const liveGames = stats?.liveGames || []
   const hasLive = liveGames.length > 0
@@ -579,11 +627,11 @@ function TeamCard({ team, stats }) {
 
       {/* Mini stat row */}
       <div className="grid grid-cols-5 gap-1 pt-3 mt-3 border-t border-gray-100">
-        <MiniStat value={r?.played ?? 0} label="GP" />
-        <MiniStat value={r?.wins ?? 0} label="W" />
-        <MiniStat value={r?.losses ?? 0} label="L" />
-        <MiniStat value={r?.ties ?? 0} label="D" />
-        <MiniStat value={formatGD(r?.gd)} label="GD" />
+        <MiniStat value={pending ? '–' : r?.played ?? 0} label="GP" />
+        <MiniStat value={pending ? '–' : r?.wins ?? 0} label="W" />
+        <MiniStat value={pending ? '–' : r?.losses ?? 0} label="L" />
+        <MiniStat value={pending ? '–' : r?.ties ?? 0} label="D" />
+        <MiniStat value={pending ? '–' : formatGD(r?.gd)} label="GD" />
       </div>
 
       {/* LIVE TRACKER button — replaces the old static badge */}
