@@ -1727,14 +1727,23 @@ function GameCard({
   // through to plain "vs/at opponent" text.
   const opponentInfo = opponentLookup[game.opponent || ''] || null
 
+  // A game is no longer "Upcoming" once it has a result, has been closed,
+  // or its date is in the past. We deliberately do NOT use time-of-day here:
+  // AthleteOne games carry a blanket (often wrong) timezone, so a clock-based
+  // "kickoff has passed" check can't be trusted yet. Score presence is the
+  // reliable signal that a game has been played — and it's the same signal the
+  // result badge above uses, so the two can never disagree (no more the
+  // "W 1-0 · Upcoming" double-badge). Once the timezone source is fixed, a
+  // real kickoff-instant comparison can be added here for same-day games that
+  // have started but don't yet have a posted score.
+  const hasResult =
+    !!r.label || game.our_score != null || game.opponent_score != null
   const isPast = (() => {
+    if (hasResult || isClosed) return true
     const today = new Date()
     today.setHours(0, 0, 0, 0)
     const gameDate = parseGameDate(game.game_date)
-    return (
-      gameDate < today ||
-      (gameDate.getTime() === today.getTime() && isClosed)
-    )
+    return gameDate < today
   })()
 
   // Action button — present only for UPCOMING/live games attached to an
