@@ -629,6 +629,13 @@ function classifyGame(g, events, typeIds, seasonAoEventId) {
   return { event: any, game_type_id: typeIds.league, bucket: 'legacy' }
 }
 
+// Normalize a game's location string to the venue cache key. Must match the SQL
+// used to build the cache: lower(trim(split_part(location, ' - ', 1))) — i.e. the
+// complex name with any " - Field N" suffix removed, then trimmed and lowercased.
+function normalizeVenueName(location) {
+  return String(location || '').split(' - ')[0].trim().toLowerCase()
+}
+
 async function syncGames(supabase, team, teamInfoHtml, events) {
   const games = parseGamesFromTeamInfo(
     teamInfoHtml,
@@ -690,6 +697,48 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     }
   }
 
+  // Resolve venue timezones from the global cache (keyed by normalized complex
+  // name). For each game we look up the venue's zone and write that real zone —
+  // or NULL — onto the game; we never write a guessed/hardcoded zone. Venues not
+  // yet in the cache are inserted as pending rows (timezone NULL) so they surface
+  // for later resolution; ignoreDuplicates ensures an already-resolved venue is
+  // never overwritten.
+  const venueNorms = [
+    ...new Set(games.map((g) => normalizeVenueName(g.location)).filter(Boolean)),
+  ]
+  const venueZoneByNorm = new Map()
+  const seenVenueNorms = new Set()
+  if (venueNorms.length > 0) {
+    const { data: venueRows } = await supabase
+      .from('venues')
+      .select('name_norm, timezone')
+      .in('name_norm', venueNorms)
+    if (venueRows) {
+      for (const v of venueRows) {
+        venueZoneByNorm.set(v.name_norm, v.timezone)
+        seenVenueNorms.add(v.name_norm)
+      }
+    }
+    const rawByNorm = new Map()
+    for (const g of games) {
+      const n = normalizeVenueName(g.location)
+      if (n && !rawByNorm.has(n)) rawByNorm.set(n, g.location)
+    }
+    const missingVenues = venueNorms
+      .filter((n) => !seenVenueNorms.has(n))
+      .map((n) => ({
+        name_norm: n,
+        name_raw: rawByNorm.get(n) || null,
+        source: 'athleteone',
+        resolved_via: 'pending',
+      }))
+    if (missingVenues.length > 0) {
+      await supabase
+        .from('venues')
+        .upsert(missingVenues, { onConflict: 'name_norm', ignoreDuplicates: true })
+    }
+  }
+
   const bucketCounts = {}
   const upsertRows = games
     .filter((g) => !overrideSet.has(g.athleteone_game_id))
@@ -706,13 +755,17 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
       //     admin-set 'canceled'/'postponed' value;
       //   - brand-new rows with no existing status fall back to 'scheduled'.
       // manual_override rows are already filtered out above, so admin-entered
-      // results are never clobbered. Timezone is intentionally left unchanged
-      // here; correcting it belongs to the venue-resolution step, which first
-      // reads the per-game auto-unlock path before touching the field.
+      // results are never clobbered.
       const status =
         g.our_score != null
           ? 'completed'
           : existingStatusById.get(g.athleteone_game_id) || 'scheduled'
+      // Timezone comes from the venue cache (a resolved IANA zone) or is NULL
+      // when the venue is unresolved/unseen. We NEVER write a hardcoded/guessed
+      // zone: a wrong zone mis-times the per-game auto-unlock window, whereas
+      // NULL makes the game "always open" (acceptable for an unresolved venue).
+      const venueTimezone =
+        venueZoneByNorm.get(normalizeVenueName(g.location)) ?? null
       return {
         team_id: team.id,
         athleteone_game_id: g.athleteone_game_id,
@@ -725,7 +778,7 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
         opponent_score: g.opponent_score,
         game_type_id: c.game_type_id,
         source: 'athleteone',
-        timezone: 'America/New_York',
+        timezone: venueTimezone,
         status,
         event_id: c.event ? c.event.id : null,
       }
@@ -749,6 +802,7 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
   // Counts for diagnostic output
   const scoredCount = games.filter((g) => g.our_score != null).length
   const linkedCount = upsertRows.filter((r) => r.event_id != null).length
+  const tzResolved = upsertRows.filter((r) => r.timezone != null).length
 
   return {
     upserted: upsertRows.length,
@@ -756,6 +810,8 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     total_parsed: games.length,
     with_scores: scoredCount,
     linked_to_event: linkedCount,
+    timezone_resolved: tzResolved,
+    timezone_null: upsertRows.length - tzResolved,
     by_bucket: bucketCounts,
   }
 }
