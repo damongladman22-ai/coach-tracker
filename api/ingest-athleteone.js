@@ -696,13 +696,14 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     .map((g) => {
       const c = classifyGame(g, evMeta, typeIds, team.athleteone_event_id)
       bucketCounts[c.bucket] = (bucketCounts[c.bucket] || 0) + 1
-      // status is NOT NULL, and a bulk upsert needs every row to carry the SAME
-      // keys with a valid value (heterogeneous keys make the generated column
-      // list ambiguous and can null out the column for rows that omit it). Rule:
-      //   - a game with a result is 'final' (our_score != null is the same
+      // status is NOT NULL with a CHECK constraint (games_status_check) that
+      // allows only: 'scheduled' | 'completed' | 'canceled' | 'postponed'.
+      // A bulk upsert needs every row to carry the SAME keys with a valid value
+      // (heterogeneous keys make the generated column list ambiguous). Rule:
+      //   - a game with a result is 'completed' (our_score != null is the same
       //     "scored" signal used for scoredCount below);
       //   - otherwise keep the game's existing status, which preserves an
-      //     admin-set 'cancelled'/'in_progress' even without manual_override;
+      //     admin-set 'canceled'/'postponed' value;
       //   - brand-new rows with no existing status fall back to 'scheduled'.
       // manual_override rows are already filtered out above, so admin-entered
       // results are never clobbered. Timezone is intentionally left unchanged
@@ -710,7 +711,7 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
       // reads the per-game auto-unlock path before touching the field.
       const status =
         g.our_score != null
-          ? 'final'
+          ? 'completed'
           : existingStatusById.get(g.athleteone_game_id) || 'scheduled'
       return {
         team_id: team.id,
