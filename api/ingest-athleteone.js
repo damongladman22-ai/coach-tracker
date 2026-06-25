@@ -669,17 +669,23 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     _width: dateDaysBetween(e.start_date, e.end_date),
   }))
 
-  // Find which ao_game_ids have manual_override=TRUE so we skip them
+  // Find which ao_game_ids have manual_override=TRUE so we skip them, and
+  // capture each existing game's current status. status is NOT NULL, so every
+  // upserted row must carry a value; for games without a result we reuse the
+  // existing status rather than overwrite it (see the status note in the row
+  // builder below). Reading it here avoids a second DB round-trip.
   const aoIds = games.map((g) => g.athleteone_game_id).filter((id) => id != null)
   const overrideSet = new Set()
+  const existingStatusById = new Map()
   if (aoIds.length > 0) {
     const { data: existing } = await supabase
       .from('games')
-      .select('athleteone_game_id, manual_override')
+      .select('athleteone_game_id, manual_override, status')
       .in('athleteone_game_id', aoIds)
     if (existing) {
       for (const e of existing) {
         if (e.manual_override) overrideSet.add(e.athleteone_game_id)
+        if (e.status) existingStatusById.set(e.athleteone_game_id, e.status)
       }
     }
   }
@@ -690,6 +696,22 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
     .map((g) => {
       const c = classifyGame(g, evMeta, typeIds, team.athleteone_event_id)
       bucketCounts[c.bucket] = (bucketCounts[c.bucket] || 0) + 1
+      // status is NOT NULL, and a bulk upsert needs every row to carry the SAME
+      // keys with a valid value (heterogeneous keys make the generated column
+      // list ambiguous and can null out the column for rows that omit it). Rule:
+      //   - a game with a result is 'final' (our_score != null is the same
+      //     "scored" signal used for scoredCount below);
+      //   - otherwise keep the game's existing status, which preserves an
+      //     admin-set 'cancelled'/'in_progress' even without manual_override;
+      //   - brand-new rows with no existing status fall back to 'scheduled'.
+      // manual_override rows are already filtered out above, so admin-entered
+      // results are never clobbered. Timezone is intentionally left unchanged
+      // here; correcting it belongs to the venue-resolution step, which first
+      // reads the per-game auto-unlock path before touching the field.
+      const status =
+        g.our_score != null
+          ? 'final'
+          : existingStatusById.get(g.athleteone_game_id) || 'scheduled'
       return {
         team_id: team.id,
         athleteone_game_id: g.athleteone_game_id,
@@ -703,6 +725,7 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
         game_type_id: c.game_type_id,
         source: 'athleteone',
         timezone: 'America/New_York',
+        status,
         event_id: c.event ? c.event.id : null,
       }
     })
