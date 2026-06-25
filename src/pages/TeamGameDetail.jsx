@@ -232,7 +232,7 @@ export default function TeamGameDetail() {
   // Date/time/event helpers — computed once per render rather than
   // inside JSX so the read flow stays clean.
   const dateLabel = game ? formatLongDate(game.game_date) : ''
-  const timeLabel = game ? formatTime(game.game_time) : ''
+  const timeLabel = game ? formatTime(game.game_time, game.timezone) : ''
   const r = game ? gameResult(game) : { label: '', color: '', score: '' }
   const homeAway = game?.is_home ? 'Home' : game ? 'Away' : ''
 
@@ -691,13 +691,26 @@ function formatLongDate(dateStr) {
  * PublicTeamPage's formatTime so the two pages render the same time the
  * same way.
  */
-function formatTime(t) {
+function formatTime(t, timezone) {
   if (!t) return ''
   const [h, m] = String(t).split(':').map(Number)
   if (Number.isNaN(h)) return ''
   const ampm = h >= 12 ? 'PM' : 'AM'
   const h12 = h % 12 || 12
-  return `${h12}:${String(m || 0).padStart(2, '0')} ${ampm}`
+  const base = `${h12}:${String(m || 0).padStart(2, '0')} ${ampm}`
+  // Append the venue zone abbreviation when known (the same 7 IANA strings the
+  // app stores); an unknown/null zone renders the time with no label.
+  const tzAbbrevs = {
+    'America/New_York': 'ET',
+    'America/Chicago': 'CT',
+    'America/Denver': 'MT',
+    'America/Phoenix': 'MST',
+    'America/Los_Angeles': 'PT',
+    'America/Anchorage': 'AKT',
+    'Pacific/Honolulu': 'HT',
+  }
+  const tzAbbr = tzAbbrevs[timezone] || ''
+  return tzAbbr ? `${base} ${tzAbbr}` : base
 }
 
 function ChevronLeftIcon() {

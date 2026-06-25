@@ -389,12 +389,26 @@ export default function PublicTeamPage() {
       day: 'numeric',
     })
   }
-  const formatTime = (t) => {
+  const formatTime = (t, timezone) => {
     if (!t) return ''
     const [h, m] = t.split(':').map(Number)
     const ampm = h >= 12 ? 'PM' : 'AM'
     const h12 = h % 12 || 12
-    return `${h12}:${String(m).padStart(2, '0')} ${ampm}`
+    const base = `${h12}:${String(m).padStart(2, '0')} ${ampm}`
+    // Append the zone abbreviation only when the venue's timezone is known.
+    // These are the exact IANA strings the app stores (see the venues cache and
+    // the auto-unlock logic); an unknown/null zone shows the time with no label.
+    const tzAbbrevs = {
+      'America/New_York': 'ET',
+      'America/Chicago': 'CT',
+      'America/Denver': 'MT',
+      'America/Phoenix': 'MST',
+      'America/Los_Angeles': 'PT',
+      'America/Anchorage': 'AKT',
+      'Pacific/Honolulu': 'HT',
+    }
+    const tzAbbr = tzAbbrevs[timezone] || ''
+    return tzAbbr ? `${base} ${tzAbbr}` : base
   }
 
   // Standings position pulled from AthleteOne ingest. Stored as a number
@@ -1854,7 +1868,7 @@ function GameCard({
         <div className="text-sm text-gray-700 mt-0.5 flex items-center gap-1.5 flex-wrap">
           {game.game_time && (
             <span className="whitespace-nowrap">
-              {formatTime(game.game_time)} ·
+              {formatTime(game.game_time, game.timezone)} ·
             </span>
           )}
           {opponentInfo?.logo_url && (

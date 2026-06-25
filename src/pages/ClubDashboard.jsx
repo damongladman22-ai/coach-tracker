@@ -141,7 +141,7 @@ export default function ClubDashboard() {
           supabase
             .from('games')
             .select(
-              'id, team_id, event_id, is_closed, our_score, opponent_score, game_date, game_time, opponent, is_home, events(id, slug, event_name)'
+              'id, team_id, event_id, is_closed, our_score, opponent_score, game_date, game_time, timezone, opponent, is_home, events(id, slug, event_name)'
             )
             .in('team_id', teamIds),
           QUERY_TIMEOUT_MS,
@@ -199,6 +199,7 @@ export default function ClubDashboard() {
               teamNext.set(g.team_id, {
                 gameDate: g.game_date,
                 gameTime: g.game_time,
+                gameTimezone: g.timezone,
                 opponent: g.opponent,
                 isHome: g.is_home,
               })
@@ -738,7 +739,7 @@ function formatNextGame(next) {
       day: 'numeric',
     })
 
-  const timeLabel = formatTime(next.gameTime)
+  const timeLabel = formatTime(next.gameTime, next.gameTimezone)
   const versus = next.isHome ? 'vs' : '@'
   const opponent = next.opponent || 'TBD'
 
@@ -759,13 +760,26 @@ function formatGD(gd) {
   return gd
 }
 
-function formatTime(t) {
+function formatTime(t, timezone) {
   if (!t) return ''
   const [h, m] = t.split(':').map(Number)
   const ampm = h >= 12 ? 'pm' : 'am'
   const h12 = h % 12 || 12
   // Drop ":00" for top-of-hour times to keep the line compact: "2pm" vs "2:00pm"
-  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`
+  const base = m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`
+  // Append the venue zone abbreviation when known (the same 7 IANA strings the
+  // app stores); an unknown/null zone renders the time with no label.
+  const tzAbbrevs = {
+    'America/New_York': 'ET',
+    'America/Chicago': 'CT',
+    'America/Denver': 'MT',
+    'America/Phoenix': 'MST',
+    'America/Los_Angeles': 'PT',
+    'America/Anchorage': 'AKT',
+    'Pacific/Honolulu': 'HT',
+  }
+  const tzAbbr = tzAbbrevs[timezone] || ''
+  return tzAbbr ? `${base} ${tzAbbr}` : base
 }
 
 function parseDate(s) {
