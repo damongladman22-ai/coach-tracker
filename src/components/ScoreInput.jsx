@@ -109,7 +109,13 @@ export function computeRecord(games) {
     played += 1
     gf += g.our_score
     ga += g.opponent_score
-    if (g.our_score > g.opponent_score) wins += 1
+    // Prefer the recorded result: a 1-1 game decided on penalties is a win or
+    // loss upstream, not a draw. Fall back to score comparison for manual
+    // games that have scores but no recorded result.
+    if (g.result === 'win') wins += 1
+    else if (g.result === 'loss') losses += 1
+    else if (g.result === 'draw') ties += 1
+    else if (g.our_score > g.opponent_score) wins += 1
     else if (g.our_score < g.opponent_score) losses += 1
     else ties += 1
   })
@@ -120,27 +126,34 @@ export function computeRecord(games) {
 
 /**
  * Get a result label for a single game.
- * Returns { label: 'W'|'L'|'T'|null, color: tailwind classes }
+ * Returns { label: 'W'|'L'|'D'|null, color: tailwind classes, score }
+ *
+ * Prefers the recorded result (game.result = 'win'|'loss'|'draw'), which is
+ * the authoritative outcome from AthleteOne — e.g. a 1-1 game decided on
+ * penalties is recorded as a win or loss, not a draw. Falls back to comparing
+ * scores when no result is stored (manually-entered games).
+ *
+ * The score string is always the regulation score (e.g. "1-1"), matching how
+ * the source site shows a penalty result ("L 1-1").
  */
 export function gameResult(game) {
-  if (game.our_score == null || game.opponent_score == null) {
-    return { label: null, color: '' }
+  const hasScore = game.our_score != null && game.opponent_score != null
+  const score = hasScore ? `${game.our_score}-${game.opponent_score}` : ''
+
+  const styled = (label) => {
+    if (label === 'W') return { label: 'W', color: 'bg-emerald-100 text-emerald-700', score }
+    if (label === 'L') return { label: 'L', color: 'bg-rose-100 text-rose-700', score }
+    return { label: 'D', color: 'bg-gray-200 text-gray-700', score }
   }
-  if (game.our_score > game.opponent_score)
-    return {
-      label: 'W',
-      color: 'bg-emerald-100 text-emerald-700',
-      score: `${game.our_score}-${game.opponent_score}`,
-    }
-  if (game.our_score < game.opponent_score)
-    return {
-      label: 'L',
-      color: 'bg-rose-100 text-rose-700',
-      score: `${game.our_score}-${game.opponent_score}`,
-    }
-  return {
-    label: 'D',
-    color: 'bg-gray-200 text-gray-700',
-    score: `${game.our_score}-${game.opponent_score}`,
-  }
+
+  // Authoritative recorded result wins.
+  if (game.result === 'win') return styled('W')
+  if (game.result === 'loss') return styled('L')
+  if (game.result === 'draw') return styled('D')
+
+  // No recorded result — derive from the score.
+  if (!hasScore) return { label: null, color: '' }
+  if (game.our_score > game.opponent_score) return styled('W')
+  if (game.our_score < game.opponent_score) return styled('L')
+  return styled('D')
 }
