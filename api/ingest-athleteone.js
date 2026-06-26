@@ -776,6 +776,7 @@ async function syncGames(supabase, team, teamInfoHtml, events) {
         location: g.location,
         our_score: g.our_score,
         opponent_score: g.opponent_score,
+        result: g.athleteone_result ?? null,
         game_type_id: c.game_type_id,
         source: 'athleteone',
         timezone: venueTimezone,
