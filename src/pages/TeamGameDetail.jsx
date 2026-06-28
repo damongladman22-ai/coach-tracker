@@ -101,7 +101,7 @@ export default function TeamGameDetail() {
         .from('games')
         .select(`
           id, team_id, game_date, game_time, timezone, opponent,
-          our_score, opponent_score, is_home, location, is_closed,
+          our_score, opponent_score, result, is_home, location, is_closed,
           game_types (id, name),
           events (id, event_name, slug, start_date, end_date, location)
         `)
