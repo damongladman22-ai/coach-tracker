@@ -1,47 +1,56 @@
-import { useParams, useNavigate } from 'react-router-dom'
-import { useEffect } from 'react'
+import { useParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { useCollegeProfilesAccess } from '../college-profiles/access/useCollegeProfilesAccess'
-import ProfileLocked from '../college-profiles/access/ProfileLocked'
-import CollegeProfile from '../college-profiles/CollegeProfile'
-import { PageLoader } from '../components/LoadingStates'
 
 /**
- * SchoolProfile — PitchSide's thin host for the portable College Profiles module.
- *
- * Keeps all PitchSide-specific concerns OUT of the module:
- *   - reads :schoolId from the route
- *   - runs the access gate with the app's shared supabase client + session
- *   - injects the app's client + back-link target into the module
- *
- * Gate outcomes:
- *   checking → loader
- *   disabled → not available to this viewer; send home (owner-bypass means the
- *              owner never lands here while the feature is globally off)
- *   locked   → premium teaser
- *   allowed  → the profile
+ * TEMPORARY DIAGNOSTIC build of SchoolProfile.
+ * Prints exactly what the access gate would see. No redirect, so it always
+ * renders. We restore the real host once we know the cause.
  */
 export default function SchoolProfile({ session }) {
   const { schoolId } = useParams()
-  const navigate = useNavigate()
-  const status = useCollegeProfilesAccess(supabase, session)
+  const [info, setInfo] = useState({ phase: 'starting…' })
 
   useEffect(() => {
-    if (status === 'disabled') navigate('/', { replace: true })
-  }, [status, navigate])
+    let cancelled = false
+    ;(async () => {
+      const out = {}
+      try {
+        out.propEmail = session?.user?.email || null
+        const { data: live } = await supabase.auth.getSession()
+        out.liveEmail = live?.session?.user?.email || null
+        const email = out.liveEmail || out.propEmail
 
-  if (status === 'checking' || status === 'disabled') {
-    return <PageLoader message="Loading…" />
-  }
-  if (status === 'locked') {
-    return <ProfileLocked backTo="/directory" backLabel="Back to Coach Directory" />
-  }
+        if (email) {
+          const { data, error } = await supabase
+            .from('allowed_admins').select('role').eq('email', email).maybeSingle()
+          out.ownerRole = data?.role ?? null
+          out.ownerError = error ? (error.message || String(error)) : null
+        } else {
+          out.ownerRole = null
+          out.ownerError = 'no email available'
+        }
+
+        const { data: ps, error: psErr } = await supabase
+          .from('platform_settings').select('value')
+          .eq('key', 'college_profiles_enabled').maybeSingle()
+        out.flagValue = ps?.value ?? null
+        out.flagError = psErr ? (psErr.message || String(psErr)) : null
+      } catch (e) {
+        out.threw = e?.message || String(e)
+      }
+      if (!cancelled) setInfo({ phase: 'done', ...out })
+    })()
+    return () => { cancelled = true }
+  }, [session])
+
   return (
-    <CollegeProfile
-      client={supabase}
-      schoolId={schoolId}
-      backTo="/directory"
-      backLabel="Back to Coach Directory"
-    />
+    <div style={{ padding: 24, fontFamily: 'monospace', fontSize: 14, lineHeight: 1.6 }}>
+      <h2 style={{ marginBottom: 8 }}>College Profiles — gate diagnostic</h2>
+      <div>schoolId: {String(schoolId)}</div>
+      <pre style={{ background: '#f4f4f5', padding: 16, borderRadius: 8, overflow: 'auto' }}>
+{JSON.stringify(info, null, 2)}
+      </pre>
+    </div>
   )
 }
