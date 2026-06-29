@@ -1,0 +1,31 @@
+/* College Profiles — self-contained design system.
+   Everything is scoped under .cp-root so it never leaks into the host app
+   and travels with the module to a standalone shell. */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+.cp-root{
+  /* school accent — driven per-profile later (OSU = scarlet & gray here) */
+  --accent:#BB0000; --accent-deep:#8C0000; --accent-tint:#FBE9E9;
+  /* structural neutrals */
+  --ink:#15191C; --slate:#5C6B73; --slate-2:#85939B;
+  --line:#E5E8EB; --paper:#F2F3F5; --card:#FFFFFF;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(20,25,28,.04), 0 8px 24px rgba(20,25,28,.06);
+
+  background:var(--paper); color:var(--ink); min-height:100vh;
+  font-family:Inter,system-ui,sans-serif; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.cp-root *{box-sizing:border-box}
+.cp-wrap{max-width:1120px; margin:0 auto; padding:24px 24px 72px}
+.cp-num{font-family:"Barlow Condensed",sans-serif; font-variant-numeric:tabular-nums; letter-spacing:.3px}
+.cp-eyebrow{font-size:11px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--slate); margin:0 0 4px}
+
+/* scaffold placeholder card (removed once real cards land) */
+.cp-scaffold{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:28px 30px}
+.cp-scaffold h1{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:30px; line-height:1.05; margin:0 0 6px}
+.cp-scaffold p{margin:6px 0; color:var(--slate)}
+.cp-scaffold code{background:var(--paper); border:1px solid var(--line); border-radius:6px; padding:2px 7px; font-size:13px; color:var(--ink)}
+.cp-back{display:inline-block; margin-top:16px; color:var(--accent-deep); font-weight:600; text-decoration:none; font-size:13px}
+.cp-back:hover{text-decoration:underline}

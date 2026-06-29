@@ -43,6 +43,10 @@ const ManageAdmins = lazy(() => import('./pages/ManageAdmins'))
 const Feedback = lazy(() => import('./pages/Feedback'))
 const OwnerCoachReview = lazy(() => import('./pages/OwnerCoachReview'))
 
+// College Profiles — portable premium module, hosted via a thin wrapper page.
+// Gated inside the host (global kill switch + owner bypass); lazy-loaded.
+const SchoolProfile = lazy(() => import('./pages/SchoolProfile'))
+
 function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -113,6 +117,9 @@ function App() {
             <Route path="/e/:eventSlug/:teamSlug/game/:gameId" element={<GameAttendance />} />
             <Route path="/e/:eventSlug/:teamSlug/summary" element={<ParentSummary />} />
             <Route path="/e/:eventSlug" element={<EventLanding />} />
+
+            {/* College Profiles (premium module) — gated inside the host page. */}
+            <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
           
             {/* Default - Club Dashboard for public, Admin Dashboard if logged in */}
             <Route path="/" element={session ? <AdminDashboard session={session} /> : <ClubDashboard />} />
