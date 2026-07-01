@@ -3,13 +3,11 @@ import { useProgramProfile } from './data/useProgramProfile'
 import { rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent, newcomers } from './data/metrics'
 import Masthead from './cards/Masthead'
 import KpiStrip from './cards/KpiStrip'
+import SquadMap from './cards/SquadMap'
 
 /**
  * CollegeProfile — the portable module entry point.
- *
- * Props (everything injected; no PitchSide imports):
- *   client, schoolId, backTo, backLabel
- *   theme — optional { accent, accentDeep, accentTint } → CSS vars on .cp-root
+ * Props (all injected; no PitchSide imports): client, schoolId, backTo, backLabel, theme
  */
 function fmtDate(iso) {
   if (!iso) return null
@@ -62,7 +60,8 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               newcomers={newcomers(rosters, currentRoster, currentSeason)}
               currentSeason={currentSeason}
             />
-            {/* analytical cards land here next */}
+            <SquadMap roster={currentRoster} season={currentSeason} />
+            {/* more analytical cards land here next */}
           </>
         )}
       </div>
