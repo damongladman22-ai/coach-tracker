@@ -2,7 +2,7 @@ import './college-profile.css'
 import { useProgramProfile } from './data/useProgramProfile'
 import {
   rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
-  projectedOpeningsByYear, newcomers,
+  projectedOpeningsByYear, newcomers, geographyBuckets,
 } from './data/metrics'
 import Masthead from './cards/Masthead'
 import KpiStrip from './cards/KpiStrip'
@@ -10,6 +10,8 @@ import SquadMap from './cards/SquadMap'
 import ProjectedOpenings from './cards/ProjectedOpenings'
 import RosterStability from './cards/RosterStability'
 import RosterTable from './cards/RosterTable'
+import Geography from './cards/Geography'
+import CoachStaff from './cards/CoachStaff'
 
 /**
  * CollegeProfile — the portable module entry point.
@@ -21,9 +23,14 @@ function fmtDate(iso) {
   if (isNaN(d.getTime())) return null
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+function seasonRange(seasons) {
+  if (!seasons?.length) return ''
+  const a = seasons[0], b = seasons[seasons.length - 1]
+  return a === b ? `${a}` : `${a}\u2013${b}`
+}
 
 export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme }) {
-  const { loading, error, school, rosters, seasons, currentSeason, currentRoster, lastSyncedRaw } =
+  const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw } =
     useProgramProfile(client, schoolId)
 
   const styleVars = theme
@@ -33,6 +40,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const ready = !loading && !error && school
   const returnStats = ready ? nonSeniorReturnRate(rosters, seasons) : null
   const openingBuckets = ready ? projectedOpeningsByYear(currentRoster, currentSeason) : []
+  const geoBuckets = ready ? geographyBuckets(currentRoster) : []
 
   return (
     <div className="cp-root" style={styleVars}>
@@ -73,7 +81,19 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <RosterStability stats={returnStats} />
             </div>
             <RosterTable roster={currentRoster} />
-            {/* more analytical cards land here next */}
+            <div className="cp-two">
+              <Geography buckets={geoBuckets} />
+              <CoachStaff coaches={coaches} />
+            </div>
+            <footer className="cp-foot">
+              <p><b>About this data.</b> Roster, class, and position data are aggregated from public
+                college athletics sources and linked across seasons to a single player identity — which is
+                what makes the stability and projected-openings analysis possible.</p>
+              <p>Stability reflects the seasons currently tracked for this program ({seasonRange(seasons)}).
+                Position analysis is at the group level (GK / Defense / Midfield / Attack). Projected
+                openings are a forward signal, not a guarantee — transfers, redshirts, and recruiting all
+                shift the picture.</p>
+            </footer>
           </>
         )}
       </div>

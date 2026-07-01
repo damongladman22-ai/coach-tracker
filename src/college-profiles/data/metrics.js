@@ -4,6 +4,7 @@
 
 const TERMINAL = new Set(['SR', 'GR']) // exhausted / near-exhausted eligibility
 export const POS_ORDER = ['GK', 'D', 'M', 'F']
+const US_NAMES = new Set(['United States', 'USA', 'US', 'U.S.', 'U.S.A.'])
 
 export function rosterSize(currentRoster) {
   return currentRoster?.length || 0
@@ -93,4 +94,28 @@ export function newcomers(rosters, currentRoster, currentSeason) {
     }
   }
   return n
+}
+
+/**
+ * Geography buckets for the current roster, from the normalized location
+ * columns: U.S. players bucket by hometown_state, international by
+ * hometown_country. Returns [{ name, intl, count }] desc, Unknown last.
+ */
+export function geographyBuckets(currentRoster) {
+  const map = new Map()
+  let unknown = 0
+  for (const r of currentRoster || []) {
+    const country = (r.hometown_country || '').trim()
+    const state = (r.hometown_state || '').trim()
+    const intl = !!country && !US_NAMES.has(country)
+    const name = intl ? country : state
+    if (!name) { unknown++; continue }
+    const key = (intl ? 'C:' : 'S:') + name
+    const cur = map.get(key) || { name, intl, count: 0 }
+    cur.count++
+    map.set(key, cur)
+  }
+  const arr = [...map.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+  if (unknown > 0) arr.push({ name: 'Unknown', intl: false, count: unknown })
+  return arr
 }
