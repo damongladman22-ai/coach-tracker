@@ -31,6 +31,8 @@ export default function GeographyTrend({ data }) {
   const maxCount = Math.max(1, ...Object.values(states))
   const rankedStates = Object.entries(states).sort((a, b) => b[1] - a[1])
   const rankedIntl = Object.entries(intl).sort((a, b) => b[1] - a[1])
+  const total = scope?.total || 0
+  const pctOf = c => (total ? Math.round(100 * c / total) : 0)
   const distinctByYear = data.seasons.map(y => ({
     y, n: (mode === 'recruit' ? data.byRecruit[y] : data.byRoster[y])?.distinctStates || 0,
   }))
@@ -88,6 +90,7 @@ export default function GeographyTrend({ data }) {
                   <span className="cp-gname">{name}</span>
                   <span className="cp-gtrack"><span className="cp-gfill" style={{ width: `${100 * c / maxCount}%` }} /></span>
                   <span className="cp-gn cp-num">{c}</span>
+                  <span className="cp-gpct">{pctOf(c)}%</span>
                 </li>
               ))}
               {rankedStates.length === 0 && <li className="cp-muted">No U.S. states in this view.</li>}
@@ -97,7 +100,7 @@ export default function GeographyTrend({ data }) {
               <>
                 <p className="cp-eyebrow" style={{ margin: '14px 0 8px' }}>International</p>
                 <div className="cp-intl">
-                  {rankedIntl.map(([name, c]) => (<span className="cp-intl-chip" key={name}>{name} <b>{c}</b></span>))}
+                  {rankedIntl.map(([name, c]) => (<span className="cp-intl-chip" key={name}>{name} <b>{c}</b> <span className="cp-gpct-inline">{pctOf(c)}%</span></span>))}
                 </div>
               </>
             )}
@@ -121,7 +124,7 @@ export default function GeographyTrend({ data }) {
         const pos = clampTip(tip.x, tip.y)
         return (
           <div className="cp-floattip" style={{ left: pos.left, top: pos.top, transform: 'translateX(-50%)' }}>
-            <b>{tip.name}</b> · {tip.c} {tip.c === 1 ? 'player' : 'players'}
+            <b>{tip.name}</b> · {tip.c} {tip.c === 1 ? 'player' : 'players'} ({pctOf(tip.c)}%)
           </div>
         )
       })()}

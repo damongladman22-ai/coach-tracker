@@ -206,6 +206,8 @@
 .cp-gtrack{flex:1; height:8px; background:var(--paper); border-radius:999px; overflow:hidden}
 .cp-gfill{height:100%; background:var(--accent); border-radius:999px; opacity:.85}
 .cp-gn{font-family:"Barlow Condensed",sans-serif; font-weight:700; width:26px; text-align:right; color:var(--ink)}
+.cp-gpct{font-size:11px; color:var(--slate-2); width:38px; text-align:right; flex:none; font-variant-numeric:tabular-nums}
+.cp-gpct-inline{color:var(--slate-2); font-size:11px}
 
 /* ---------- coaching staff ---------- */
 .cp-staff{margin:0; padding:0; list-style:none; display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:12px}
