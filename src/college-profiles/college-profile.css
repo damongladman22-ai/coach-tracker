@@ -298,6 +298,17 @@
 .cp-pair{display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; margin-bottom:22px}
 .cp-pair > .cp-sec{margin:0}
 
+/* ---------- international flag list ---------- */
+.cp-flag{width:20px; height:20px; border-radius:50%; overflow:hidden; flex:none; background:var(--paper); box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+.cp-flag svg{display:block; width:100%; height:100%}
+.cp-flag--none{border:1px solid var(--line)}
+.cp-intl-list{list-style:none; margin:0; padding:0}
+.cp-intl-list li{display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--line)}
+.cp-intl-list li:last-child{border-bottom:none}
+.cp-intl-name{flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:13px; color:var(--ink)}
+.cp-intl-n{font-family:"Barlow Condensed",sans-serif; font-weight:700; color:var(--ink); font-size:15px}
+.cp-intl-pct{font-size:11px; color:var(--slate-2); width:38px; text-align:right; flex:none; font-variant-numeric:tabular-nums}
+
 /* ---------- responsive ---------- */
 @media (max-width:900px){
   .cp-two{grid-template-columns:1fr}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { US_VIEWBOX, US_BORDERS, US_STATE_PATHS } from '../data/usStatesPaths'
 import { clampTip } from '../data/format'
+import { COUNTRY_CODE, COUNTRY_FLAGS } from '../data/countryFlags'
 
 /**
  * GeographyTrend — recruiting footprint as a US state heat map (choropleth),
@@ -99,9 +100,22 @@ export default function GeographyTrend({ data }) {
             {rankedIntl.length > 0 && (
               <>
                 <p className="cp-eyebrow" style={{ margin: '14px 0 8px' }}>International</p>
-                <div className="cp-intl">
-                  {rankedIntl.map(([name, c]) => (<span className="cp-intl-chip" key={name}>{name} <b>{c}</b> <span className="cp-gpct-inline">{pctOf(c)}%</span></span>))}
-                </div>
+                <ul className="cp-intl-list">
+                  {rankedIntl.map(([name, c]) => {
+                    const code = COUNTRY_CODE[name]
+                    const svg = code ? COUNTRY_FLAGS[code] : null
+                    return (
+                      <li key={name}>
+                        {svg
+                          ? <span className="cp-flag" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />
+                          : <span className="cp-flag cp-flag--none" aria-hidden="true" />}
+                        <span className="cp-intl-name">{name}</span>
+                        <span className="cp-intl-n cp-num">{c}</span>
+                        <span className="cp-intl-pct">{pctOf(c)}%</span>
+                      </li>
+                    )
+                  })}
+                </ul>
               </>
             )}
 
