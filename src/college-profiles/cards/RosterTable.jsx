@@ -1,10 +1,14 @@
-import { useState } from 'react'
+import { useState, useRef, useLayoutEffect } from 'react'
 import { hometownLabel } from '../data/format'
 
 /**
  * RosterTable — the current active roster, filterable by position group and
- * class year. Clean/functional by design (the analytical cards carry the wow);
- * hometown reads from the normalized location columns.
+ * class year. Clean/functional by design. Hometown reads the normalized columns.
+ *
+ * Filtering changes the row count (and page height); to stop the viewport from
+ * jumping, we pin the clicked filter button: record its on-screen position
+ * before the state change and, in a layout effect (before paint), scroll by the
+ * delta so it stays put.
  */
 const POS = [['all', 'All'], ['GK', 'GK'], ['D', 'Defense'], ['M', 'Midfield'], ['F', 'Attack']]
 const CLS = [['all', 'All'], ['FR', 'FR'], ['SO', 'SO'], ['JR', 'JR'], ['SR', 'SR'], ['GR', 'GR']]
@@ -13,6 +17,18 @@ const GRAD = new Set(['SR', 'GR'])
 export default function RosterTable({ roster }) {
   const [pos, setPos] = useState('all')
   const [cls, setCls] = useState('all')
+
+  const pinRef = useRef(null)
+  useLayoutEffect(() => {
+    const p = pinRef.current
+    if (p && p.el) {
+      const delta = p.el.getBoundingClientRect().top - p.top
+      if (delta) window.scrollBy(0, delta)
+    }
+    pinRef.current = null
+  })
+  const pin = e => { pinRef.current = { el: e.currentTarget, top: e.currentTarget.getBoundingClientRect().top } }
+
   const all = roster || []
   const rows = all
     .filter(r => (pos === 'all' || r.position === pos) && (cls === 'all' || r.class_year === cls))
@@ -30,13 +46,15 @@ export default function RosterTable({ roster }) {
         <div className="cp-fgrp">
           <span className="cp-glabel">Position</span>
           {POS.map(([v, l]) => (
-            <button key={v} type="button" className="cp-fbtn" aria-pressed={pos === v} onClick={() => setPos(v)}>{l}</button>
+            <button key={v} type="button" className="cp-fbtn" aria-pressed={pos === v}
+              onClick={e => { pin(e); setPos(v) }}>{l}</button>
           ))}
         </div>
         <div className="cp-fgrp cp-fgrp--gap">
           <span className="cp-glabel">Class</span>
           {CLS.map(([v, l]) => (
-            <button key={v} type="button" className="cp-fbtn" aria-pressed={cls === v} onClick={() => setCls(v)}>{l}</button>
+            <button key={v} type="button" className="cp-fbtn" aria-pressed={cls === v}
+              onClick={e => { pin(e); setCls(v) }}>{l}</button>
           ))}
         </div>
       </div>

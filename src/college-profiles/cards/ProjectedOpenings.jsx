@@ -1,9 +1,12 @@
-import { useState } from 'react'
+import { useState, useRef, useLayoutEffect } from 'react'
 
 /**
  * ProjectedOpenings — interactive horizon of deterministic openings by graduation
  * year (next four seasons), stacked by position group. Click a year for the name
  * breakdown; use the legend to isolate a position group; hover a segment for a tip.
+ *
+ * Clicking a year expands a breakdown (changes height), so we pin the clicked
+ * control before the state change to keep the viewport steady (no page jump).
  */
 const POS = ['GK', 'D', 'M', 'F']
 const POSFULL = { GK: 'Goalkeeper', D: 'Defense', M: 'Midfield', F: 'Attack' }
@@ -12,6 +15,17 @@ export default function ProjectedOpenings({ buckets }) {
   const [selYear, setSelYear] = useState(null)
   const [isoPos, setIsoPos] = useState(null)
   const [tip, setTip] = useState(null)
+
+  const pinRef = useRef(null)
+  useLayoutEffect(() => {
+    const p = pinRef.current
+    if (p && p.el) {
+      const delta = p.el.getBoundingClientRect().top - p.top
+      if (delta) window.scrollBy(0, delta)
+    }
+    pinRef.current = null
+  })
+  const pin = e => { pinRef.current = { el: e.currentTarget, top: e.currentTarget.getBoundingClientRect().top } }
 
   const maxTot = Math.max(1, ...buckets.map(b => b.total))
   const selected = buckets.find(b => b.year === selYear) || null
@@ -33,7 +47,7 @@ export default function ProjectedOpenings({ buckets }) {
               type="button"
               className={'cp-hz' + (b.isNext ? ' cp-hz--next' : '') + (b.year === selYear ? ' cp-hz--sel' : '')}
               aria-label={`${b.year}: ${b.total} projected openings — show breakdown`}
-              onClick={() => setSelYear(y => (y === b.year ? null : b.year))}
+              onClick={e => { pin(e); setSelYear(y => (y === b.year ? null : b.year)) }}
             >
               <span className="cp-hz-tot cp-num">{b.total}</span>
               <span className="cp-hz-bar" style={{ height: `${h}%` }}>
@@ -66,7 +80,7 @@ export default function ProjectedOpenings({ buckets }) {
             type="button"
             className="cp-hzk"
             aria-pressed={isoPos === k}
-            onClick={() => setIsoPos(p => (p === k ? null : k))}
+            onClick={e => { pin(e); setIsoPos(p => (p === k ? null : k)) }}
           >
             <i className={'cp-seg--' + k} />{POSFULL[k]}
           </button>
