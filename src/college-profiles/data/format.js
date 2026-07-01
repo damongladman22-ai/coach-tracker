@@ -32,3 +32,10 @@ export function clampTip(x, y, w = 150, h = 42) {
   top = Math.min(top, vh - h - 8)
   return { left, top }
 }
+
+/** Inches -> feet-inches label, e.g. 69 -> 5'9". */
+export function inchesToFtIn(x) {
+  if (x == null || isNaN(x)) return '\u2014'
+  const r = Math.round(x)
+  return `${Math.floor(r / 12)}'${r % 12}"`
+}

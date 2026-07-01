@@ -204,3 +204,33 @@ export function compositionOverTime(rosters, seasons) {
   }
   return { seasons, rows, avg, delta }
 }
+
+
+/**
+ * Size profile: average height by position group for the current roster, with
+ * min/max spread and sample size, on a shared height domain. Descriptive only;
+ * a division benchmark is a future comparative overlay.
+ * Returns { domainMin, domainMax, groups:[{k,label,n,avg,min,max}] }
+ */
+export function sizeProfile(currentRoster) {
+  const groups = [
+    { k: 'F', label: 'Attack' },
+    { k: 'M', label: 'Midfield' },
+    { k: 'D', label: 'Defense' },
+    { k: 'GK', label: 'Goalkeeper' },
+  ]
+  let dMin = Infinity, dMax = -Infinity
+  const out = groups.map(g => {
+    const hs = (currentRoster || [])
+      .filter(r => r.position === g.k && r.height_inches != null)
+      .map(r => r.height_inches)
+    if (!hs.length) return { ...g, n: 0 }
+    const n = hs.length
+    const avg = hs.reduce((a, b) => a + b, 0) / n
+    const min = Math.min(...hs), max = Math.max(...hs)
+    dMin = Math.min(dMin, min); dMax = Math.max(dMax, max)
+    return { ...g, n, avg, min, max }
+  })
+  if (!isFinite(dMin)) { dMin = 60; dMax = 76 } else { dMin -= 1; dMax += 1 }
+  return { domainMin: dMin, domainMax: dMax, groups: out }
+}

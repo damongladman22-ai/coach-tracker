@@ -2,7 +2,7 @@ import './college-profile.css'
 import { useProgramProfile } from './data/useProgramProfile'
 import {
   rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
-  projectedOpeningsByYear, newcomers, geographyOverTime, compositionOverTime,
+  projectedOpeningsByYear, newcomers, geographyOverTime, compositionOverTime, sizeProfile,
 } from './data/metrics'
 import Masthead from './cards/Masthead'
 import KpiStrip from './cards/KpiStrip'
@@ -11,6 +11,7 @@ import ProjectedOpenings from './cards/ProjectedOpenings'
 import RosterStability from './cards/RosterStability'
 import RosterTable from './cards/RosterTable'
 import CompositionOverTime from './cards/CompositionOverTime'
+import SizeProfile from './cards/SizeProfile'
 import GeographyTrend from './cards/GeographyTrend'
 import CoachStaff from './cards/CoachStaff'
 
@@ -43,6 +44,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const openingBuckets = ready ? projectedOpeningsByYear(currentRoster, currentSeason) : []
   const geoTime = ready ? geographyOverTime(rosters, seasons) : null
   const compData = ready ? compositionOverTime(rosters, seasons) : null
+  const sizeData = ready ? sizeProfile(currentRoster) : null
 
   return (
     <div className="cp-root" style={styleVars}>
@@ -84,6 +86,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             </div>
             <RosterTable roster={currentRoster} />
             <CompositionOverTime data={compData} />
+            <SizeProfile data={sizeData} />
             <GeographyTrend data={geoTime} />
             <div className="cp-sec"><CoachStaff coaches={coaches} /></div>
             <footer className="cp-foot">
