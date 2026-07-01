@@ -290,8 +290,8 @@
 .cp-nav-inner::-webkit-scrollbar{display:none}
 .cp-navchip{flex:none; font-size:12.5px; font-weight:600; color:var(--slate); background:none; border:1px solid transparent;
   border-radius:999px; padding:6px 13px; cursor:pointer; white-space:nowrap; font-family:inherit; transition:all .12s}
-.cp-navchip:hover{color:var(--ink); border-color:var(--line)}
-.cp-navchip--on{background:var(--ink); color:#fff; border-color:var(--ink)}
+.cp-navchip:not(.cp-navchip--on):hover{color:var(--ink); border-color:var(--line)}
+.cp-navchip--on,.cp-navchip--on:hover{background:var(--ink); color:#fff; border-color:var(--ink)}
 .cp-anchor{scroll-margin-top:72px}
 
 /* ---------- desktop card pairing ---------- */
