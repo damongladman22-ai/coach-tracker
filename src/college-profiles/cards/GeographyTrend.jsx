@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { US_VIEWBOX, US_BORDERS, US_STATE_PATHS } from '../data/usStatesPaths'
+import { clampTip } from '../data/format'
 
 /**
  * GeographyTrend — recruiting footprint as a US state heat map (choropleth),
@@ -116,11 +117,14 @@ export default function GeographyTrend({ data }) {
         </div>
       </div>
 
-      {tip && (
-        <div className="cp-floattip" style={{ left: tip.x + 12, top: tip.y - 10 }}>
-          <b>{tip.name}</b> · {tip.c} {tip.c === 1 ? 'player' : 'players'}
-        </div>
-      )}
+      {tip && (() => {
+        const pos = clampTip(tip.x, tip.y)
+        return (
+          <div className="cp-floattip" style={{ left: pos.left, top: pos.top }}>
+            <b>{tip.name}</b> · {tip.c} {tip.c === 1 ? 'player' : 'players'}
+          </div>
+        )
+      })()}
     </section>
   )
 }

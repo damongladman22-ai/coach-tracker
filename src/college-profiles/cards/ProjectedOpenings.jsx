@@ -1,4 +1,5 @@
 import { useState, useRef, useLayoutEffect } from 'react'
+import { clampTip } from '../data/format'
 
 /**
  * ProjectedOpenings — interactive horizon of deterministic openings by graduation
@@ -106,11 +107,14 @@ export default function ProjectedOpenings({ buckets }) {
         </div>
       )}
 
-      {tip && (
-        <div className="cp-floattip" style={{ left: tip.x + 12, top: tip.y - 10, opacity: 1 }}>
-          <b>{POSFULL[tip.k]}</b> · {tip.c} · {tip.y2}
-        </div>
-      )}
+      {tip && (() => {
+        const pos = clampTip(tip.x, tip.y)
+        return (
+          <div className="cp-floattip" style={{ left: pos.left, top: pos.top, opacity: 1 }}>
+            <b>{POSFULL[tip.k]}</b> · {tip.c} · {tip.y2}
+          </div>
+        )
+      })()}
     </div>
   )
 }

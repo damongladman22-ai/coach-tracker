@@ -17,3 +17,17 @@ export function hometownLabel(row) {
   if (tail) return tail
   return (row.hometown || '').trim()
 }
+
+/**
+ * Clamp a cursor-anchored floating tooltip so it never runs off-screen.
+ * Flips to the left of the pointer near the right edge; keeps an 8px margin.
+ */
+export function clampTip(x, y, w = 210, h = 48) {
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1024
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 768
+  let left = x + 12
+  if (left + w > vw - 8) left = x - w - 12
+  left = Math.max(8, Math.min(left, vw - w - 8))
+  const top = Math.max(8, Math.min(y - 10, vh - h - 8))
+  return { left, top }
+}
