@@ -9,6 +9,7 @@ import KpiStrip from './cards/KpiStrip'
 import SquadMap from './cards/SquadMap'
 import ProjectedOpenings from './cards/ProjectedOpenings'
 import RosterStability from './cards/RosterStability'
+import RosterTable from './cards/RosterTable'
 
 /**
  * CollegeProfile — the portable module entry point.
@@ -71,6 +72,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <ProjectedOpenings buckets={openingBuckets} />
               <RosterStability stats={returnStats} />
             </div>
+            <RosterTable roster={currentRoster} />
             {/* more analytical cards land here next */}
           </>
         )}
