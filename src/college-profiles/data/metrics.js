@@ -171,3 +171,36 @@ export function geographyOverTime(rosters, seasons) {
   finalize(all)
   return { seasons, byRoster, byRecruit, all }
 }
+
+
+/**
+ * Roster composition over time: per-season counts by position group, plus the
+ * multi-year average and first->last delta per group. Reads the full-roster
+ * rows already loaded (coverage-agnostic).
+ * Returns { seasons, rows:[{season,total,byPos:{GK,D,M,F},unlisted}], avg, delta }
+ */
+export function compositionOverTime(rosters, seasons) {
+  const groups = ['GK', 'D', 'M', 'F']
+  const rows = seasons.map(y => {
+    const inYear = rosters.filter(r => r.roster_season === y)
+    const byPos = { GK: 0, D: 0, M: 0, F: 0 }
+    let unlisted = 0
+    for (const r of inYear) {
+      if (byPos[r.position] != null) byPos[r.position]++
+      else unlisted++
+    }
+    const total = byPos.GK + byPos.D + byPos.M + byPos.F
+    return { season: y, total, byPos, unlisted }
+  })
+  const avg = { GK: 0, D: 0, M: 0, F: 0 }
+  for (const g of groups) {
+    const sum = rows.reduce((a, r) => a + r.byPos[g], 0)
+    avg[g] = rows.length ? sum / rows.length : 0
+  }
+  const delta = { GK: 0, D: 0, M: 0, F: 0 }
+  if (rows.length >= 2) {
+    const first = rows[0].byPos, last = rows[rows.length - 1].byPos
+    for (const g of groups) delta[g] = last[g] - first[g]
+  }
+  return { seasons, rows, avg, delta }
+}
