@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { US_VIEWBOX, US_BORDERS, US_STATE_PATHS } from '../data/usStatesPaths'
+import { WORLD_VIEWBOX, WORLD_BORDERS, WORLD_NAMES, WORLD_PATHS } from '../data/worldCountriesPaths'
 import { clampTip } from '../data/format'
 import { COUNTRY_CODE, COUNTRY_FLAGS } from '../data/countryFlags'
 
 /**
- * GeographyTrend — recruiting footprint as a US state heat map (choropleth),
- * time-aware. Toggle Recruiting classes vs Full roster, step through All-time /
- * each season; the map, the top-states list, the international list, and the
- * states-per-year trend all recolor together. City-level pins need geocoding
- * (deferred); state/country is fully supported by the normalized columns.
+ * GeographyTrend — recruiting footprint as a heat map, time-aware, with a
+ * U.S. (state choropleth) / World (country choropleth) toggle so international
+ * recruiting gets the same heat treatment as domestic. City-level pins need
+ * geocoding (deferred); state/country is supported by the normalized columns.
  */
 function scaleFill(count, max) {
   if (!count) return '#EAEDEF'
@@ -18,10 +18,20 @@ function scaleFill(count, max) {
   const b = Math.round(255 + (0 - 255) * t)
   return `rgb(${r},${g},${b})`
 }
+const baseCode = c => (c || '').split('-')[0]
+const niceCountry = code => (code === 'us' ? 'United States' : (WORLD_NAMES[code] || code.toUpperCase()))
+
+function Flag({ code }) {
+  const svg = code ? COUNTRY_FLAGS[code] : null
+  return svg
+    ? <span className="cp-flag" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />
+    : <span className="cp-flag cp-flag--none" aria-hidden="true" />
+}
 
 export default function GeographyTrend({ data }) {
-  const [mode, setMode] = useState('recruit') // 'recruit' | 'roster'
-  const [sel, setSel] = useState('all')       // 'all' | year
+  const [mode, setMode] = useState('recruit')   // 'recruit' | 'roster'
+  const [sel, setSel] = useState('all')         // 'all' | year
+  const [mapMode, setMapMode] = useState('us')  // 'us' | 'world'
   const [tip, setTip] = useState(null)
 
   const scope = sel === 'all'
@@ -29,11 +39,24 @@ export default function GeographyTrend({ data }) {
     : (mode === 'recruit' ? data.byRecruit[sel] : data.byRoster[sel])
   const states = scope?.states || {}
   const intl = scope?.intl || {}
-  const maxCount = Math.max(1, ...Object.values(states))
-  const rankedStates = Object.entries(states).sort((a, b) => b[1] - a[1])
-  const rankedIntl = Object.entries(intl).sort((a, b) => b[1] - a[1])
   const total = scope?.total || 0
   const pctOf = c => (total ? Math.round(100 * c / total) : 0)
+  const rankedStates = Object.entries(states).sort((a, b) => b[1] - a[1])
+  const rankedIntl = Object.entries(intl).sort((a, b) => b[1] - a[1])
+
+  // world roll-up: USA = all domestic; each country = base-code sum
+  const worldCounts = {}
+  const domestic = Object.values(states).reduce((a, b) => a + b, 0)
+  if (domestic) worldCounts.us = domestic
+  for (const [name, c] of Object.entries(intl)) {
+    const code = baseCode(COUNTRY_CODE[name])
+    if (code) worldCounts[code] = (worldCounts[code] || 0) + c
+  }
+  const rankedCountries = Object.entries(worldCounts).sort((a, b) => b[1] - a[1])
+
+  const maxCount = Math.max(1, ...Object.values(states))
+  const maxWorld = Math.max(1, ...Object.values(worldCounts))
+
   const distinctByYear = data.seasons.map(y => ({
     y, n: (mode === 'recruit' ? data.byRecruit[y] : data.byRoster[y])?.distinctStates || 0,
   }))
@@ -45,7 +68,7 @@ export default function GeographyTrend({ data }) {
     <section className="cp-sec">
       <div className="cp-sec-h">
         <h2 className="cp-h2">Recruiting geography</h2>
-        <span className="cp-hint">Where the program pulls from — {modeNoun} over time · hover a state</span>
+        <span className="cp-hint">Where the program pulls from — {modeNoun} over time · hover the map</span>
       </div>
 
       <div className="cp-panel">
@@ -54,6 +77,11 @@ export default function GeographyTrend({ data }) {
             <span className="cp-glabel">View</span>
             <button type="button" className="cp-fbtn" aria-pressed={mode === 'recruit'} onClick={() => setMode('recruit')}>Recruiting classes</button>
             <button type="button" className="cp-fbtn" aria-pressed={mode === 'roster'} onClick={() => setMode('roster')}>Full roster</button>
+          </div>
+          <div className="cp-fgrp cp-fgrp--gap">
+            <span className="cp-glabel">Map</span>
+            <button type="button" className="cp-fbtn" aria-pressed={mapMode === 'us'} onClick={() => setMapMode('us')}>U.S.</button>
+            <button type="button" className="cp-fbtn" aria-pressed={mapMode === 'world'} onClick={() => setMapMode('world')}>World</button>
           </div>
           <div className="cp-fgrp cp-fgrp--gap">
             <span className="cp-glabel">Season</span>
@@ -67,54 +95,84 @@ export default function GeographyTrend({ data }) {
         <div className="cp-geomap">
           <div className="cp-map">
             <div className="cp-map-cap">
-              {selLabel} · <b>{scope?.total || 0}</b> players · <b>{rankedStates.length}</b> states{rankedIntl.length ? <> · <b>{rankedIntl.length}</b> intl</> : null}
+              {selLabel} · <b>{total}</b> players · {mapMode === 'us'
+                ? <><b>{rankedStates.length}</b> states{rankedIntl.length ? <> · <b>{rankedIntl.length}</b> intl</> : null}</>
+                : <><b>{rankedCountries.length}</b> countries</>}
             </div>
-            <svg viewBox={US_VIEWBOX} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="U.S. recruiting footprint heat map">
-              {Object.entries(US_STATE_PATHS).map(([name, d]) => {
-                const c = states[name] || 0
-                return (
-                  <path key={name} d={d} className="cp-st" fill={scaleFill(c, maxCount)}
-                    onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name, c })}
-                    onMouseLeave={() => setTip(null)} />
-                )
-              })}
-              <path d={US_BORDERS} className="cp-borders" />
-            </svg>
+
+            {mapMode === 'us' ? (
+              <svg viewBox={US_VIEWBOX} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="U.S. recruiting footprint heat map">
+                {Object.entries(US_STATE_PATHS).map(([name, d]) => {
+                  const c = states[name] || 0
+                  return (
+                    <path key={name} d={d} className="cp-st" fill={scaleFill(c, maxCount)}
+                      onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name, c })}
+                      onMouseLeave={() => setTip(null)} />
+                  )
+                })}
+                <path d={US_BORDERS} className="cp-borders" />
+              </svg>
+            ) : (
+              <svg viewBox={WORLD_VIEWBOX} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="World recruiting footprint heat map">
+                {Object.entries(WORLD_PATHS).map(([code, d]) => {
+                  const c = worldCounts[code] || 0
+                  return (
+                    <path key={code} d={d} className="cp-st" fill={scaleFill(c, maxWorld)}
+                      onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name: niceCountry(code), c })}
+                      onMouseLeave={() => setTip(null)} />
+                  )
+                })}
+                <path d={WORLD_BORDERS} className="cp-borders" />
+              </svg>
+            )}
             <div className="cp-heatkey"><span>Fewer</span><i className="cp-heatbar" /><span>More</span></div>
           </div>
 
           <div className="cp-geo-side">
-            <p className="cp-eyebrow" style={{ marginBottom: 8 }}>Top states</p>
-            <ul className="cp-geo">
-              {rankedStates.slice(0, 8).map(([name, c]) => (
-                <li key={name}>
-                  <span className="cp-gname">{name}</span>
-                  <span className="cp-gtrack"><span className="cp-gfill" style={{ width: `${100 * c / maxCount}%` }} /></span>
-                  <span className="cp-gn cp-num">{c}</span>
-                  <span className="cp-gpct">{pctOf(c)}%</span>
-                </li>
-              ))}
-              {rankedStates.length === 0 && <li className="cp-muted">No U.S. states in this view.</li>}
-            </ul>
-
-            {rankedIntl.length > 0 && (
+            {mapMode === 'us' ? (
               <>
-                <p className="cp-eyebrow" style={{ margin: '14px 0 8px' }}>International</p>
+                <p className="cp-eyebrow" style={{ marginBottom: 8 }}>Top states</p>
+                <ul className="cp-geo">
+                  {rankedStates.slice(0, 8).map(([name, c]) => (
+                    <li key={name}>
+                      <span className="cp-gname">{name}</span>
+                      <span className="cp-gtrack"><span className="cp-gfill" style={{ width: `${100 * c / maxCount}%` }} /></span>
+                      <span className="cp-gn cp-num">{c}</span>
+                      <span className="cp-gpct">{pctOf(c)}%</span>
+                    </li>
+                  ))}
+                  {rankedStates.length === 0 && <li className="cp-muted">No U.S. states in this view.</li>}
+                </ul>
+
+                {rankedIntl.length > 0 && (
+                  <>
+                    <p className="cp-eyebrow" style={{ margin: '14px 0 8px' }}>International</p>
+                    <ul className="cp-intl-list">
+                      {rankedIntl.map(([name, c]) => (
+                        <li key={name}>
+                          <Flag code={COUNTRY_CODE[name]} />
+                          <span className="cp-intl-name">{name}</span>
+                          <span className="cp-intl-n cp-num">{c}</span>
+                          <span className="cp-intl-pct">{pctOf(c)}%</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="cp-eyebrow" style={{ marginBottom: 8 }}>Top countries</p>
                 <ul className="cp-intl-list">
-                  {rankedIntl.map(([name, c]) => {
-                    const code = COUNTRY_CODE[name]
-                    const svg = code ? COUNTRY_FLAGS[code] : null
-                    return (
-                      <li key={name}>
-                        {svg
-                          ? <span className="cp-flag" aria-hidden="true" dangerouslySetInnerHTML={{ __html: svg }} />
-                          : <span className="cp-flag cp-flag--none" aria-hidden="true" />}
-                        <span className="cp-intl-name">{name}</span>
-                        <span className="cp-intl-n cp-num">{c}</span>
-                        <span className="cp-intl-pct">{pctOf(c)}%</span>
-                      </li>
-                    )
-                  })}
+                  {rankedCountries.slice(0, 12).map(([code, c]) => (
+                    <li key={code}>
+                      <Flag code={code} />
+                      <span className="cp-intl-name">{niceCountry(code)}</span>
+                      <span className="cp-intl-n cp-num">{c}</span>
+                      <span className="cp-intl-pct">{pctOf(c)}%</span>
+                    </li>
+                  ))}
+                  {rankedCountries.length === 0 && <li className="cp-muted">No data in this view.</li>}
                 </ul>
               </>
             )}
