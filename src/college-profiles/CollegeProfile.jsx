@@ -2,7 +2,7 @@ import './college-profile.css'
 import { useProgramProfile } from './data/useProgramProfile'
 import {
   rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
-  projectedOpeningsByYear, newcomers, geographyBuckets,
+  projectedOpeningsByYear, newcomers, geographyOverTime,
 } from './data/metrics'
 import Masthead from './cards/Masthead'
 import KpiStrip from './cards/KpiStrip'
@@ -10,7 +10,7 @@ import SquadMap from './cards/SquadMap'
 import ProjectedOpenings from './cards/ProjectedOpenings'
 import RosterStability from './cards/RosterStability'
 import RosterTable from './cards/RosterTable'
-import Geography from './cards/Geography'
+import GeographyTrend from './cards/GeographyTrend'
 import CoachStaff from './cards/CoachStaff'
 
 /**
@@ -40,7 +40,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const ready = !loading && !error && school
   const returnStats = ready ? nonSeniorReturnRate(rosters, seasons) : null
   const openingBuckets = ready ? projectedOpeningsByYear(currentRoster, currentSeason) : []
-  const geoBuckets = ready ? geographyBuckets(currentRoster) : []
+  const geoTime = ready ? geographyOverTime(rosters, seasons) : null
 
   return (
     <div className="cp-root" style={styleVars}>
@@ -81,18 +81,17 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <RosterStability stats={returnStats} />
             </div>
             <RosterTable roster={currentRoster} />
-            <div className="cp-two">
-              <Geography buckets={geoBuckets} />
-              <CoachStaff coaches={coaches} />
-            </div>
+            <GeographyTrend data={geoTime} />
+            <div className="cp-sec"><CoachStaff coaches={coaches} /></div>
             <footer className="cp-foot">
-              <p><b>About this data.</b> Roster, class, and position data are aggregated from public
-                college athletics sources and linked across seasons to a single player identity — which is
-                what makes the stability and projected-openings analysis possible.</p>
-              <p>Stability reflects the seasons currently tracked for this program ({seasonRange(seasons)}).
-                Position analysis is at the group level (GK / Defense / Midfield / Attack). Projected
-                openings are a forward signal, not a guarantee — transfers, redshirts, and recruiting all
-                shift the picture.</p>
+              <p><b>About this data.</b> Roster, class, position, and hometown data are aggregated from
+                public college athletics sources and linked across seasons to a single player identity —
+                which is what makes the stability, projected-openings, and recruiting-footprint analysis
+                possible.</p>
+              <p>Metrics reflect the seasons currently tracked for this program ({seasonRange(seasons)}).
+                Position analysis is at the group level (GK / Defense / Midfield / Attack); geography is at
+                the state/country level. Projected openings are a forward signal, not a guarantee —
+                transfers, redshirts, and recruiting all shift the picture.</p>
             </footer>
           </>
         )}

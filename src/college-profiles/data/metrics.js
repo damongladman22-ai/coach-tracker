@@ -119,3 +119,55 @@ export function geographyBuckets(currentRoster) {
   if (unknown > 0) arr.push({ name: 'Unknown', intl: false, count: unknown })
   return arr
 }
+
+/** Classify a roster row's origin using the normalized columns. */
+function bucketOf(row) {
+  const country = (row.hometown_country || '').trim()
+  const state = (row.hometown_state || '').trim()
+  const intl = !!country && !US_NAMES.has(country)
+  if (intl) return { kind: 'intl', name: country }
+  if (state) return { kind: 'state', name: state }
+  return { kind: 'unknown', name: null }
+}
+
+/**
+ * Recruiting geography over time. Two lenses:
+ *   byRoster[year]     — everyone on that season's roster (footprint that year)
+ *   byRecruit[year]    — players first seen that season (that recruiting class)
+ *   all                — every distinct player, once (all-time footprint)
+ * Each scope: { states:{name:count}, intl:{country:count}, unknown, total, distinctStates }.
+ */
+export function geographyOverTime(rosters, seasons) {
+  const first = firstSeenMap(rosters)
+  const repByPlayer = new Map() // freshest row per player (latest season)
+  for (const r of rosters) {
+    if (!r.player_id) continue
+    const cur = repByPlayer.get(r.player_id)
+    if (!cur || r.roster_season > cur.roster_season) repByPlayer.set(r.player_id, r)
+  }
+
+  const emptyScope = () => ({ states: {}, intl: {}, unknown: 0, total: 0, distinctStates: 0 })
+  const add = (scope, row) => {
+    const b = bucketOf(row)
+    if (b.kind === 'state') scope.states[b.name] = (scope.states[b.name] || 0) + 1
+    else if (b.kind === 'intl') scope.intl[b.name] = (scope.intl[b.name] || 0) + 1
+    else scope.unknown++
+    scope.total++
+  }
+  const finalize = s => { s.distinctStates = Object.keys(s.states).length; return s }
+
+  const byRoster = {}, byRecruit = {}
+  for (const y of seasons) { byRoster[y] = emptyScope(); byRecruit[y] = emptyScope() }
+  const all = emptyScope()
+
+  for (const r of rosters) if (byRoster[r.roster_season]) add(byRoster[r.roster_season], r)
+  for (const [pid, row] of repByPlayer) {
+    const fy = first.get(pid)
+    if (byRecruit[fy]) add(byRecruit[fy], row)
+    add(all, row)
+  }
+
+  for (const y of seasons) { finalize(byRoster[y]); finalize(byRecruit[y]) }
+  finalize(all)
+  return { seasons, byRoster, byRecruit, all }
+}
