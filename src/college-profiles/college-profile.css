@@ -17,7 +17,7 @@
   --sr:#1C5A60; --sr-ink:#FFFFFF;
   --gr:#103438; --gr-ink:#FFFFFF;
 
-  background:var(--paper); color:var(--ink); min-height:100vh; overflow-x:hidden;
+  background:var(--paper); color:var(--ink); min-height:100vh; overflow-x:clip;
   font-family:Inter,system-ui,sans-serif; line-height:1.45;
   -webkit-font-smoothing:antialiased;
 }
@@ -283,6 +283,22 @@
 .cp-size-sub{font-size:11px; color:var(--slate); margin-top:2px}
 .cp-size-note{margin-top:14px; padding-top:12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--slate-2)}
 
+/* ---------- sticky section nav + anchors ---------- */
+.cp-nav{position:sticky; top:8px; z-index:40; margin:0 0 18px}
+.cp-nav-inner{display:flex; gap:6px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:7px 8px;
+  background:rgba(255,255,255,.92); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line); border-radius:999px; box-shadow:var(--shadow); scrollbar-width:none}
+.cp-nav-inner::-webkit-scrollbar{display:none}
+.cp-navchip{flex:none; font-size:12.5px; font-weight:600; color:var(--slate); background:none; border:1px solid transparent;
+  border-radius:999px; padding:6px 13px; cursor:pointer; white-space:nowrap; font-family:inherit; transition:all .12s}
+.cp-navchip:hover{color:var(--ink); border-color:var(--line)}
+.cp-navchip--on{background:var(--ink); color:#fff; border-color:var(--ink)}
+.cp-anchor{scroll-margin-top:72px}
+
+/* ---------- desktop card pairing ---------- */
+.cp-pair{display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; margin-bottom:22px}
+.cp-pair > .cp-sec{margin:0}
+
 /* ---------- responsive ---------- */
 @media (max-width:900px){
   .cp-two{grid-template-columns:1fr}
@@ -328,6 +344,7 @@
   .cp-size-row{grid-template-columns:70px 1fr 96px; gap:8px}
   .cp-size-axis{margin-left:78px}
   .cp-size-read b{font-size:17px}
+  .cp-pair{grid-template-columns:1fr; gap:0}
 }
 @media (max-width:400px){
   .cp-kpis{grid-template-columns:1fr}

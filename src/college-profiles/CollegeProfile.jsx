@@ -12,6 +12,7 @@ import RosterStability from './cards/RosterStability'
 import RosterTable from './cards/RosterTable'
 import CompositionOverTime from './cards/CompositionOverTime'
 import SizeProfile from './cards/SizeProfile'
+import SectionNav from './cards/SectionNav'
 import GeographyTrend from './cards/GeographyTrend'
 import CoachStaff from './cards/CoachStaff'
 
@@ -30,6 +31,15 @@ function seasonRange(seasons) {
   const a = seasons[0], b = seasons[seasons.length - 1]
   return a === b ? `${a}` : `${a}\u2013${b}`
 }
+
+const NAV = [
+  { id: 'sec-squad', label: 'Squad' },
+  { id: 'sec-openings', label: 'Openings' },
+  { id: 'sec-roster', label: 'Roster' },
+  { id: 'sec-trends', label: 'Trends' },
+  { id: 'sec-geography', label: 'Geography' },
+  { id: 'sec-staff', label: 'Staff' },
+]
 
 export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme }) {
   const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw } =
@@ -79,16 +89,27 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               newcomers={newcomers(rosters, currentRoster, currentSeason)}
               currentSeason={currentSeason}
             />
-            <SquadMap roster={currentRoster} season={currentSeason} />
-            <div className="cp-two">
+            <SectionNav items={NAV} />
+            <div id="sec-squad" className="cp-anchor">
+              <SquadMap roster={currentRoster} season={currentSeason} />
+            </div>
+            <div id="sec-openings" className="cp-anchor cp-two">
               <ProjectedOpenings buckets={openingBuckets} />
               <RosterStability stats={returnStats} />
             </div>
-            <RosterTable roster={currentRoster} />
-            <CompositionOverTime data={compData} />
-            <SizeProfile data={sizeData} />
-            <GeographyTrend data={geoTime} />
-            <div className="cp-sec"><CoachStaff coaches={coaches} /></div>
+            <div id="sec-roster" className="cp-anchor">
+              <RosterTable roster={currentRoster} />
+            </div>
+            <div id="sec-trends" className="cp-anchor cp-pair">
+              <CompositionOverTime data={compData} />
+              <SizeProfile data={sizeData} />
+            </div>
+            <div id="sec-geography" className="cp-anchor">
+              <GeographyTrend data={geoTime} />
+            </div>
+            <div id="sec-staff" className="cp-anchor cp-sec">
+              <CoachStaff coaches={coaches} />
+            </div>
             <footer className="cp-foot">
               <p><b>About this data.</b> Roster, class, position, and hometown data are aggregated from
                 public college athletics sources and linked across seasons to a single player identity —
