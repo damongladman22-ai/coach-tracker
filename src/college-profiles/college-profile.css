@@ -17,7 +17,7 @@
   --sr:#1C5A60; --sr-ink:#FFFFFF;
   --gr:#103438; --gr-ink:#FFFFFF;
 
-  background:var(--paper); color:var(--ink); min-height:100vh;
+  background:var(--paper); color:var(--ink); min-height:100vh; overflow-x:hidden;
   font-family:Inter,system-ui,sans-serif; line-height:1.45;
   -webkit-font-smoothing:antialiased;
 }
@@ -198,14 +198,47 @@
 .cp-rowcount{font-size:12.5px; color:var(--slate); padding:11px 16px; background:#FAFBFC; border-top:1px solid var(--line)}
 
 /* ---------- responsive ---------- */
-@media (max-width:900px){ .cp-two{grid-template-columns:1fr} }
-@media (max-width:760px){
-  .cp-kpis{grid-template-columns:repeat(2,1fr)}
-  .cp-band{grid-template-columns:70px 1fr}
-  .cp-cols{gap:6px}
+@media (max-width:900px){
+  .cp-two{grid-template-columns:1fr}
 }
-@media (max-width:560px){
-  .cp-masthead{flex-direction:column; align-items:flex-start; gap:14px}
+@media (max-width:680px){
+  .cp-wrap{padding:16px 14px 56px}
+
+  .cp-masthead{flex-direction:column; align-items:flex-start; gap:14px; padding:20px 18px}
   .cp-mast-title{font-size:26px}
+
+  .cp-kpis{grid-template-columns:repeat(2,1fr); gap:10px}
+  .cp-kpi{padding:14px 14px}
+  .cp-kpi-v{font-size:34px}
+  .cp-kpi-v small{font-size:16px}
+
+  .cp-sec-h{flex-direction:column; align-items:flex-start; gap:4px}
+  .cp-panel{padding:16px 16px}
+
+  /* Squad Map -> vertical reflow: labeled class rows per position, no clipping */
+  .cp-pitch{padding:14px 12px 16px}
+  .cp-legend{gap:10px}
+  .cp-legend-k{margin-left:0}
+  .cp-band{grid-template-columns:1fr; gap:8px; padding:12px 0}
+  .cp-band-label{flex-direction:row; align-items:baseline; gap:8px}
+  .cp-cols{display:flex; flex-direction:column; gap:8px}
+  .cp-col{min-height:0; display:flex; align-items:flex-start; gap:8px}
+  .cp-col--empty{display:none}
+  .cp-col-h{margin:0; width:26px; flex:none; padding-top:6px}
+  .cp-chips{flex:1}
+  .cp-col--empty .cp-chips::before{content:none}
+
+  /* Projected openings: keep four bars but a touch tighter */
+  .cp-horizon{gap:8px; height:170px}
+  .cp-hz-tot{font-size:22px}
+
+  /* Roster table -> scrolls horizontally inside its own card */
+  .cp-tablewrap{overflow-x:auto; -webkit-overflow-scrolling:touch}
+  .cp-table{min-width:560px}
+  .cp-filters{gap:6px}
+  .cp-fgrp--gap{margin-left:0}
+}
+@media (max-width:400px){
+  .cp-kpis{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){ .cp-chip{opacity:1; animation:none; transition:none} }
