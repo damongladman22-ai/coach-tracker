@@ -120,7 +120,7 @@ export default function GeographyTrend({ data }) {
       {tip && (() => {
         const pos = clampTip(tip.x, tip.y)
         return (
-          <div className="cp-floattip" style={{ left: pos.left, top: pos.top }}>
+          <div className="cp-floattip" style={{ left: pos.left, top: pos.top, transform: 'translateX(-50%)' }}>
             <b>{tip.name}</b> · {tip.c} {tip.c === 1 ? 'player' : 'players'}
           </div>
         )

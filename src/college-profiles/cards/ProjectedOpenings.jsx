@@ -110,7 +110,7 @@ export default function ProjectedOpenings({ buckets }) {
       {tip && (() => {
         const pos = clampTip(tip.x, tip.y)
         return (
-          <div className="cp-floattip" style={{ left: pos.left, top: pos.top, opacity: 1 }}>
+          <div className="cp-floattip" style={{ left: pos.left, top: pos.top, opacity: 1, transform: 'translateX(-50%)' }}>
             <b>{POSFULL[tip.k]}</b> · {tip.c} · {tip.y2}
           </div>
         )
