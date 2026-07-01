@@ -4,9 +4,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
 
 .cp-root{
-  /* school accent — overridable per-profile via the `theme` prop (OSU = scarlet) */
   --accent:#BB0000; --accent-deep:#8C0000; --accent-tint:#FBE9E9;
-  /* structural neutrals */
   --ink:#15191C; --slate:#5C6B73; --slate-2:#85939B;
   --line:#E5E8EB; --paper:#F2F3F5; --card:#FFFFFF;
   --radius:14px;
@@ -53,6 +51,18 @@
 .cp-tag b{font-family:"Barlow Condensed",sans-serif; font-size:15px; color:var(--ink);
   font-variant-numeric:tabular-nums; font-weight:700}
 
+/* ---------- kpi strip ---------- */
+.cp-kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px}
+.cp-kpi{background:var(--card); border:1px solid var(--line); border-radius:var(--radius);
+  box-shadow:var(--shadow); padding:18px 20px}
+.cp-kpi-v{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:42px; line-height:.95;
+  color:var(--ink); font-variant-numeric:tabular-nums}
+.cp-kpi-v small{font-size:20px; color:var(--slate); font-weight:600}
+.cp-kpi-l{font-size:12.5px; color:var(--slate); margin-top:4px; font-weight:500}
+.cp-kpi-l b{color:var(--ink); font-weight:600}
+.cp-kpi--feature .cp-kpi-v,.cp-kpi--feature .cp-kpi-v small{color:var(--accent)}
+
+@media (max-width:760px){ .cp-kpis{grid-template-columns:repeat(2,1fr)} }
 @media (max-width:560px){
   .cp-masthead{flex-direction:column; align-items:flex-start; gap:14px}
   .cp-mast-title{font-size:26px}
