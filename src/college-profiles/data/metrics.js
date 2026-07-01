@@ -3,12 +3,12 @@
 // derived season list; nothing here touches the network or PitchSide.
 
 const TERMINAL = new Set(['SR', 'GR']) // exhausted / near-exhausted eligibility
+export const POS_ORDER = ['GK', 'D', 'M', 'F']
 
 export function rosterSize(currentRoster) {
   return currentRoster?.length || 0
 }
 
-// player_id -> earliest season seen (newcomer detection via the identity spine)
 function firstSeenMap(rosters) {
   const m = new Map()
   for (const r of rosters) {
@@ -19,7 +19,6 @@ function firstSeenMap(rosters) {
   return m
 }
 
-// set of player_ids active in a given season
 function idsInSeason(rosters, season) {
   const s = new Set()
   for (const r of rosters) if (r.roster_season === season && r.player_id) s.add(r.player_id)
@@ -27,12 +26,10 @@ function idsInSeason(rosters, season) {
 }
 
 /**
- * Non-senior (underclassman) return rate, averaged across every consecutive
- * season transition present. Denominator = players with remaining eligibility
- * (class_year not SR/GR) in season N; numerator = those still present in N+1.
- *
+ * Non-senior return rate, averaged across every consecutive season transition.
+ * Denominator = players with remaining eligibility (not SR/GR) in season N;
+ * numerator = those still present in N+1.
  * Returns { rate, earlyDeparture, transitions:[{from,to,eligible,returned,rate}] }
- * rate is a 0–1 fraction (null if no computable transition).
  */
 export function nonSeniorReturnRate(rosters, seasons) {
   const transitions = []
@@ -62,10 +59,24 @@ export function projectedOpeningsAfterCurrent(currentRoster) {
 }
 
 /**
- * Newcomers = current-roster players first seen in the current season
- * (true freshmen + transfers-in). Rows without a player_id are untrackable, so
- * counted as new.
+ * Projected openings by graduation year across the next `span` seasons.
+ * Deterministic aging: buckets current-roster players by grad_year, split by
+ * position group. Returns [{ year, isNext, total, byPos:{GK,D,M,F}, players:[] }].
  */
+export function projectedOpeningsByYear(currentRoster, currentSeason, span = 4) {
+  if (currentSeason == null) return []
+  const out = []
+  for (let i = 1; i <= span; i++) {
+    const year = currentSeason + i
+    const players = (currentRoster || []).filter(r => r.grad_year === year)
+    const byPos = { GK: 0, D: 0, M: 0, F: 0 }
+    for (const r of players) if (byPos[r.position] != null) byPos[r.position]++
+    out.push({ year, isNext: i === 1, total: players.length, byPos, players })
+  }
+  return out
+}
+
+/** Newcomers = current-roster players first seen in the current season. */
 export function newcomers(rosters, currentRoster, currentSeason) {
   if (currentSeason == null) return 0
   const first = firstSeenMap(rosters)

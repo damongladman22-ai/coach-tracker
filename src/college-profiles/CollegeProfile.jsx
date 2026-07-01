@@ -1,9 +1,14 @@
 import './college-profile.css'
 import { useProgramProfile } from './data/useProgramProfile'
-import { rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent, newcomers } from './data/metrics'
+import {
+  rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
+  projectedOpeningsByYear, newcomers,
+} from './data/metrics'
 import Masthead from './cards/Masthead'
 import KpiStrip from './cards/KpiStrip'
 import SquadMap from './cards/SquadMap'
+import ProjectedOpenings from './cards/ProjectedOpenings'
+import RosterStability from './cards/RosterStability'
 
 /**
  * CollegeProfile — the portable module entry point.
@@ -26,6 +31,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
 
   const ready = !loading && !error && school
   const returnStats = ready ? nonSeniorReturnRate(rosters, seasons) : null
+  const openingBuckets = ready ? projectedOpeningsByYear(currentRoster, currentSeason) : []
 
   return (
     <div className="cp-root" style={styleVars}>
@@ -61,6 +67,10 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               currentSeason={currentSeason}
             />
             <SquadMap roster={currentRoster} season={currentSeason} />
+            <div className="cp-two">
+              <ProjectedOpenings buckets={openingBuckets} />
+              <RosterStability stats={returnStats} />
+            </div>
             {/* more analytical cards land here next */}
           </>
         )}
