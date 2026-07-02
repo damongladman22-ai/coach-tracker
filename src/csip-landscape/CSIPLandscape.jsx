@@ -3,6 +3,7 @@ import './csip-landscape.css'
 import ControlBar from './ControlBar'
 import ProfileLens from './ProfileLens'
 import { useLandscapeBenchmarks } from './data/useLandscapeBenchmarks'
+import { useLandscapeGeo } from './data/useLandscapeGeo'
 import { FAMILIES } from './data/landscapeFormat'
 
 /**
@@ -35,6 +36,13 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
     season: selection.season,
   })
 
+  const geo = useLandscapeGeo(client, {
+    division: selection.division,
+    gender: selection.gender,
+    season: selection.season,
+    conference: 'ALL',
+  })
+
   const onFamily = key => {
     set({ family: key })
     if (selection.lens === 'profile') {
@@ -58,7 +66,7 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
         <ControlBar selection={selection} set={set} onFamily={onFamily} />
 
         {selection.lens === 'profile' && (
-          <ProfileLens bench={bench} selection={selection} />
+          <ProfileLens bench={bench} geo={geo} selection={selection} />
         )}
 
         {selection.lens === 'compare' && (

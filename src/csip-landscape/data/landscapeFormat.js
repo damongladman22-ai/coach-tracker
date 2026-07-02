@@ -68,3 +68,17 @@ export function whole(x) {
 
 /** Small-sample threshold for the program-level families (per spec §4). */
 export const THIN_N = 10
+
+/**
+ * Position a tooltip centered over the pointer and just above it, clamped to the
+ * viewport. Flips below the pointer near the top edge.
+ */
+export function clampTip(x, y, w = 170, h = 40) {
+  const vw = typeof window !== 'undefined' ? window.innerWidth : 1024
+  const vh = typeof window !== 'undefined' ? window.innerHeight : 768
+  const left = Math.max(w / 2 + 8, Math.min(x, vw - w / 2 - 8))
+  let top = y - h - 12
+  if (top < 8) top = y + 18
+  top = Math.min(top, vh - h - 8)
+  return { left, top }
+}

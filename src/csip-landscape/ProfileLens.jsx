@@ -1,6 +1,7 @@
 import {
   pct, pct1, inchesToFtIn, whole, seasonLabel, genderLabel, divShort, THIN_N,
 } from './data/landscapeFormat'
+import GeographyMap from './GeographyMap'
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -154,23 +155,6 @@ function RosterSize({ get }) {
   )
 }
 
-function Geography({ get }) {
-  const items = [
-    { dimension: 'origin', bucket: 'international', label: 'International' },
-    { dimension: 'origin', bucket: 'in_state', label: 'In-state' },
-    { dimension: 'origin', bucket: 'domestic', label: 'Domestic (U.S.)' },
-  ]
-  return (
-    <>
-      <ShareBars items={items} get={get} domainMax={1} />
-      <p className="csl-note">
-        Median program shares. Domestic and International partition the roster (~100% together);
-        In-state is the slice of Domestic from the program’s own state.
-      </p>
-    </>
-  )
-}
-
 function Retention({ get, season }) {
   const ret = get('overall', 'ALL', 'return_rate')
   const nw = get('overall', 'ALL', 'newcomer_rate')
@@ -205,7 +189,7 @@ function Retention({ get, season }) {
 
 /* -------------------------------------------------------------------- lens */
 
-export default function ProfileLens({ bench, selection }) {
+export default function ProfileLens({ bench, geo, selection }) {
   const { loading, error, get } = bench
   const { division, gender, season } = selection
 
@@ -226,8 +210,10 @@ export default function ProfileLens({ bench, selection }) {
 
   const posShareRow = get('position', 'D', 'share')
   const classShareRow = get('class', 'FR', 'share')
-  const geoRow = get('origin', 'domestic', 'share')
   const retRow = get('overall', 'ALL', 'return_rate')
+
+  const geoRow = geo && !geo.loading && geo.total ? { n: geo.total, agg_level: 'player' } : null
+  const segmentLabel = `${divShort(division)} ${genderLabel(gender)} · ${seasonLabel(season)}`
 
   const positionItems = [
     { dimension: 'position', bucket: 'GK', label: 'Goalkeepers' },
@@ -287,8 +273,8 @@ export default function ProfileLens({ bench, selection }) {
         <ShareBars items={classItems} get={get} />
       </Section>
 
-      <Section id="csl-sec-geography" title="Recruiting geography" hint="Median program share" row={geoRow}>
-        <Geography get={get} />
+      <Section id="csl-sec-geography" title="Recruiting geography" hint="Player-level footprint" row={geoRow}>
+        <GeographyMap geo={geo} segmentLabel={segmentLabel} />
       </Section>
 
       <Section id="csl-sec-retention" title="Retention" hint="Season-over-season" row={retRow}>
