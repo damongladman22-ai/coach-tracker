@@ -23,7 +23,7 @@ const VALUE_CARDS = [
 ]
 const GROUP_CARDS = [
   {
-    key: 'position', anchor: 'csl-sec-position', title: 'Position mix', hint: 'median program share', fmt: 'pct',
+    key: 'position', anchor: 'csl-sec-position', title: 'Position mix', hint: 'median share · players', fmt: 'pct', showCount: true,
     groups: [
       { label: 'Goalkeepers', dim: 'position', bucket: 'GK', metric: 'share' },
       { label: 'Defenders', dim: 'position', bucket: 'D', metric: 'share' },
@@ -32,7 +32,7 @@ const GROUP_CARDS = [
     ],
   },
   {
-    key: 'class', anchor: 'csl-sec-class', title: 'Class mix', hint: 'median program share', fmt: 'pct',
+    key: 'class', anchor: 'csl-sec-class', title: 'Class mix', hint: 'median share · players', fmt: 'pct', showCount: true,
     groups: [
       { label: 'Freshmen', dim: 'class', bucket: 'FR', metric: 'share' },
       { label: 'Sophomores', dim: 'class', bucket: 'SO', metric: 'share' },
@@ -191,12 +191,16 @@ function GroupCard({ card, segments, get, hovered }) {
             <div className="csl-gcard-glab">{g.label}</div>
             {segments.map((sg, i) => {
               const v = get(i, g.dim, g.bucket, g.metric)?.median ?? null
+              const cnt = card.showCount ? get(i, g.dim, g.bucket, 'count')?.median : null
               return (
                 <div className="csl-hbar-row" key={i} style={{ opacity: dimOf(hovered, i) }}>
                   <span className="csl-hbar-track">
                     <span className="csl-hbar-fill" style={{ width: v == null ? 0 : `${100 * v / max}%`, background: CMP_COLORS[i] }} />
                   </span>
-                  <span className="csl-hbar-val" style={{ color: CMP_COLORS[i] }}>{fmtVal(v, card.fmt)}</span>
+                  <span className="csl-hbar-val">
+                    <span style={{ color: CMP_COLORS[i] }}>{fmtVal(v, card.fmt)}</span>
+                    {cnt != null && <span className="csl-hbar-cnt"> · {Math.round(cnt)}</span>}
+                  </span>
                 </div>
               )
             })}

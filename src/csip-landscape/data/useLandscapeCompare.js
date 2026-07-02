@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
  * returns { median, p25, p75, n } or null when absent for that segment.
  */
 const DIMENSIONS = ['overall', 'origin', 'position', 'class']
-const METRICS = ['height_inches', 'roster_size', 'return_rate', 'newcomer_rate', 'share']
+const METRICS = ['height_inches', 'roster_size', 'return_rate', 'newcomer_rate', 'share', 'count']
 
 export function useLandscapeCompare(client, segments) {
   const key = JSON.stringify(segments)

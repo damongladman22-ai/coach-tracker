@@ -315,7 +315,8 @@
 .csl-hbar-key{width:64px; flex:none; display:flex; align-items:center; gap:7px; font-size:13px; color:var(--slate)}
 .csl-hbar-track{flex:1; height:14px; background:var(--paper); border-radius:7px; overflow:hidden}
 .csl-hbar-fill{display:block; height:100%; border-radius:7px}
-.csl-hbar-val{width:58px; text-align:right; font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:16px; font-variant-numeric:tabular-nums; color:var(--ink)}
+.csl-hbar-val{width:84px; text-align:right; font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:16px; font-variant-numeric:tabular-nums; color:var(--ink); white-space:nowrap}
+.csl-hbar-cnt{color:var(--slate)}
 .csl-hbar-val--big{font-size:24px; width:54px}
 .csl-gcard{display:flex; flex-direction:column; gap:16px}
 .csl-gcard-glab{font-size:14px; color:var(--ink); margin-bottom:5px}
