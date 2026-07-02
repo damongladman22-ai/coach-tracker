@@ -98,7 +98,7 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
         )}
 
         {selection.lens === 'trend' && (
-          <TrendLens trend={trend} selection={selection} />
+          <TrendLens client={client} trend={trend} selection={selection} />
         )}
       </div>
     </div>

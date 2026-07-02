@@ -382,3 +382,15 @@
 .csl-info-pop p:first-of-type{margin-top:0}
 .csl-info-pop b{color:var(--ink); font-weight:600}
 .csl-info-src{color:var(--slate-2) !important; font-style:italic}
+
+/* Trend geography — season scrub + domestic/international area */
+.csl-geotrend{display:flex; flex-direction:column; gap:18px}
+.csl-geotrend .csl-geoctl{gap:8px 20px; margin-bottom:0}
+.csl-geosplit-h{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:8px}
+.csl-geolegend{display:flex; gap:14px; font-size:12.5px; color:var(--slate)}
+.csl-geolegend span{display:inline-flex; align-items:center; gap:6px}
+.csl-geolegend i{width:12px; height:12px; border-radius:3px; display:inline-block}
+.csl-geoarea{width:100%; height:120px; display:block; border-radius:8px; overflow:hidden; background:#E6EAED}
+.csl-geoarea + .csl-ed-axis{margin-top:4px}
+.csl-geomap--cmp{display:block}
+.csl-geomap--cmp .csl-map{width:100%}

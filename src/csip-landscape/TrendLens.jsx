@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { pct, inchesToFtIn, whole, divShort, genderLabel } from './data/landscapeFormat'
 import InfoTip from './InfoTip'
 import { TREND_INFO } from './data/landscapeInfo'
+import GeographyTrend from './GeographyTrend'
 
 /**
  * TrendLens — Lens C. One segment, one metric family, across 2021–2025.
@@ -145,7 +146,7 @@ const HPOS = [
   { k: 'F', label: 'Forwards' }, { k: 'M', label: 'Midfielders' },
 ]
 
-export default function TrendLens({ trend, selection }) {
+export default function TrendLens({ client, trend, selection }) {
   const { division, gender, family } = selection
   if (trend.loading) return <div className="csl-tl-loading">Loading trend…</div>
   if (trend.error) return <p className="csl-empty">Couldn’t load trend data.</p>
@@ -224,10 +225,7 @@ export default function TrendLens({ trend, selection }) {
   return (
     <div className="csl-tlwrap">
       {head('Recruiting geography', 'Where players come from — and how it’s shifting', TREND_INFO.geography)}
-      <div className="csl-soon">
-        <p className="csl-eyebrow">Geography · over time</p>
-        <p>A footprint map across the seasons plus the domestic vs. international trend is the next pass — richer than a single number.</p>
-      </div>
+      <GeographyTrend client={client} division={division} gender={gender} />
     </div>
   )
 }
