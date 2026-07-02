@@ -1,47 +1,15 @@
 import { useState } from 'react'
-import { pct, inchesToFtIn, whole, divShort, genderLabel, clampTip } from './data/landscapeFormat'
+import { pct, inchesToFtIn, whole, divShort, genderLabel } from './data/landscapeFormat'
 
 /**
- * TrendLens — Lens C. One segment (division × gender), one metric family, plotted
- * across 2021–2025 as the whole canvas. The family chips in the control bar drive
- * which metric shows. Single metrics draw a median line with a p25–p75 band;
- * composition and retention families draw one median line per bucket. Missing
- * seasons (retention has no 2021) render as a gap — the line simply starts later.
+ * TrendLens — Lens C. One segment, one metric family, across 2021–2025.
+ * Single metrics use an editorial area (hero current value + Δ, p25–p75 band +
+ * median line); composition families use a stacked flow (counts stacked per
+ * season, share·count on tap). Geography gets its own rich pass. Mobile-first:
+ * all text is HTML; only shapes are SVG.
  */
-const SEASONS = [2021, 2022, 2023, 2024, 2025]
-const PALETTE = ['#0E7C6B', '#C6873B', '#3E6FB0', '#B0506B', '#6B9E4C']
-
-function specFor(family) {
-  switch (family) {
-    case 'size':
-      return {
-        title: 'Height by position', kind: 'multi', viz: 'cards', dim: 'position', metric: 'height_inches', fmt: 'inches',
-        yTitle: 'Median height', q: 'Are rosters getting taller — and where?',
-        series: [{ bucket: 'GK', label: 'Goalkeepers' }, { bucket: 'D', label: 'Defenders' }, { bucket: 'M', label: 'Midfielders' }, { bucket: 'F', label: 'Forwards' }],
-      }
-    case 'roster':
-      return { title: 'Roster size', kind: 'single', dim: 'overall', bucket: 'ALL', metric: 'roster_size', fmt: 'whole', yTitle: 'Median roster', q: 'Are rosters getting bigger?' }
-    case 'geography':
-      return { title: '% International', kind: 'single', dim: 'origin', bucket: 'international', metric: 'share', fmt: 'pct', yTitle: 'Median program share', q: 'Are rosters getting more international?' }
-    case 'position':
-      return {
-        title: 'Position mix', kind: 'multi', dim: 'position', metric: 'share', fmt: 'pct', yTitle: 'Median program share', q: 'How is the position mix shifting?',
-        series: [{ bucket: 'GK', label: 'Goalkeepers' }, { bucket: 'D', label: 'Defenders' }, { bucket: 'M', label: 'Midfielders' }, { bucket: 'F', label: 'Forwards' }],
-      }
-    case 'class':
-      return {
-        title: 'Class mix', kind: 'multi', dim: 'class', metric: 'share', fmt: 'pct', yTitle: 'Median program share', q: 'How is the class mix shifting?',
-        series: [{ bucket: 'FR', label: 'Freshmen' }, { bucket: 'SO', label: 'Sophomores' }, { bucket: 'JR', label: 'Juniors' }, { bucket: 'SR', label: 'Seniors' }, { bucket: 'GR', label: 'Graduate' }],
-      }
-    case 'retention':
-      return {
-        title: 'Retention', kind: 'multi', dim: 'overall', fmt: 'pct', yTitle: 'Median rate', q: 'Is the squad turning over faster?',
-        series: [{ bucket: 'ALL', metric: 'return_rate', label: 'Return rate' }, { bucket: 'ALL', metric: 'newcomer_rate', label: 'Newcomer rate' }],
-      }
-    default:
-      return specFor('size')
-  }
-}
+const SEASONS_ALL = [2021, 2022, 2023, 2024, 2025]
+const SF_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#4a3aa7', '#e34948']
 
 function fmtVal(v, fmt) {
   if (v == null) return '—'
@@ -49,215 +17,212 @@ function fmtVal(v, fmt) {
   if (fmt === 'inches') return inchesToFtIn(v)
   return whole(v)
 }
+function deltaLabel(d, fmt) {
+  const sign = d > 0 ? '+' : '−'
+  const a = Math.abs(d)
+  if (fmt === 'pct') { if (Math.round(a * 100) === 0) return 'no change'; return `${sign}${Math.round(a * 100)} pts` }
+  if (fmt === 'inches') { if (a < 0.05) return 'no change'; return `${sign}${a.toFixed(1)}″` }
+  if (Math.round(a) === 0) return 'no change'
+  return `${sign}${Math.round(a)}`
+}
+const dirOf = d => (Math.abs(d) < 1e-9 ? 'flat' : d > 0 ? 'up' : 'down')
 
-/** Auto-zoomed mini line for a single series' median path. */
-function Sparkline({ points, color }) {
-  const W = 148, H = 44, pad = 7
-  if (points.length < 2) return <svg viewBox={`0 0 ${W} ${H}`} className="csl-spark" />
-  const vals = points.map(p => p.median)
-  let lo = Math.min(...vals), hi = Math.max(...vals)
-  if (lo === hi) { lo -= 0.5; hi += 0.5 }
-  const ss = points.map(p => p.season)
-  const xmin = Math.min(...ss), xmax = Math.max(...ss)
-  const x = s => pad + (xmax === xmin ? 0 : (s - xmin) / (xmax - xmin)) * (W - 2 * pad)
-  const y = v => pad + (1 - (v - lo) / (hi - lo)) * (H - 2 * pad)
-  const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.season).toFixed(1)},${y(p.median).toFixed(1)}`).join(' ')
-  const last = points[points.length - 1]
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="csl-spark" xmlns="http://www.w3.org/2000/svg">
-      <path d={d} className="csl-spark-line" style={{ stroke: color }} />
-      <circle cx={x(last.season)} cy={y(last.median)} r={3.2} style={{ fill: color }} />
-    </svg>
-  )
+function seasonPoints(get, dim, bucket, metric) {
+  return SEASONS_ALL
+    .map(s => { const r = get(s, dim, bucket, metric); return r ? { season: s, ...r } : null })
+    .filter(Boolean)
 }
 
-function deltaFmt(d) {
-  if (Math.abs(d) < 0.05) return 'no change'
-  return `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}″`
-}
+function EditorialArea({ points, fmt, color = '#2a78d6', label, compact }) {
+  if (!points.length) return <div className="csl-ed"><p className="csl-empty">No data.</p></div>
+  const last = points[points.length - 1], first = points[0]
+  const delta = last.median - first.median
+  const dir = dirOf(delta)
 
-/** Small-multiple stat cards: one per series, big current value + Δ + sparkline. */
-function StatCards({ seriesList, fmt }) {
+  const VBW = 600, VBH = compact ? 96 : 150, pad = 10
+  let lo = Infinity, hi = -Infinity
+  points.forEach(p => { lo = Math.min(lo, p.p25 ?? p.median); hi = Math.max(hi, p.p75 ?? p.median) })
+  const padY = (hi - lo) * 0.18 || 1
+  lo -= padY; hi += padY
+  if (fmt === 'pct') lo = Math.max(0, lo)
+  const x = s => pad + (SEASONS_ALL.indexOf(s) / (SEASONS_ALL.length - 1)) * (VBW - 2 * pad)
+  const y = v => VBH - pad - (v - lo) / (hi - lo) * (VBH - 2 * pad)
+  const up = points.map(p => `${x(p.season).toFixed(1)},${y(p.p75 ?? p.median).toFixed(1)}`)
+  const dn = [...points].reverse().map(p => `${x(p.season).toFixed(1)},${y(p.p25 ?? p.median).toFixed(1)}`)
+  const band = points.length > 1 ? `M${up.join(' L')} L${dn.join(' L')} Z` : ''
+  const line = `M${points.map(p => `${x(p.season).toFixed(1)},${y(p.median).toFixed(1)}`).join(' L')}`
+
   return (
-    <div className="csl-tcards">
-      {seriesList.map((se, i) => {
-        const pts = se.points
-        if (!pts.length) return <div className="csl-tcard" key={i} />
-        const cur = pts[pts.length - 1], first = pts[0]
-        const delta = cur.median - first.median
-        const dir = Math.abs(delta) < 0.05 ? 'flat' : (delta > 0 ? 'up' : 'down')
-        return (
-          <div className="csl-tcard" key={i}>
-            <span className="csl-tcard-lab" style={{ color: se.color }}>{se.label}</span>
-            <div className="csl-tcard-val">{fmtVal(cur.median, fmt)}</div>
-            <div className={`csl-tcard-delta csl-tcard-delta--${dir}`}>
-              {dir === 'up' ? '▲' : dir === 'down' ? '▼' : '–'} {deltaFmt(delta)}
-              <span className="csl-tcard-since"> since {first.season}</span>
-            </div>
-            <Sparkline points={pts} color={se.color} />
-          </div>
-        )
-      })}
+    <div className="csl-ed">
+      {label && <div className="csl-ed-label">{label}</div>}
+      <div className="csl-ed-hero">
+        <span className={compact ? 'csl-ed-val--sm' : 'csl-ed-val'}>{fmtVal(last.median, fmt)}</span>
+        <span className={`csl-ed-delta csl-ed-delta--${dir}`}>
+          {dir === 'up' ? '▲' : dir === 'down' ? '▼' : '–'} {deltaLabel(delta, fmt)}
+          <span className="csl-ed-since"> since {first.season}</span>
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${VBW} ${VBH}`} className="csl-ed-svg" xmlns="http://www.w3.org/2000/svg">
+        {band && <path d={band} fill={color} fillOpacity={0.12} />}
+        <path d={line} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <circle cx={x(last.season)} cy={y(last.median)} r={4} fill={color} />
+      </svg>
+      <div className="csl-ed-axis">
+        {SEASONS_ALL.map((s, i) => (
+          <span key={s} style={{
+            left: `${(pad + (i / (SEASONS_ALL.length - 1)) * (VBW - 2 * pad)) / VBW * 100}%`,
+            transform: i === 0 ? 'translateX(0)' : i === SEASONS_ALL.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
+          }}>{s}</span>
+        ))}
+      </div>
     </div>
   )
 }
+
+function StackedFlow({ dim, groups, get }) {
+  const seasons = SEASONS_ALL.filter(s => groups.some(g => get(s, dim, g.k, 'count')))
+  const [active, setActive] = useState(seasons[seasons.length - 1])
+  if (!seasons.length) return <p className="csl-empty">No data for this selection.</p>
+  const act = seasons.includes(active) ? active : seasons[seasons.length - 1]
+
+  const totals = {}
+  seasons.forEach(s => { totals[s] = groups.reduce((a, g) => a + (get(s, dim, g.k, 'count')?.median || 0), 0) })
+
+  const readGroups = groups.map(g => {
+    const c = get(act, dim, g.k, 'count')?.median || 0
+    const tot = totals[act] || 1
+    return { ...g, c, share: c / tot }
+  })
+
+  return (
+    <div className="csl-sf">
+      <div className="csl-sf-legend">
+        {groups.map((g, i) => (
+          <span className="csl-sf-lk" key={g.k}><i className="csl-cmp-dot" style={{ background: SF_COLORS[i] }} />{g.label}</span>
+        ))}
+      </div>
+      <div className="csl-sf-read">
+        <b>{act}</b>
+        {readGroups.map((g, i) => (
+          <span key={g.k}>
+            <span className="csl-sf-read-sh" style={{ color: SF_COLORS[i] }}>{pct(g.share)}</span>
+            <span className="csl-sf-read-c"> · {Math.round(g.c)}</span>
+          </span>
+        ))}
+      </div>
+      <div className="csl-sf-flow">
+        {seasons.map(s => {
+          const tot = totals[s] || 1
+          return (
+            <div
+              key={s}
+              className={`csl-sf-col${s === act ? ' csl-sf-col--on' : ''}`}
+              onMouseEnter={() => setActive(s)}
+              onClick={() => setActive(s)}
+            >
+              {groups.map((g, i) => {
+                const c = get(s, dim, g.k, 'count')?.median || 0
+                const h = 100 * c / tot
+                return (
+                  <div key={g.k} className="csl-sf-seg" style={{ height: `${h}%`, background: SF_COLORS[i] }} />
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+      <div className="csl-sf-axis">
+        {seasons.map(s => <div key={s} className={s === act ? 'csl-sf-ax--on' : ''}>{s}</div>)}
+      </div>
+    </div>
+  )
+}
+
+const HPOS = [
+  { k: 'GK', label: 'Goalkeepers' }, { k: 'D', label: 'Defenders' },
+  { k: 'F', label: 'Forwards' }, { k: 'M', label: 'Midfielders' },
+]
 
 export default function TrendLens({ trend, selection }) {
   const { division, gender, family } = selection
-  const spec = specFor(family)
-  const [tip, setTip] = useState(null)
-
   if (trend.loading) return <div className="csl-tl-loading">Loading trend…</div>
   if (trend.error) return <p className="csl-empty">Couldn’t load trend data.</p>
+  const get = trend.get
 
-  const seriesList = (spec.kind === 'single'
-    ? [{ label: spec.title, color: PALETTE[0], bucket: spec.bucket, metric: spec.metric }]
-    : spec.series.map((se, i) => ({ label: se.label, color: PALETTE[i % PALETTE.length], bucket: se.bucket, metric: se.metric || spec.metric }))
-  ).map(se => ({
-    ...se,
-    points: SEASONS.map(s => {
-      const r = trend.get(s, spec.dim, se.bucket, se.metric)
-      return r ? { season: s, ...r } : null
-    }).filter(Boolean),
-  }))
-
-  const hasData = seriesList.some(se => se.points.length > 0)
-  if (!hasData) return <p className="csl-empty">No trend data for this selection.</p>
-
-  const head = (
+  const seg = `${divShort(division)} ${genderLabel(gender)} · 2021–2025`
+  const head = (title, q) => (
     <div className="csl-tl-head">
       <div>
-        <h3 className="csl-tl-title">{spec.title}</h3>
-        <p className="csl-tl-q">{spec.q}</p>
+        <h3 className="csl-tl-title">{title}</h3>
+        <p className="csl-tl-q">{q}</p>
       </div>
-      <span className="csl-tl-seg">{divShort(division)} {genderLabel(gender)} · 2021–2025</span>
+      <span className="csl-tl-seg">{seg}</span>
     </div>
   )
 
-  if (spec.viz === 'cards') {
+  if (family === 'size') {
     return (
       <div className="csl-tlwrap">
-        {head}
-        <StatCards seriesList={seriesList} fmt={spec.fmt} />
-        <p className="csl-note">
-          Median height per position, each season. The number is 2025; the change is measured from that
-          position’s first tracked season. Player-level; conference-level ‘ALL’ (division-wide).
-        </p>
+        {head('Height by position', 'Are rosters getting taller — and where?')}
+        <div className="csl-ed-grid">
+          {HPOS.map((p, i) => (
+            <div className="csl-cmp-panel" key={p.k}>
+              <EditorialArea points={seasonPoints(get, 'position', p.k, 'height_inches')} fmt="inches" color={SF_COLORS[i]} label={p.label} compact />
+            </div>
+          ))}
+        </div>
+        <p className="csl-note">Median height per position each season, with the p25–p75 band. Change measured from that position’s first tracked season.</p>
       </div>
     )
   }
 
-  // y-domain from plotted values (band lows/highs for single)
-  const vals = []
-  seriesList.forEach(se => se.points.forEach(p => {
-    vals.push(p.median)
-    if (spec.kind === 'single') { if (p.p25 != null) vals.push(p.p25); if (p.p75 != null) vals.push(p.p75) }
-  }))
-  let lo = Math.min(...vals), hi = Math.max(...vals)
-  const pad = (hi - lo) * 0.14 || Math.abs(hi) * 0.1 || 1
-  lo -= pad; hi += pad
-  if (spec.fmt === 'pct') lo = Math.max(0, lo)
-  if (lo === hi) hi = lo + 1
-
-  // geometry (viewBox units)
-  const W = 720, H = 360, ml = 58, mr = 18, mt = 18, mb = 44
-  const pw = W - ml - mr, ph = H - mt - mb
-  const xFor = s => ml + (SEASONS.indexOf(s) / (SEASONS.length - 1)) * pw
-  const yFor = v => mt + (1 - (v - lo) / (hi - lo)) * ph
-
-  const ticks = Array.from({ length: 5 }, (_, i) => lo + (i / 4) * (hi - lo))
-  const linePath = pts => pts.map((p, i) => `${i ? 'L' : 'M'}${xFor(p.season).toFixed(1)},${yFor(p.median).toFixed(1)}`).join(' ')
-  const bandPath = pts => {
-    if (pts.length < 2) return ''
-    const up = pts.map(p => `${xFor(p.season).toFixed(1)},${yFor(p.p75 ?? p.median).toFixed(1)}`)
-    const dn = [...pts].reverse().map(p => `${xFor(p.season).toFixed(1)},${yFor(p.p25 ?? p.median).toFixed(1)}`)
-    return `M${up.join(' L')} L${dn.join(' L')} Z`
+  if (family === 'roster') {
+    return (
+      <div className="csl-tlwrap">
+        {head('Roster size', 'Are rosters getting bigger?')}
+        <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'roster_size')} fmt="whole" color="#2a78d6" />
+        <p className="csl-note">Median roster per season, with the p25–p75 band. Conference-level ‘ALL’ (division-wide).</p>
+      </div>
+    )
   }
 
-  const single = spec.kind === 'single'
-  const s0 = seriesList[0]
+  if (family === 'position' || family === 'class') {
+    const groups = family === 'position'
+      ? [{ k: 'GK', label: 'Goalkeepers' }, { k: 'D', label: 'Defenders' }, { k: 'M', label: 'Midfielders' }, { k: 'F', label: 'Forwards' }]
+      : [{ k: 'FR', label: 'Freshmen' }, { k: 'SO', label: 'Sophomores' }, { k: 'JR', label: 'Juniors' }, { k: 'SR', label: 'Seniors' }, { k: 'GR', label: 'Graduate' }]
+    return (
+      <div className="csl-tlwrap">
+        {head(family === 'position' ? 'Position mix' : 'Class mix', 'How the mix shifts, season by season')}
+        <StackedFlow dim={family} groups={groups} get={get} />
+        <p className="csl-note">Typical program composition each season (median counts stacked). Tap a season for its share and player count per group.</p>
+      </div>
+    )
+  }
+
+  if (family === 'retention') {
+    return (
+      <div className="csl-tlwrap">
+        {head('Retention', 'Is the squad turning over faster?')}
+        <div className="csl-ed-grid">
+          <div className="csl-cmp-panel">
+            <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'return_rate')} fmt="pct" color="#1baf7a" label="Return rate" compact />
+          </div>
+          <div className="csl-cmp-panel">
+            <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'newcomer_rate')} fmt="pct" color="#eda100" label="Newcomer rate" compact />
+          </div>
+        </div>
+        <p className="csl-note">Median program rate each season, with the p25–p75 band. Retention needs a prior season, so it starts at 2022.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="csl-tlwrap">
-      {head}
-
-      <div className="csl-tl-chart">
-        <svg viewBox={`0 0 ${W} ${H}`} xmlns="http://www.w3.org/2000/svg" role="img" aria-label={`${spec.title} trend`}>
-          {/* gridlines + y labels */}
-          {ticks.map((t, i) => (
-            <g key={i}>
-              <line x1={ml} y1={yFor(t)} x2={W - mr} y2={yFor(t)} className="csl-tl-grid" />
-              <text x={ml - 8} y={yFor(t) + 3.5} className="csl-tl-ylab" textAnchor="end">{fmtVal(t, spec.fmt)}</text>
-            </g>
-          ))}
-          {/* x labels */}
-          {SEASONS.map(s => (
-            <text key={s} x={xFor(s)} y={H - mb + 20} className="csl-tl-xlab" textAnchor="middle">{s}</text>
-          ))}
-
-          {/* single: band */}
-          {single && s0.points.length > 1 && <path d={bandPath(s0.points)} className="csl-tl-band" style={{ fill: s0.color }} />}
-
-          {/* lines */}
-          {seriesList.map((se, si) => (
-            <path key={si} d={linePath(se.points)} className="csl-tl-line" style={{ stroke: se.color }} />
-          ))}
-
-          {/* dots + hover targets */}
-          {seriesList.map((se, si) => se.points.map(p => (
-            <g key={`${si}-${p.season}`}>
-              <circle cx={xFor(p.season)} cy={yFor(p.median)} r={3.4} className="csl-tl-dot" style={{ fill: se.color }} />
-              <circle
-                cx={xFor(p.season)} cy={yFor(p.median)} r={12} fill="transparent"
-                onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, label: se.label, color: se.color, p })}
-                onMouseLeave={() => setTip(null)}
-              />
-            </g>
-          )))}
-
-          {/* single: value labels above dots */}
-          {single && s0.points.map(p => (
-            <text key={`v-${p.season}`} x={xFor(p.season)} y={yFor(p.median) - 9} className="csl-tl-vlab" textAnchor="middle">
-              {fmtVal(p.median, spec.fmt)}
-            </text>
-          ))}
-        </svg>
+      {head('Recruiting geography', 'Where players come from — and how it’s shifting')}
+      <div className="csl-soon">
+        <p className="csl-eyebrow">Geography · over time</p>
+        <p>A footprint map across the seasons plus the domestic vs. international trend is the next pass — richer than a single number.</p>
       </div>
-
-      {/* legend (multi) with latest value */}
-      {!single && (
-        <div className="csl-tl-legend">
-          {seriesList.map((se, si) => {
-            const last = se.points[se.points.length - 1]
-            return (
-              <span className="csl-tl-lk" key={si}>
-                <i className="csl-tl-sw" style={{ background: se.color }} />
-                {se.label}
-                {last && <b className="csl-tl-lkv"> · {fmtVal(last.median, spec.fmt)} ({last.season})</b>}
-              </span>
-            )
-          })}
-        </div>
-      )}
-
-      <p className="csl-note">
-        {single ? 'Median line with the p25–p75 middle-half band. ' : 'One median line per group. '}
-        Median program per season; conference-level ‘ALL’ (division-wide). Hover a point for detail.
-        {family === 'retention' && ' Retention needs a prior season, so it starts at 2022.'}
-      </p>
-
-      {tip && (() => {
-        const pos = clampTip(tip.x, tip.y, 210, 52)
-        return (
-          <div className="csl-floattip" style={{ left: pos.left, top: pos.top, transform: 'translateX(-50%)' }}>
-            <b style={{ color: tip.color }}>{tip.label}</b> · {tip.p.season}<br />
-            {fmtVal(tip.p.median, spec.fmt)}
-            {spec.kind === 'single' && tip.p.p25 != null && tip.p.p75 != null
-              ? ` · ${fmtVal(tip.p.p25, spec.fmt)}–${fmtVal(tip.p.p75, spec.fmt)}` : ''}
-            {tip.p.n != null ? ` · n=${tip.p.n.toLocaleString()}` : ''}
-          </div>
-        )
-      })()}
     </div>
   )
 }

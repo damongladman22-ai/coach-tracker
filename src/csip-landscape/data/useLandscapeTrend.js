@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
  * retention has no 2021 — the line renders a gap there).
  */
 const DIMENSIONS = ['overall', 'origin', 'position', 'class']
-const METRICS = ['height_inches', 'roster_size', 'return_rate', 'newcomer_rate', 'share']
+const METRICS = ['height_inches', 'roster_size', 'return_rate', 'newcomer_rate', 'share', 'count']
 
 export function useLandscapeTrend(client, { division, gender, conference = 'ALL' }) {
   const [state, setState] = useState({ loading: true, error: null, index: {} })
