@@ -3,6 +3,8 @@ import {
   DIVISIONS, GENDERS, SEASONS, pct, inchesToFtIn, whole, divShort, genderLabel, seasonLabel,
 } from './data/landscapeFormat'
 import { useLandscapeBins } from './data/useLandscapeBins'
+import { useLandscapeGeoCompare } from './data/useLandscapeGeoCompare'
+import GeographyCompare from './GeographyCompare'
 import InfoTip from './InfoTip'
 import { COMPARE_INFO } from './data/landscapeInfo'
 
@@ -21,7 +23,6 @@ const HPOS = [
 
 const VALUE_CARDS = [
   { key: 'roster', anchor: 'csl-sec-roster', title: 'Roster size', hint: 'median', fmt: 'whole', dim: 'overall', bucket: 'ALL', metric: 'roster_size', info: COMPARE_INFO.roster },
-  { key: 'intl', anchor: 'csl-sec-intl', title: '% International', hint: 'median program share', fmt: 'pct', dim: 'origin', bucket: 'international', metric: 'share', info: COMPARE_INFO.intl },
 ]
 const GROUP_CARDS = [
   {
@@ -222,6 +223,7 @@ function GroupCard({ card, segments, get, hovered }) {
 export default function CompareLens({ client, compare, segments, setSegments }) {
   const [hovered, setHovered] = useState(null)
   const bins = useLandscapeBins(client, segments, 'position', 'height_inches')
+  const geo = useLandscapeGeoCompare(client, segments)
 
   const addSegment = () => {
     if (segments.length >= 4) return
@@ -288,6 +290,15 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
             {VALUE_CARDS.map(c => <ValueCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} />)}
             {GROUP_CARDS.map(c => <GroupCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} />)}
           </div>
+
+          <section className="csl-cmp-full" id="csl-sec-intl">
+            <div className="csl-cmp-panel-h">
+              <h3 className="csl-cmp-panel-title">Recruiting geography</h3>
+              <span className="csl-cmp-panel-hint">Footprint per segment · player-level</span>
+              <InfoTip {...COMPARE_INFO.geography} />
+            </div>
+            <GeographyCompare geo={geo} segments={segments} colors={CMP_COLORS} hovered={hovered} />
+          </section>
 
           <p className="csl-note">
             Height is the real per-position distribution (share of players at each height) from the benchmark
