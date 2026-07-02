@@ -304,3 +304,20 @@
 .csl-dens-read{display:inline-flex; gap:10px; font-family:"Barlow Condensed",sans-serif; font-size:15px; font-weight:700}
 .csl-cmp-grid{stroke:var(--line); stroke-width:0.5}
 @media (max-width:820px){ .csl-dens-grid{grid-template-columns:1fr} }
+
+/* Compare v2 — ridgeline + large-type comparison bars */
+.csl-ridge{width:100%; height:auto; display:block; overflow:visible}
+.csl-ridge-row{font-size:15px; font-weight:500; fill:var(--ink)}
+.csl-ridge-read{font-size:14px; font-weight:700; font-family:"Barlow Condensed",sans-serif; text-anchor:start; font-variant-numeric:tabular-nums}
+.csl-ridge-ax{font-size:13px; fill:var(--slate-2)}
+.csl-vbars{display:flex; flex-direction:column; gap:14px}
+.csl-hbar-row{display:flex; align-items:center; gap:12px; transition:opacity .15s}
+.csl-hbar-key{width:64px; flex:none; display:flex; align-items:center; gap:7px; font-size:13px; color:var(--slate)}
+.csl-hbar-track{flex:1; height:14px; background:var(--paper); border-radius:7px; overflow:hidden}
+.csl-hbar-fill{display:block; height:100%; border-radius:7px}
+.csl-hbar-val{width:58px; text-align:right; font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:16px; font-variant-numeric:tabular-nums; color:var(--ink)}
+.csl-hbar-val--big{font-size:24px; width:54px}
+.csl-gcard{display:flex; flex-direction:column; gap:16px}
+.csl-gcard-glab{font-size:14px; color:var(--ink); margin-bottom:5px}
+.csl-gcard-grp .csl-hbar-row{margin:4px 0}
+.csl-gcard-grp .csl-hbar-track{height:12px}

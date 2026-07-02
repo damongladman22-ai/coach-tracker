@@ -6,9 +6,9 @@ import { useLandscapeBins } from './data/useLandscapeBins'
 
 /**
  * CompareLens — Lens B. Assemble 2–4 arbitrary segments (division × gender ×
- * season) and line them up. Height is a distribution card (real per-position
- * histograms from program_benchmark_bins, hover a segment to isolate it); the
- * other families are grouped bars. One color per segment; medians with n.
+ * season) and line them up. Height is a ridgeline of the real per-position
+ * distributions (program_benchmark_bins); the other families are large-type
+ * horizontal comparison bars. Colour = segment everywhere; hover to isolate.
  */
 export const CMP_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#e34948']
 
@@ -17,40 +17,36 @@ const HPOS = [
   { k: 'F', label: 'Forwards' }, { k: 'M', label: 'Midfielders' },
 ]
 
-const PANELS = [
+const VALUE_CARDS = [
+  { key: 'roster', anchor: 'csl-sec-roster', title: 'Roster size', hint: 'median', fmt: 'whole', dim: 'overall', bucket: 'ALL', metric: 'roster_size' },
+  { key: 'intl', anchor: 'csl-sec-intl', title: '% International', hint: 'median program share', fmt: 'pct', dim: 'origin', bucket: 'international', metric: 'share' },
+]
+const GROUP_CARDS = [
   {
-    key: 'roster', title: 'Roster size', hint: 'Median roster', fmt: 'whole', type: 'bars',
-    groups: [{ key: 'roster', label: 'Roster', dim: 'overall', bucket: 'ALL', metric: 'roster_size' }],
-  },
-  {
-    key: 'position', title: 'Position mix', hint: 'Median program share', fmt: 'pct', type: 'bars',
+    key: 'position', anchor: 'csl-sec-position', title: 'Position mix', hint: 'median program share', fmt: 'pct',
     groups: [
-      { key: 'GK', label: 'GK', dim: 'position', bucket: 'GK', metric: 'share' },
-      { key: 'D', label: 'DEF', dim: 'position', bucket: 'D', metric: 'share' },
-      { key: 'M', label: 'MID', dim: 'position', bucket: 'M', metric: 'share' },
-      { key: 'F', label: 'FWD', dim: 'position', bucket: 'F', metric: 'share' },
+      { label: 'Goalkeepers', dim: 'position', bucket: 'GK', metric: 'share' },
+      { label: 'Defenders', dim: 'position', bucket: 'D', metric: 'share' },
+      { label: 'Midfielders', dim: 'position', bucket: 'M', metric: 'share' },
+      { label: 'Forwards', dim: 'position', bucket: 'F', metric: 'share' },
     ],
   },
   {
-    key: 'class', title: 'Class mix', hint: 'Median program share', fmt: 'pct', type: 'bars',
+    key: 'class', anchor: 'csl-sec-class', title: 'Class mix', hint: 'median program share', fmt: 'pct',
     groups: [
-      { key: 'FR', label: 'FR', dim: 'class', bucket: 'FR', metric: 'share' },
-      { key: 'SO', label: 'SO', dim: 'class', bucket: 'SO', metric: 'share' },
-      { key: 'JR', label: 'JR', dim: 'class', bucket: 'JR', metric: 'share' },
-      { key: 'SR', label: 'SR', dim: 'class', bucket: 'SR', metric: 'share' },
-      { key: 'GR', label: 'GR', dim: 'class', bucket: 'GR', metric: 'share' },
+      { label: 'Freshmen', dim: 'class', bucket: 'FR', metric: 'share' },
+      { label: 'Sophomores', dim: 'class', bucket: 'SO', metric: 'share' },
+      { label: 'Juniors', dim: 'class', bucket: 'JR', metric: 'share' },
+      { label: 'Seniors', dim: 'class', bucket: 'SR', metric: 'share' },
+      { label: 'Graduate', dim: 'class', bucket: 'GR', metric: 'share' },
     ],
   },
   {
-    key: 'retention', title: 'Retention', hint: 'Median rate', fmt: 'pct', type: 'bars',
+    key: 'retention', anchor: 'csl-sec-retention', title: 'Retention', hint: 'median rate', fmt: 'pct',
     groups: [
-      { key: 'ret', label: 'Return', dim: 'overall', bucket: 'ALL', metric: 'return_rate' },
-      { key: 'new', label: 'Newcomer', dim: 'overall', bucket: 'ALL', metric: 'newcomer_rate' },
+      { label: 'Return rate', dim: 'overall', bucket: 'ALL', metric: 'return_rate' },
+      { label: 'Newcomer rate', dim: 'overall', bucket: 'ALL', metric: 'newcomer_rate' },
     ],
-  },
-  {
-    key: 'intl', title: '% International', hint: 'Median program share', fmt: 'pct', type: 'bars',
-    groups: [{ key: 'intl', label: 'International', dim: 'origin', bucket: 'international', metric: 'share' }],
   },
 ]
 
@@ -61,6 +57,7 @@ function fmtVal(v, fmt) {
   return whole(v)
 }
 const segLabel = sg => `${divShort(sg.division)} ${genderLabel(sg.gender)} · ${seasonLabel(sg.season)}`
+const dimOf = (hovered, i) => (hovered != null && hovered !== i ? 0.28 : 1)
 
 function smoothPath(pts) {
   if (pts.length < 2) return pts.length ? `M${pts[0][0]},${pts[0][1]}` : ''
@@ -85,7 +82,7 @@ function medianFromBins(bins) {
   return bins[bins.length - 1].hi
 }
 
-function HeightDensity({ segments, bins, hovered }) {
+function RidgeHeight({ segments, bins, hovered }) {
   if (bins.loading) return <div className="csl-tl-loading">Loading distributions…</div>
   if (bins.error) return <p className="csl-empty">Couldn’t load height distributions.</p>
 
@@ -95,97 +92,118 @@ function HeightDensity({ segments, bins, hovered }) {
   })))
   if (!isFinite(lo)) return <p className="csl-empty">No height distribution for these segments.</p>
 
-  const W = 300, H = 134, padL = 8, padR = 8, base = H - 24, top = 12
+  const W = 680, padL = 124, padR = 128, rowH = 96, rideH = 76, topPad = 12, axisH = 32
+  const H = topPad + HPOS.length * rowH + axisH
   const x = v => padL + (v - lo) / (hi - lo) * (W - padL - padR)
-  const nTick = 4
-  const ticks = Array.from({ length: nTick }, (_, i) => Math.round(lo + (i / (nTick - 1)) * (hi - lo)))
+  const ticks = Array.from({ length: 6 }, (_, i) => Math.round(lo + (i / 5) * (hi - lo)))
 
   return (
-    <div className="csl-dens-grid">
-      {HPOS.map(p => (
-        <div className="csl-cmp-panel" key={p.k}>
-          <div className="csl-cmp-panel-h">
-            <h3 className="csl-cmp-panel-title">{p.label}</h3>
-            <span className="csl-dens-read">
+    <svg viewBox={`0 0 ${W} ${H}`} className="csl-ridge" xmlns="http://www.w3.org/2000/svg">
+      {ticks.map((t, ti) => (
+        <line key={ti} x1={x(t)} y1={topPad} x2={x(t)} y2={H - axisH} stroke="var(--line)" strokeWidth="0.5" />
+      ))}
+      {HPOS.map((p, ri) => {
+        const baseY = topPad + ri * rowH + rideH
+        const order = segments
+          .map((s, i) => ({ i, med: medianFromBins(bins.get(i, p.k)) }))
+          .filter(o => o.med != null)
+          .sort((a, b) => b.med - a.med)
+        return (
+          <g key={p.k}>
+            <text x={padL - 14} y={baseY - rideH * 0.42} textAnchor="end" className="csl-ridge-row">{p.label}</text>
+            <line x1={padL} y1={baseY} x2={W - padR} y2={baseY} stroke="var(--line)" strokeWidth="1" />
+            {order.map(o => {
+              const bs = bins.get(o.i, p.k)
+              const peak = Math.max(...bs.map(b => b.count)) || 1
+              const tops = bs.map(b => [x((b.lo + b.hi) / 2), baseY - (b.count / peak) * rideH])
+              const first = tops[0][0], last = tops[tops.length - 1][0]
+              const area = `${smoothPath(tops)} L${last.toFixed(1)},${baseY} L${first.toFixed(1)},${baseY} Z`
+              const mx = x(o.med), my = baseY - rideH
+              return (
+                <g key={o.i} style={{ opacity: dimOf(hovered, o.i), transition: 'opacity .18s' }}>
+                  <path d={area} fill={CMP_COLORS[o.i]} fillOpacity={0.16} stroke={CMP_COLORS[o.i]} strokeWidth={2} strokeLinejoin="round" />
+                  <line x1={mx} y1={baseY} x2={mx} y2={my + 4} stroke={CMP_COLORS[o.i]} strokeWidth={1.5} strokeDasharray="3 3" opacity={0.8} />
+                  <circle cx={mx} cy={my + 4} r={3.5} fill={CMP_COLORS[o.i]} />
+                </g>
+              )
+            })}
+            <text x={W - padR + 10} y={baseY - rideH - 2} className="csl-ridge-read">
               {segments.map((s, i) => {
                 const m = medianFromBins(bins.get(i, p.k))
-                return m == null ? null : (
-                  <b key={i} style={{ color: CMP_COLORS[i], opacity: hovered != null && hovered !== i ? 0.3 : 1 }}>
-                    {inchesToFtIn(m)}
-                  </b>
+                if (m == null) return null
+                return (
+                  <tspan key={i} fill={CMP_COLORS[i]} style={{ opacity: dimOf(hovered, i) }}>
+                    {i > 0 ? '  ' : ''}{inchesToFtIn(m)}
+                  </tspan>
                 )
               })}
-            </span>
-          </div>
-          <svg viewBox={`0 0 ${W} ${H}`} className="csl-cmp-svg" xmlns="http://www.w3.org/2000/svg">
-            {ticks.map((t, ti) => (
-              <line key={ti} x1={x(t)} y1={top} x2={x(t)} y2={base} className="csl-cmp-grid" />
-            ))}
-            <line x1={padL} y1={base} x2={W - padR} y2={base} className="csl-cmp-track" />
-            {segments.map((s, i) => {
-              const bs = bins.get(i, p.k)
-              if (!bs.length) return null
-              const peak = Math.max(...bs.map(b => b.count)) || 1
-              const tops = bs.map(b => [x((b.lo + b.hi) / 2), base - (b.count / peak) * (base - top)])
-              const first = tops[0][0], last = tops[tops.length - 1][0]
-              const area = `${smoothPath(tops)} L${last.toFixed(1)},${base} L${first.toFixed(1)},${base} Z`
-              const med = medianFromBins(bs)
-              const dim = hovered != null && hovered !== i
-              return (
-                <g key={i} style={{ opacity: dim ? 0.1 : 1, transition: 'opacity .18s' }}>
-                  <path d={area} fill={CMP_COLORS[i]} fillOpacity={0.13} />
-                  <path d={smoothPath(tops)} fill="none" stroke={CMP_COLORS[i]} strokeWidth={2} strokeLinejoin="round" />
-                  {med != null && (
-                    <line x1={x(med)} y1={top} x2={x(med)} y2={base} stroke={CMP_COLORS[i]} strokeWidth={1.25} strokeDasharray="3 3" opacity={0.75} />
-                  )}
-                </g>
-              )
-            })}
-            {ticks.map((t, ti) => (
-              <text key={ti} x={x(t)} y={H - 7} className="csl-cmp-axlab" textAnchor="middle">{inchesToFtIn(t)}</text>
-            ))}
-          </svg>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function GroupedBars({ groups, segments, get, fmt }) {
-  const W = 720, mt = 26, mb = 34, ml = 8, mr = 8
-  const data = groups.map(g => ({
-    g, vals: segments.map((s, i) => ({ i, v: get(i, g.dim, g.bucket, g.metric)?.median ?? null })),
-  }))
-  const all = data.flatMap(d => d.vals.map(v => v.v).filter(v => v != null))
-  if (!all.length) return <p className="csl-empty">No data for these segments.</p>
-  const maxV = Math.max(...all) * 1.18
-  const nSeg = segments.length
-  const H = 210, ph = H - mt - mb, plotW = W - ml - mr
-  const groupW = plotW / groups.length
-  const barW = Math.min(44, (groupW - 22) / nSeg)
-  const y = v => mt + ph * (1 - v / maxV)
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="csl-cmp-svg" xmlns="http://www.w3.org/2000/svg">
-      {data.map((d, gi) => {
-        const gx = ml + gi * groupW + groupW / 2
-        const startX = gx - (nSeg * barW) / 2
-        return (
-          <g key={gi}>
-            {d.vals.map((xv, si) => {
-              if (xv.v == null) return null
-              const bx = startX + si * barW, by = y(xv.v)
-              return (
-                <g key={si}>
-                  <rect x={bx} y={by} width={barW - 2} height={mt + ph - by} rx={3} fill={CMP_COLORS[xv.i]} />
-                  <text x={bx + (barW - 2) / 2} y={by - 5} className="csl-cmp-vlab" textAnchor="middle">{fmtVal(xv.v, fmt)}</text>
-                </g>
-              )
-            })}
-            <text x={gx} y={H - mb + 20} className="csl-cmp-glab" textAnchor="middle">{d.g.label}</text>
+            </text>
           </g>
         )
       })}
+      {ticks.map((t, ti) => (
+        <text key={ti} x={x(t)} y={H - 9} textAnchor="middle" className="csl-ridge-ax">{inchesToFtIn(t)}</text>
+      ))}
     </svg>
+  )
+}
+
+function ValueCard({ card, segments, get, hovered }) {
+  const vals = segments.map((s, i) => get(i, card.dim, card.bucket, card.metric)?.median ?? null)
+  const max = Math.max(...vals.filter(v => v != null), 0.0001) * 1.15
+  return (
+    <section className="csl-cmp-panel" id={card.anchor}>
+      <div className="csl-cmp-panel-h">
+        <h3 className="csl-cmp-panel-title">{card.title}</h3>
+        <span className="csl-cmp-panel-hint">{card.hint}</span>
+      </div>
+      <div className="csl-vbars">
+        {segments.map((sg, i) => (
+          <div className="csl-hbar-row" key={i} style={{ opacity: dimOf(hovered, i) }}>
+            <span className="csl-hbar-key"><i className="csl-cmp-dot" style={{ background: CMP_COLORS[i] }} />{divShort(sg.division)}</span>
+            <span className="csl-hbar-track">
+              <span className="csl-hbar-fill" style={{ width: vals[i] == null ? 0 : `${100 * vals[i] / max}%`, background: CMP_COLORS[i] }} />
+            </span>
+            <span className="csl-hbar-val csl-hbar-val--big">{fmtVal(vals[i], card.fmt)}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+function GroupCard({ card, segments, get, hovered }) {
+  let max = 0
+  card.groups.forEach(g => segments.forEach((s, i) => {
+    const v = get(i, g.dim, g.bucket, g.metric)?.median
+    if (v != null && v > max) max = v
+  }))
+  max = (max || 0.0001) * 1.12
+  return (
+    <section className="csl-cmp-panel" id={card.anchor}>
+      <div className="csl-cmp-panel-h">
+        <h3 className="csl-cmp-panel-title">{card.title}</h3>
+        <span className="csl-cmp-panel-hint">{card.hint}</span>
+      </div>
+      <div className="csl-gcard">
+        {card.groups.map(g => (
+          <div className="csl-gcard-grp" key={g.label}>
+            <div className="csl-gcard-glab">{g.label}</div>
+            {segments.map((sg, i) => {
+              const v = get(i, g.dim, g.bucket, g.metric)?.median ?? null
+              return (
+                <div className="csl-hbar-row" key={i} style={{ opacity: dimOf(hovered, i) }}>
+                  <span className="csl-hbar-track">
+                    <span className="csl-hbar-fill" style={{ width: v == null ? 0 : `${100 * v / max}%`, background: CMP_COLORS[i] }} />
+                  </span>
+                  <span className="csl-hbar-val" style={{ color: CMP_COLORS[i] }}>{fmtVal(v, card.fmt)}</span>
+                </div>
+              )
+            })}
+          </div>
+        ))}
+      </div>
+    </section>
   )
 }
 
@@ -235,7 +253,7 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
             {segments.map((sg, i) => (
               <span
                 className="csl-cmp-lk" key={i}
-                style={{ opacity: hovered != null && hovered !== i ? 0.4 : 1 }}
+                style={{ opacity: dimOf(hovered, i) }}
                 onMouseEnter={() => setHovered(i)}
                 onMouseLeave={() => setHovered(null)}
               >
@@ -248,27 +266,20 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
           <section className="csl-cmp-full" id="csl-sec-height">
             <div className="csl-cmp-panel-h">
               <h3 className="csl-cmp-panel-title">Height by position</h3>
-              <span className="csl-cmp-panel-hint">Distribution · dashed line = median · hover a segment to isolate</span>
+              <span className="csl-cmp-panel-hint">Distribution · marker = median · hover a segment to isolate</span>
             </div>
-            <HeightDensity segments={segments} bins={bins} hovered={hovered} />
+            <RidgeHeight segments={segments} bins={bins} hovered={hovered} />
           </section>
 
           <div className="csl-cmp-panels">
-            {PANELS.map(p => (
-              <section className="csl-cmp-panel" id={`csl-sec-${p.key}`} key={p.key}>
-                <div className="csl-cmp-panel-h">
-                  <h3 className="csl-cmp-panel-title">{p.title}</h3>
-                  <span className="csl-cmp-panel-hint">{p.hint}</span>
-                </div>
-                <GroupedBars groups={p.groups} segments={segments} get={compare.get} fmt={p.fmt} />
-              </section>
-            ))}
+            {VALUE_CARDS.map(c => <ValueCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} />)}
+            {GROUP_CARDS.map(c => <GroupCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} />)}
           </div>
 
           <p className="csl-note">
-            Height is the real per-position distribution (share of players at each height, peak-normalized) from the
-            benchmark histograms; other families are median program per segment. Conference-level ‘ALL’ (division-wide).
-            A missing bar means that metric isn’t available for the segment (e.g. retention has no 2021, none for JC).
+            Height is the real per-position distribution (share of players at each height) from the benchmark
+            histograms; other families are the median program per segment. Conference-level ‘ALL’ (division-wide).
+            A blank bar means the metric isn’t available for that segment (e.g. retention has no 2021, none for JC).
           </p>
         </>
       )}
