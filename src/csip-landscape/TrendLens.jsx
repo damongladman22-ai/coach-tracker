@@ -14,7 +14,11 @@ const PALETTE = ['#0E7C6B', '#C6873B', '#3E6FB0', '#B0506B', '#6B9E4C']
 function specFor(family) {
   switch (family) {
     case 'size':
-      return { title: 'Overall height', kind: 'single', dim: 'overall', bucket: 'ALL', metric: 'height_inches', fmt: 'inches', yTitle: 'Median height', q: 'Are rosters getting taller?' }
+      return {
+        title: 'Height by position', kind: 'multi', dim: 'position', metric: 'height_inches', fmt: 'inches',
+        yTitle: 'Median height', q: 'Are rosters getting taller — and where?',
+        series: [{ bucket: 'GK', label: 'Goalkeepers' }, { bucket: 'D', label: 'Defenders' }, { bucket: 'M', label: 'Midfielders' }, { bucket: 'F', label: 'Forwards' }],
+      }
     case 'roster':
       return { title: 'Roster size', kind: 'single', dim: 'overall', bucket: 'ALL', metric: 'roster_size', fmt: 'whole', yTitle: 'Median roster', q: 'Are rosters getting bigger?' }
     case 'geography':
