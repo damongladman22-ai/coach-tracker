@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { pct, inchesToFtIn, whole, divShort, genderLabel } from './data/landscapeFormat'
+import InfoTip from './InfoTip'
+import { TREND_INFO } from './data/landscapeInfo'
 
 /**
  * TrendLens — Lens C. One segment, one metric family, across 2021–2025.
@@ -150,20 +152,23 @@ export default function TrendLens({ trend, selection }) {
   const get = trend.get
 
   const seg = `${divShort(division)} ${genderLabel(gender)} · 2021–2025`
-  const head = (title, q) => (
+  const head = (title, q, info) => (
     <div className="csl-tl-head">
       <div>
         <h3 className="csl-tl-title">{title}</h3>
         <p className="csl-tl-q">{q}</p>
       </div>
-      <span className="csl-tl-seg">{seg}</span>
+      <span className="csl-tl-meta">
+        <span className="csl-tl-seg">{seg}</span>
+        {info && <InfoTip {...info} />}
+      </span>
     </div>
   )
 
   if (family === 'size') {
     return (
       <div className="csl-tlwrap">
-        {head('Height by position', 'Are rosters getting taller — and where?')}
+        {head('Height by position', 'Are rosters getting taller — and where?', TREND_INFO.size)}
         <div className="csl-ed-grid">
           {HPOS.map((p, i) => (
             <div className="csl-cmp-panel" key={p.k}>
@@ -179,7 +184,7 @@ export default function TrendLens({ trend, selection }) {
   if (family === 'roster') {
     return (
       <div className="csl-tlwrap">
-        {head('Roster size', 'Are rosters getting bigger?')}
+        {head('Roster size', 'Are rosters getting bigger?', TREND_INFO.roster)}
         <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'roster_size')} fmt="whole" color="#2a78d6" />
         <p className="csl-note">Median roster per season, with the p25–p75 band. Conference-level ‘ALL’ (division-wide).</p>
       </div>
@@ -192,7 +197,7 @@ export default function TrendLens({ trend, selection }) {
       : [{ k: 'FR', label: 'Freshmen' }, { k: 'SO', label: 'Sophomores' }, { k: 'JR', label: 'Juniors' }, { k: 'SR', label: 'Seniors' }, { k: 'GR', label: 'Graduate' }]
     return (
       <div className="csl-tlwrap">
-        {head(family === 'position' ? 'Position mix' : 'Class mix', 'How the mix shifts, season by season')}
+        {head(family === 'position' ? 'Position mix' : 'Class mix', 'How the mix shifts, season by season', TREND_INFO[family])}
         <StackedFlow dim={family} groups={groups} get={get} />
         <p className="csl-note">Typical program composition each season (median counts stacked). Tap a season for its share and player count per group.</p>
       </div>
@@ -202,7 +207,7 @@ export default function TrendLens({ trend, selection }) {
   if (family === 'retention') {
     return (
       <div className="csl-tlwrap">
-        {head('Retention', 'Is the squad turning over faster?')}
+        {head('Retention', 'Is the squad turning over faster?', TREND_INFO.retention)}
         <div className="csl-ed-grid">
           <div className="csl-cmp-panel">
             <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'return_rate')} fmt="pct" color="#1baf7a" label="Return rate" compact />
@@ -218,7 +223,7 @@ export default function TrendLens({ trend, selection }) {
 
   return (
     <div className="csl-tlwrap">
-      {head('Recruiting geography', 'Where players come from — and how it’s shifting')}
+      {head('Recruiting geography', 'Where players come from — and how it’s shifting', TREND_INFO.geography)}
       <div className="csl-soon">
         <p className="csl-eyebrow">Geography · over time</p>
         <p>A footprint map across the seasons plus the domestic vs. international trend is the next pass — richer than a single number.</p>

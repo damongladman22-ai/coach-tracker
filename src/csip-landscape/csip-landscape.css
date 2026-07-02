@@ -287,7 +287,8 @@
 .csl-cmp-lk{display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--ink)}
 .csl-cmp-panels{display:grid; grid-template-columns:repeat(2,1fr); gap:18px}
 .csl-cmp-panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 16px 8px; min-width:0}
-.csl-cmp-panel-h{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px}
+.csl-cmp-panel-h{display:flex; justify-content:flex-start; align-items:baseline; gap:10px; margin-bottom:6px}
+.csl-cmp-panel-title{flex:1 1 auto}
 .csl-cmp-panel-title{font-size:15px; font-weight:700; color:var(--ink); margin:0}
 .csl-cmp-panel-hint{font-size:12.5px; color:var(--slate-2)}
 .csl-cmp-svg{width:100%; height:auto; display:block; overflow:visible}
@@ -362,3 +363,22 @@
 .csl-sf-axis div{flex:1; text-align:center; font-size:12.5px; color:var(--slate-2)}
 .csl-sf-ax--on{color:var(--ink); font-weight:600}
 @media (max-width:640px){ .csl-ed-grid{grid-template-columns:1fr} }
+
+
+/* InfoTip — card-header help affordance */
+.csl-tl-meta{display:inline-flex; align-items:center; gap:8px}
+.csl-info{position:relative; display:inline-flex; align-items:center}
+.csl-info-btn{appearance:none; border:none; background:none; padding:2px; margin:0; cursor:pointer; color:var(--slate-2); display:inline-flex; align-items:center; border-radius:50%; line-height:0}
+.csl-info-btn:hover{color:var(--ink)}
+.csl-info-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.csl-info-pop{position:absolute; top:calc(100% + 8px); width:min(280px,78vw); background:var(--card); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow); padding:12px 14px; z-index:50; text-align:left; cursor:default}
+.csl-info-pop--right{right:0}
+.csl-info-pop--left{left:0}
+.csl-info-pop-h{display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:6px}
+.csl-info-pop-title{font-size:13.5px; font-weight:700; color:var(--ink)}
+.csl-info-pop-x{appearance:none; border:none; background:none; cursor:pointer; font-size:20px; line-height:1; color:var(--slate-2); padding:0 2px}
+.csl-info-pop-x:hover{color:var(--ink)}
+.csl-info-pop p{font-size:12.5px; line-height:1.5; color:var(--slate); margin:6px 0 0}
+.csl-info-pop p:first-of-type{margin-top:0}
+.csl-info-pop b{color:var(--ink); font-weight:600}
+.csl-info-src{color:var(--slate-2) !important; font-style:italic}

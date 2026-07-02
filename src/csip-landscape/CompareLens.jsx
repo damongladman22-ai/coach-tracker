@@ -3,6 +3,8 @@ import {
   DIVISIONS, GENDERS, SEASONS, pct, inchesToFtIn, whole, divShort, genderLabel, seasonLabel,
 } from './data/landscapeFormat'
 import { useLandscapeBins } from './data/useLandscapeBins'
+import InfoTip from './InfoTip'
+import { COMPARE_INFO } from './data/landscapeInfo'
 
 /**
  * CompareLens — Lens B. Assemble 2–4 arbitrary segments (division × gender ×
@@ -18,12 +20,12 @@ const HPOS = [
 ]
 
 const VALUE_CARDS = [
-  { key: 'roster', anchor: 'csl-sec-roster', title: 'Roster size', hint: 'median', fmt: 'whole', dim: 'overall', bucket: 'ALL', metric: 'roster_size' },
-  { key: 'intl', anchor: 'csl-sec-intl', title: '% International', hint: 'median program share', fmt: 'pct', dim: 'origin', bucket: 'international', metric: 'share' },
+  { key: 'roster', anchor: 'csl-sec-roster', title: 'Roster size', hint: 'median', fmt: 'whole', dim: 'overall', bucket: 'ALL', metric: 'roster_size', info: COMPARE_INFO.roster },
+  { key: 'intl', anchor: 'csl-sec-intl', title: '% International', hint: 'median program share', fmt: 'pct', dim: 'origin', bucket: 'international', metric: 'share', info: COMPARE_INFO.intl },
 ]
 const GROUP_CARDS = [
   {
-    key: 'position', anchor: 'csl-sec-position', title: 'Position mix', hint: 'median share · players', fmt: 'pct', showCount: true,
+    key: 'position', anchor: 'csl-sec-position', title: 'Position mix', hint: 'median share · players', fmt: 'pct', showCount: true, info: COMPARE_INFO.position,
     groups: [
       { label: 'Goalkeepers', dim: 'position', bucket: 'GK', metric: 'share' },
       { label: 'Defenders', dim: 'position', bucket: 'D', metric: 'share' },
@@ -32,7 +34,7 @@ const GROUP_CARDS = [
     ],
   },
   {
-    key: 'class', anchor: 'csl-sec-class', title: 'Class mix', hint: 'median share · players', fmt: 'pct', showCount: true,
+    key: 'class', anchor: 'csl-sec-class', title: 'Class mix', hint: 'median share · players', fmt: 'pct', showCount: true, info: COMPARE_INFO.class,
     groups: [
       { label: 'Freshmen', dim: 'class', bucket: 'FR', metric: 'share' },
       { label: 'Sophomores', dim: 'class', bucket: 'SO', metric: 'share' },
@@ -42,7 +44,7 @@ const GROUP_CARDS = [
     ],
   },
   {
-    key: 'retention', anchor: 'csl-sec-retention', title: 'Retention', hint: 'median rate', fmt: 'pct',
+    key: 'retention', anchor: 'csl-sec-retention', title: 'Retention', hint: 'median rate', fmt: 'pct', info: COMPARE_INFO.retention,
     groups: [
       { label: 'Return rate', dim: 'overall', bucket: 'ALL', metric: 'return_rate' },
       { label: 'Newcomer rate', dim: 'overall', bucket: 'ALL', metric: 'newcomer_rate' },
@@ -160,6 +162,7 @@ function ValueCard({ card, segments, get, hovered }) {
       <div className="csl-cmp-panel-h">
         <h3 className="csl-cmp-panel-title">{card.title}</h3>
         <span className="csl-cmp-panel-hint">{card.hint}</span>
+        {card.info && <InfoTip {...card.info} />}
       </div>
       <div className="csl-vbars">
         {segments.map((sg, i) => (
@@ -188,6 +191,7 @@ function GroupCard({ card, segments, get, hovered }) {
       <div className="csl-cmp-panel-h">
         <h3 className="csl-cmp-panel-title">{card.title}</h3>
         <span className="csl-cmp-panel-hint">{card.hint}</span>
+        {card.info && <InfoTip {...card.info} />}
       </div>
       <div className="csl-gcard">
         {card.groups.map(g => (
@@ -275,6 +279,7 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
             <div className="csl-cmp-panel-h">
               <h3 className="csl-cmp-panel-title">Height by position</h3>
               <span className="csl-cmp-panel-hint">Distribution · marker = median · hover a segment to isolate</span>
+              <InfoTip {...COMPARE_INFO.height} />
             </div>
             <RidgeHeight segments={segments} bins={bins} hovered={hovered} />
           </section>

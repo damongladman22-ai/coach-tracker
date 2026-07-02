@@ -2,6 +2,8 @@ import {
   pct, pct1, inchesToFtIn, whole, seasonLabel, genderLabel, divShort, THIN_N,
 } from './data/landscapeFormat'
 import GeographyMap from './GeographyMap'
+import InfoTip from './InfoTip'
+import { PROFILE_INFO } from './data/landscapeInfo'
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -17,7 +19,7 @@ function nLabel(row) {
   return `n = ${commas(row.n)} ${noun}`
 }
 
-function Section({ id, title, hint, row, children }) {
+function Section({ id, title, hint, row, info, children }) {
   const thin = row && row.n != null && row.n < THIN_N
   return (
     <section id={id} className="csl-sec csl-anchor">
@@ -27,6 +29,7 @@ function Section({ id, title, hint, row, children }) {
           {hint && <span className="csl-hint">{hint}</span>}
           {row && <span className="csl-n">{nLabel(row)}</span>}
           {thin && <span className="csl-thin">small sample</span>}
+          {info && <InfoTip {...info} />}
         </div>
       </div>
       <div className="csl-panel">{children}</div>
@@ -262,27 +265,27 @@ export default function ProfileLens({ bench, geo, selection }) {
         </div>
       </div>
 
-      <Section id="csl-sec-size" title="Height by position" hint="Player-level distribution" row={heightRow}>
+      <Section id="csl-sec-size" title="Height by position" hint="Player-level distribution" row={heightRow} info={PROFILE_INFO.size}>
         <HeightByPosition get={get} />
       </Section>
 
-      <Section id="csl-sec-roster" title="Roster size" hint="Median program" row={rosterRow}>
+      <Section id="csl-sec-roster" title="Roster size" hint="Median program" row={rosterRow} info={PROFILE_INFO.roster}>
         <RosterSize get={get} />
       </Section>
 
-      <Section id="csl-sec-position" title="Position composition" hint="Median program share" row={posShareRow}>
+      <Section id="csl-sec-position" title="Position composition" hint="Median program share" row={posShareRow} info={PROFILE_INFO.position}>
         <ShareBars items={positionItems} get={get} />
       </Section>
 
-      <Section id="csl-sec-class" title="Class composition" hint="Median program share" row={classShareRow}>
+      <Section id="csl-sec-class" title="Class composition" hint="Median program share" row={classShareRow} info={PROFILE_INFO.class}>
         <ShareBars items={classItems} get={get} />
       </Section>
 
-      <Section id="csl-sec-geography" title="Recruiting geography" hint="Player-level footprint" row={geoRow}>
+      <Section id="csl-sec-geography" title="Recruiting geography" hint="Player-level footprint" row={geoRow} info={PROFILE_INFO.geography}>
         <GeographyMap geo={geo} segmentLabel={segmentLabel} />
       </Section>
 
-      <Section id="csl-sec-retention" title="Retention" hint="Season-over-season" row={retRow}>
+      <Section id="csl-sec-retention" title="Retention" hint="Season-over-season" row={retRow} info={PROFILE_INFO.retention}>
         <Retention get={get} season={season} />
       </Section>
 
