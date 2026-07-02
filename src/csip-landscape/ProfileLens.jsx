@@ -37,7 +37,11 @@ function Section({ id, title, hint, row, children }) {
 /** Horizontal share bars (0–1 fractions), median fill + p25–p75 IQR overlay. */
 function ShareBars({ items, get, domainMax }) {
   const rows = items
-    .map(it => ({ ...it, row: get(it.dimension, it.bucket, it.metric || 'share') }))
+    .map(it => ({
+      ...it,
+      row: get(it.dimension, it.bucket, it.metric || 'share'),
+      count: get(it.dimension, it.bucket, 'count'),
+    }))
     .filter(r => r.row)
   if (!rows.length) return <p className="csl-empty">No data for this selection.</p>
 
@@ -57,6 +61,7 @@ function ShareBars({ items, get, domainMax }) {
             </div>
             <span className="csl-bar-val">
               <b>{pct(med)}</b>
+              {r.count?.median != null && <span className="csl-bar-count"> · {Math.round(r.count.median)}</span>}
               {lo != null && hi != null && <i className="csl-iqrtext"> {pct(lo)}–{pct(hi)}</i>}
             </span>
           </div>
