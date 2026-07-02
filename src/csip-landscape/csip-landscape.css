@@ -258,3 +258,17 @@
 .csl-tl-lk{display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--ink)}
 .csl-tl-sw{width:12px; height:12px; border-radius:3px; flex:none}
 .csl-tl-lkv{font-weight:400; color:var(--slate); font-family:"Barlow Condensed",sans-serif}
+
+/* Trend stat cards (small multiples) */
+.csl-tcards{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:6px}
+.csl-tcard{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 15px; min-width:0}
+.csl-tcard-lab{font-size:12px; font-weight:700; letter-spacing:.02em}
+.csl-tcard-val{font-family:"Barlow Condensed",sans-serif; font-size:30px; font-weight:700; color:var(--ink); line-height:1.05; margin:7px 0 3px; font-variant-numeric:tabular-nums}
+.csl-tcard-delta{font-size:12px; font-weight:700}
+.csl-tcard-delta--up{color:#0E7C6B}
+.csl-tcard-delta--down{color:#B0506B}
+.csl-tcard-delta--flat{color:var(--slate-2)}
+.csl-tcard-since{font-weight:400; color:var(--slate-2)}
+.csl-spark{width:100%; height:auto; display:block; margin-top:10px; overflow:visible}
+.csl-spark-line{fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round}
+@media (max-width:640px){ .csl-tcards{grid-template-columns:repeat(2,1fr)} }

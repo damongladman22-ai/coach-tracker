@@ -15,7 +15,7 @@ function specFor(family) {
   switch (family) {
     case 'size':
       return {
-        title: 'Height by position', kind: 'multi', dim: 'position', metric: 'height_inches', fmt: 'inches',
+        title: 'Height by position', kind: 'multi', viz: 'cards', dim: 'position', metric: 'height_inches', fmt: 'inches',
         yTitle: 'Median height', q: 'Are rosters getting taller — and where?',
         series: [{ bucket: 'GK', label: 'Goalkeepers' }, { bucket: 'D', label: 'Defenders' }, { bucket: 'M', label: 'Midfielders' }, { bucket: 'F', label: 'Forwards' }],
       }
@@ -50,6 +50,58 @@ function fmtVal(v, fmt) {
   return whole(v)
 }
 
+/** Auto-zoomed mini line for a single series' median path. */
+function Sparkline({ points, color }) {
+  const W = 148, H = 44, pad = 7
+  if (points.length < 2) return <svg viewBox={`0 0 ${W} ${H}`} className="csl-spark" />
+  const vals = points.map(p => p.median)
+  let lo = Math.min(...vals), hi = Math.max(...vals)
+  if (lo === hi) { lo -= 0.5; hi += 0.5 }
+  const ss = points.map(p => p.season)
+  const xmin = Math.min(...ss), xmax = Math.max(...ss)
+  const x = s => pad + (xmax === xmin ? 0 : (s - xmin) / (xmax - xmin)) * (W - 2 * pad)
+  const y = v => pad + (1 - (v - lo) / (hi - lo)) * (H - 2 * pad)
+  const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.season).toFixed(1)},${y(p.median).toFixed(1)}`).join(' ')
+  const last = points[points.length - 1]
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="csl-spark" xmlns="http://www.w3.org/2000/svg">
+      <path d={d} className="csl-spark-line" style={{ stroke: color }} />
+      <circle cx={x(last.season)} cy={y(last.median)} r={3.2} style={{ fill: color }} />
+    </svg>
+  )
+}
+
+function deltaFmt(d) {
+  if (Math.abs(d) < 0.05) return 'no change'
+  return `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}″`
+}
+
+/** Small-multiple stat cards: one per series, big current value + Δ + sparkline. */
+function StatCards({ seriesList, fmt }) {
+  return (
+    <div className="csl-tcards">
+      {seriesList.map((se, i) => {
+        const pts = se.points
+        if (!pts.length) return <div className="csl-tcard" key={i} />
+        const cur = pts[pts.length - 1], first = pts[0]
+        const delta = cur.median - first.median
+        const dir = Math.abs(delta) < 0.05 ? 'flat' : (delta > 0 ? 'up' : 'down')
+        return (
+          <div className="csl-tcard" key={i}>
+            <span className="csl-tcard-lab" style={{ color: se.color }}>{se.label}</span>
+            <div className="csl-tcard-val">{fmtVal(cur.median, fmt)}</div>
+            <div className={`csl-tcard-delta csl-tcard-delta--${dir}`}>
+              {dir === 'up' ? '▲' : dir === 'down' ? '▼' : '–'} {deltaFmt(delta)}
+              <span className="csl-tcard-since"> since {first.season}</span>
+            </div>
+            <Sparkline points={pts} color={se.color} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function TrendLens({ trend, selection }) {
   const { division, gender, family } = selection
   const spec = specFor(family)
@@ -71,6 +123,29 @@ export default function TrendLens({ trend, selection }) {
 
   const hasData = seriesList.some(se => se.points.length > 0)
   if (!hasData) return <p className="csl-empty">No trend data for this selection.</p>
+
+  const head = (
+    <div className="csl-tl-head">
+      <div>
+        <h3 className="csl-tl-title">{spec.title}</h3>
+        <p className="csl-tl-q">{spec.q}</p>
+      </div>
+      <span className="csl-tl-seg">{divShort(division)} {genderLabel(gender)} · 2021–2025</span>
+    </div>
+  )
+
+  if (spec.viz === 'cards') {
+    return (
+      <div className="csl-tlwrap">
+        {head}
+        <StatCards seriesList={seriesList} fmt={spec.fmt} />
+        <p className="csl-note">
+          Median height per position, each season. The number is 2025; the change is measured from that
+          position’s first tracked season. Player-level; conference-level ‘ALL’ (division-wide).
+        </p>
+      </div>
+    )
+  }
 
   // y-domain from plotted values (band lows/highs for single)
   const vals = []
@@ -104,13 +179,7 @@ export default function TrendLens({ trend, selection }) {
 
   return (
     <div className="csl-tlwrap">
-      <div className="csl-tl-head">
-        <div>
-          <h3 className="csl-tl-title">{spec.title}</h3>
-          <p className="csl-tl-q">{spec.q}</p>
-        </div>
-        <span className="csl-tl-seg">{divShort(division)} {genderLabel(gender)} · 2021–2025</span>
-      </div>
+      {head}
 
       <div className="csl-tl-chart">
         <svg viewBox={`0 0 ${W} ${H}`} xmlns="http://www.w3.org/2000/svg" role="img" aria-label={`${spec.title} trend`}>
