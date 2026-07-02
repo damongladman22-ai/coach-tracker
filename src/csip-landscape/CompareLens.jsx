@@ -92,59 +92,63 @@ function RidgeHeight({ segments, bins, hovered }) {
   })))
   if (!isFinite(lo)) return <p className="csl-empty">No height distribution for these segments.</p>
 
-  const W = 680, padL = 124, padR = 128, rowH = 96, rideH = 76, topPad = 12, axisH = 32
-  const H = topPad + HPOS.length * rowH + axisH
-  const x = v => padL + (v - lo) / (hi - lo) * (W - padL - padR)
+  const VBW = 1000, topPad = 8, ridH = 96, VBH = topPad + ridH + 8, baseY = topPad + ridH
+  const x = v => (v - lo) / (hi - lo) * VBW
+  const pctX = v => (v - lo) / (hi - lo) * 100
   const ticks = Array.from({ length: 6 }, (_, i) => Math.round(lo + (i / 5) * (hi - lo)))
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="csl-ridge" xmlns="http://www.w3.org/2000/svg">
-      {ticks.map((t, ti) => (
-        <line key={ti} x1={x(t)} y1={topPad} x2={x(t)} y2={H - axisH} stroke="var(--line)" strokeWidth="0.5" />
-      ))}
-      {HPOS.map((p, ri) => {
-        const baseY = topPad + ri * rowH + rideH
+    <div className="csl-rl">
+      {HPOS.map(p => {
         const order = segments
           .map((s, i) => ({ i, med: medianFromBins(bins.get(i, p.k)) }))
           .filter(o => o.med != null)
           .sort((a, b) => b.med - a.med)
         return (
-          <g key={p.k}>
-            <text x={padL - 14} y={baseY - rideH * 0.42} textAnchor="end" className="csl-ridge-row">{p.label}</text>
-            <line x1={padL} y1={baseY} x2={W - padR} y2={baseY} stroke="var(--line)" strokeWidth="1" />
-            {order.map(o => {
-              const bs = bins.get(o.i, p.k)
-              const peak = Math.max(...bs.map(b => b.count)) || 1
-              const tops = bs.map(b => [x((b.lo + b.hi) / 2), baseY - (b.count / peak) * rideH])
-              const first = tops[0][0], last = tops[tops.length - 1][0]
-              const area = `${smoothPath(tops)} L${last.toFixed(1)},${baseY} L${first.toFixed(1)},${baseY} Z`
-              const mx = x(o.med), my = baseY - rideH
-              return (
-                <g key={o.i} style={{ opacity: dimOf(hovered, o.i), transition: 'opacity .18s' }}>
-                  <path d={area} fill={CMP_COLORS[o.i]} fillOpacity={0.16} stroke={CMP_COLORS[o.i]} strokeWidth={2} strokeLinejoin="round" />
-                  <line x1={mx} y1={baseY} x2={mx} y2={my + 4} stroke={CMP_COLORS[o.i]} strokeWidth={1.5} strokeDasharray="3 3" opacity={0.8} />
-                  <circle cx={mx} cy={my + 4} r={3.5} fill={CMP_COLORS[o.i]} />
-                </g>
-              )
-            })}
-            <text x={W - padR + 10} y={baseY - rideH - 2} className="csl-ridge-read">
-              {segments.map((s, i) => {
-                const m = medianFromBins(bins.get(i, p.k))
-                if (m == null) return null
+          <div className="csl-rl-block" key={p.k}>
+            <div className="csl-rl-head">
+              <span className="csl-rl-pos">{p.label}</span>
+              <span className="csl-rl-meds">
+                {segments.map((s, i) => {
+                  const m = medianFromBins(bins.get(i, p.k))
+                  return m == null ? null : (
+                    <b key={i} style={{ color: CMP_COLORS[i], opacity: dimOf(hovered, i) }}>{inchesToFtIn(m)}</b>
+                  )
+                })}
+              </span>
+            </div>
+            <svg viewBox={`0 0 ${VBW} ${VBH}`} className="csl-rl-svg" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+              {ticks.map((t, ti) => (
+                <line key={ti} x1={x(t)} y1={topPad} x2={x(t)} y2={baseY} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              ))}
+              <line x1="0" y1={baseY} x2={VBW} y2={baseY} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+              {order.map(o => {
+                const bs = bins.get(o.i, p.k)
+                const peak = Math.max(...bs.map(b => b.count)) || 1
+                const tops = bs.map(b => [x((b.lo + b.hi) / 2), topPad + (1 - b.count / peak) * ridH])
+                const first = tops[0][0], last = tops[tops.length - 1][0]
+                const area = `${smoothPath(tops)} L${last.toFixed(1)},${baseY} L${first.toFixed(1)},${baseY} Z`
+                const mx = x(o.med)
                 return (
-                  <tspan key={i} fill={CMP_COLORS[i]} style={{ opacity: dimOf(hovered, i) }}>
-                    {i > 0 ? '  ' : ''}{inchesToFtIn(m)}
-                  </tspan>
+                  <g key={o.i} style={{ opacity: dimOf(hovered, o.i), transition: 'opacity .18s' }}>
+                    <path d={area} fill={CMP_COLORS[o.i]} fillOpacity={0.16} stroke={CMP_COLORS[o.i]} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                    <line x1={mx} y1={baseY} x2={mx} y2={topPad + 2} stroke={CMP_COLORS[o.i]} strokeWidth={1.5} strokeDasharray="3 3" opacity={0.8} vectorEffect="non-scaling-stroke" />
+                  </g>
                 )
               })}
-            </text>
-          </g>
+            </svg>
+          </div>
         )
       })}
-      {ticks.map((t, ti) => (
-        <text key={ti} x={x(t)} y={H - 9} textAnchor="middle" className="csl-ridge-ax">{inchesToFtIn(t)}</text>
-      ))}
-    </svg>
+      <div className="csl-rl-axis">
+        {ticks.map((t, ti) => (
+          <span key={ti} style={{
+            left: `${pctX(t)}%`,
+            transform: ti === 0 ? 'translateX(0)' : ti === ticks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
+          }}>{inchesToFtIn(t)}</span>
+        ))}
+      </div>
+    </div>
   )
 }
 

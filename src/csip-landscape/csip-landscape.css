@@ -23,7 +23,7 @@
 .csl-root *{box-sizing:border-box}
 .csl-wrap{max-width:1120px; margin:0 auto; padding:20px 24px 72px}
 .csl-num{font-family:"Barlow Condensed",sans-serif; font-variant-numeric:tabular-nums; letter-spacing:.3px}
-.csl-eyebrow{font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--slate); margin:0}
+.csl-eyebrow{font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--slate); margin:0}
 
 .csl-back{display:inline-block; margin:4px 0 16px; color:var(--accent-deep); font-weight:600; text-decoration:none; font-size:13px}
 .csl-back:hover{text-decoration:underline}
@@ -77,8 +77,8 @@
   border-top:1px solid var(--line); padding-top:12px}
 .csl-lenstabs{display:inline-flex; gap:4px; background:var(--ink); border-radius:999px; padding:3px}
 .csl-lenstab{appearance:none; border:none; background:none; font:inherit; cursor:pointer; color:rgba(255,255,255,.62);
-  font-size:13px; font-weight:600; padding:7px 16px; border-radius:999px; transition:all .12s}
-.csl-lenstab:hover{color:#fff}
+  font-size:14px; font-weight:600; padding:9px 18px; border-radius:999px; transition:color .12s, background .12s}
+.csl-lenstab:not(.csl-lenstab--on):hover{color:#fff}
 .csl-lenstab--on{background:#fff; color:var(--ink)}
 
 .csl-cb-jump{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
@@ -113,7 +113,7 @@
   background:var(--accent-tint); padding:2px 8px; border-radius:999px}
 .csl-panel{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:20px 22px}
 .csl-empty{color:var(--slate); font-size:14px; margin:0}
-.csl-note{font-size:11.5px; color:var(--slate-2); margin:14px 0 0; line-height:1.5}
+.csl-note{font-size:12.5px; color:var(--slate-2); margin:14px 0 0; line-height:1.5}
 
 /* ---------- share bars ---------- */
 .csl-bars{display:flex; flex-direction:column; gap:11px}
@@ -289,7 +289,7 @@
 .csl-cmp-panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 16px 8px; min-width:0}
 .csl-cmp-panel-h{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px}
 .csl-cmp-panel-title{font-size:15px; font-weight:700; color:var(--ink); margin:0}
-.csl-cmp-panel-hint{font-size:11px; color:var(--slate-2)}
+.csl-cmp-panel-hint{font-size:12.5px; color:var(--slate-2)}
 .csl-cmp-svg{width:100%; height:auto; display:block; overflow:visible}
 .csl-cmp-vlab{font-size:11px; fill:var(--ink); font-weight:700; font-family:"Barlow Condensed",sans-serif; font-variant-numeric:tabular-nums}
 .csl-cmp-glab{font-size:12px; fill:var(--slate); font-weight:600}
@@ -322,3 +322,13 @@
 .csl-gcard-glab{font-size:14px; color:var(--ink); margin-bottom:5px}
 .csl-gcard-grp .csl-hbar-row{margin:4px 0}
 .csl-gcard-grp .csl-hbar-track{height:12px}
+
+
+/* Compare ridgeline v2 — HTML labels + SVG curves (mobile-legible) */
+.csl-rl{display:flex; flex-direction:column; gap:6px}
+.csl-rl-head{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:0 2px 2px}
+.csl-rl-pos{font-size:15px; font-weight:500; color:var(--ink)}
+.csl-rl-meds{display:inline-flex; gap:10px; font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:16px; font-variant-numeric:tabular-nums}
+.csl-rl-svg{width:100%; height:84px; display:block}
+.csl-rl-axis{position:relative; height:20px; margin-top:4px}
+.csl-rl-axis span{position:absolute; font-size:12.5px; color:var(--slate-2); font-variant-numeric:tabular-nums; white-space:nowrap}
