@@ -1,0 +1,55 @@
+/* College Soccer Landscape — self-contained design system.
+   Everything is scoped under .csl-root so it never leaks into the host app
+   and travels with the module to a standalone shell. Shares the CSIP visual
+   language with College Profiles (Barlow Condensed + Inter, same palette),
+   but under its own scope so the two modules stay fully independent. */
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+.csl-root{
+  --accent:#BB0000; --accent-deep:#8C0000; --accent-tint:#FBE9E9;
+  --ink:#15191C; --slate:#5C6B73; --slate-2:#85939B;
+  --line:#E5E8EB; --paper:#F2F3F5; --card:#FFFFFF;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(20,25,28,.04), 0 8px 24px rgba(20,25,28,.06);
+
+  /* charting ramp (division/segment series) — filled in as lenses land */
+  --c1:#1C5A60; --c2:#3C9197; --c3:#86C1C2; --c4:#9FB7BA;
+  --pin:#BB0000;
+
+  background:var(--paper); color:var(--ink); min-height:100vh; overflow-x:clip;
+  font-family:Inter,system-ui,sans-serif; line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+}
+.csl-root *{box-sizing:border-box}
+.csl-wrap{max-width:1120px; margin:0 auto; padding:20px 24px 72px}
+.csl-num{font-family:"Barlow Condensed",sans-serif; font-variant-numeric:tabular-nums; letter-spacing:.3px}
+.csl-eyebrow{font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--slate); margin:0}
+
+.csl-back{display:inline-block; margin:4px 0 16px; color:var(--accent-deep); font-weight:600; text-decoration:none; font-size:13px}
+.csl-back:hover{text-decoration:underline}
+
+/* load / error / empty / scaffold states */
+.csl-state{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px;
+  min-height:240px; color:var(--slate); font-size:15px; background:var(--card); border:1px solid var(--line);
+  border-radius:var(--radius); box-shadow:var(--shadow)}
+.csl-state--err{color:var(--ink)}
+.csl-state-detail{font-size:12px; color:var(--slate-2); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; max-width:640px}
+
+/* scaffold placeholder (Step 1 — replaced as the control bar + lenses ship) */
+.csl-scaffold{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow);
+  padding:34px 32px; position:relative; overflow:hidden}
+.csl-scaffold::before{content:''; position:absolute; left:0; top:0; bottom:0; width:6px; background:var(--accent)}
+.csl-scaffold h1{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:34px; line-height:1.03;
+  margin:6px 0 8px; color:var(--ink); letter-spacing:.3px}
+.csl-scaffold p{font-size:14px; color:var(--slate); margin:0 0 6px; max-width:560px}
+.csl-badge{display:inline-flex; align-items:center; gap:7px; margin-top:16px; font-size:12px; font-weight:700;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--accent-deep); background:var(--accent-tint);
+  border-radius:999px; padding:6px 13px}
+.csl-badge i{width:8px; height:8px; border-radius:50%; background:var(--accent); display:inline-block}
+
+/* ---------- responsive ---------- */
+@media (max-width:680px){
+  .csl-wrap{padding:16px 14px 56px}
+  .csl-scaffold{padding:24px 18px}
+  .csl-scaffold h1{font-size:27px}
+}

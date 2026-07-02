@@ -47,6 +47,10 @@ const OwnerCoachReview = lazy(() => import('./pages/OwnerCoachReview'))
 // Gated inside the host (global kill switch + owner bypass); lazy-loaded.
 const SchoolProfile = lazy(() => import('./pages/SchoolProfile'))
 
+// College Soccer Landscape — portable premium module (sibling to College Profiles),
+// hosted via a thin wrapper page. Gated inside the host (kill switch + owner bypass); lazy-loaded.
+const Landscape = lazy(() => import('./pages/Landscape'))
+
 function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -120,6 +124,9 @@ function App() {
 
             {/* College Profiles (premium module) — gated inside the host page. */}
             <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
+
+            {/* College Soccer Landscape (premium module) — gated inside the host page. */}
+            <Route path="/landscape" element={<Landscape session={session} />} />
           
             {/* Default - Club Dashboard for public, Admin Dashboard if logged in */}
             <Route path="/" element={session ? <AdminDashboard session={session} /> : <ClubDashboard />} />
