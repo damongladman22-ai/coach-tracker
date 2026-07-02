@@ -3,9 +3,11 @@ import './csip-landscape.css'
 import ControlBar from './ControlBar'
 import ProfileLens from './ProfileLens'
 import TrendLens from './TrendLens'
+import CompareLens from './CompareLens'
 import { useLandscapeBenchmarks } from './data/useLandscapeBenchmarks'
 import { useLandscapeGeo } from './data/useLandscapeGeo'
 import { useLandscapeTrend } from './data/useLandscapeTrend'
+import { useLandscapeCompare } from './data/useLandscapeCompare'
 import { FAMILIES } from './data/landscapeFormat'
 
 /**
@@ -32,6 +34,11 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
   const [selection, setSelection] = useState(DEFAULT_SELECTION)
   const set = patch => setSelection(s => ({ ...s, ...patch }))
 
+  const [compareSegments, setCompareSegments] = useState(() => ([
+    { division: DEFAULT_SELECTION.division, gender: DEFAULT_SELECTION.gender, season: DEFAULT_SELECTION.season },
+    { division: 'NCAA D2', gender: DEFAULT_SELECTION.gender, season: DEFAULT_SELECTION.season },
+  ]))
+
   const bench = useLandscapeBenchmarks(client, {
     division: selection.division,
     gender: selection.gender,
@@ -50,6 +57,8 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
     gender: selection.gender,
     conference: 'ALL',
   })
+
+  const compare = useLandscapeCompare(client, compareSegments)
 
   const onFamily = key => {
     set({ family: key })
@@ -78,11 +87,7 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
         )}
 
         {selection.lens === 'compare' && (
-          <div className="csl-soon">
-            <p className="csl-eyebrow">Compare · many segments, side by side</p>
-            <h2 className="csl-h2">Coming next</h2>
-            <p>Pick 2–4 segments and see every metric as small-multiples. Your current selection is kept.</p>
-          </div>
+          <CompareLens compare={compare} segments={compareSegments} setSegments={setCompareSegments} />
         )}
 
         {selection.lens === 'trend' && (

@@ -272,3 +272,27 @@
 .csl-spark{width:100%; height:auto; display:block; margin-top:10px; overflow:visible}
 .csl-spark-line{fill:none; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round}
 @media (max-width:640px){ .csl-tcards{grid-template-columns:repeat(2,1fr)} }
+
+/* ============================ Compare lens ============================ */
+.csl-cmp{position:relative}
+.csl-cmp-builder{display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:16px}
+.csl-cmp-seg{display:inline-flex; align-items:center; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:6px 8px}
+.csl-cmp-dot{width:11px; height:11px; border-radius:50%; flex:none}
+.csl-cmp-sel{font-size:12.5px; font-weight:600; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:7px; padding:4px 6px; font-family:inherit; cursor:pointer}
+.csl-cmp-x{border:none; background:transparent; color:var(--slate-2); font-size:17px; line-height:1; cursor:pointer; padding:0 2px}
+.csl-cmp-x:hover{color:var(--accent)}
+.csl-cmp-add{font-size:12.5px; font-weight:600; color:var(--slate); background:var(--card); border:1px dashed var(--slate-2); border-radius:10px; padding:7px 13px; cursor:pointer}
+.csl-cmp-add:hover{color:var(--ink); border-color:var(--ink)}
+.csl-cmp-legend{display:flex; flex-wrap:wrap; gap:16px; margin-bottom:16px}
+.csl-cmp-lk{display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--ink)}
+.csl-cmp-panels{display:grid; grid-template-columns:repeat(2,1fr); gap:18px}
+.csl-cmp-panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 16px 8px; min-width:0}
+.csl-cmp-panel-h{display:flex; justify-content:space-between; align-items:baseline; gap:10px; margin-bottom:6px}
+.csl-cmp-panel-title{font-size:15px; font-weight:700; color:var(--ink); margin:0}
+.csl-cmp-panel-hint{font-size:11px; color:var(--slate-2)}
+.csl-cmp-svg{width:100%; height:auto; display:block; overflow:visible}
+.csl-cmp-vlab{font-size:11px; fill:var(--ink); font-weight:700; font-family:"Barlow Condensed",sans-serif; font-variant-numeric:tabular-nums}
+.csl-cmp-glab{font-size:12px; fill:var(--slate); font-weight:600}
+.csl-cmp-track{stroke:var(--line); stroke-width:2}
+.csl-cmp-axlab{font-size:10.5px; fill:var(--slate-2); font-variant-numeric:tabular-nums}
+@media (max-width:820px){ .csl-cmp-panels{grid-template-columns:1fr} }
