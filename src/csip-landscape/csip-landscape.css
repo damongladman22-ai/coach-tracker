@@ -237,3 +237,24 @@
   .csl-geomap{grid-template-columns:1fr; gap:18px}
   .csl-gname{width:118px}
 }
+
+/* ============================ Trend lens (time series) ============================ */
+.csl-tlwrap{position:relative}
+.csl-tl-loading{color:var(--slate); font-size:13px; padding:12px 0}
+.csl-tl-head{display:flex; justify-content:space-between; align-items:flex-start; gap:16px; margin-bottom:14px}
+.csl-tl-title{font-size:19px; font-weight:700; color:var(--ink); margin:0}
+.csl-tl-q{font-size:13px; color:var(--slate); margin:3px 0 0}
+.csl-tl-seg{font-size:12px; color:var(--slate-2); white-space:nowrap; padding-top:4px}
+.csl-tl-chart{width:100%}
+.csl-tl-chart svg{width:100%; height:auto; display:block; overflow:visible}
+.csl-tl-grid{stroke:var(--line); stroke-width:1}
+.csl-tl-ylab{font-size:11px; fill:var(--slate-2); font-variant-numeric:tabular-nums}
+.csl-tl-xlab{font-size:12px; fill:var(--slate); font-weight:600}
+.csl-tl-band{opacity:.12}
+.csl-tl-line{fill:none; stroke-width:2.4; stroke-linejoin:round; stroke-linecap:round}
+.csl-tl-dot{stroke:var(--card); stroke-width:1.5}
+.csl-tl-vlab{font-size:11.5px; fill:var(--ink); font-weight:700; font-family:"Barlow Condensed",sans-serif}
+.csl-tl-legend{display:flex; flex-wrap:wrap; gap:14px; margin-top:12px}
+.csl-tl-lk{display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--ink)}
+.csl-tl-sw{width:12px; height:12px; border-radius:3px; flex:none}
+.csl-tl-lkv{font-weight:400; color:var(--slate); font-family:"Barlow Condensed",sans-serif}

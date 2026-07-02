@@ -2,8 +2,10 @@ import { useState } from 'react'
 import './csip-landscape.css'
 import ControlBar from './ControlBar'
 import ProfileLens from './ProfileLens'
+import TrendLens from './TrendLens'
 import { useLandscapeBenchmarks } from './data/useLandscapeBenchmarks'
 import { useLandscapeGeo } from './data/useLandscapeGeo'
+import { useLandscapeTrend } from './data/useLandscapeTrend'
 import { FAMILIES } from './data/landscapeFormat'
 
 /**
@@ -43,6 +45,12 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
     conference: 'ALL',
   })
 
+  const trend = useLandscapeTrend(client, {
+    division: selection.division,
+    gender: selection.gender,
+    conference: 'ALL',
+  })
+
   const onFamily = key => {
     set({ family: key })
     if (selection.lens === 'profile') {
@@ -78,11 +86,7 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
         )}
 
         {selection.lens === 'trend' && (
-          <div className="csl-soon">
-            <p className="csl-eyebrow">Trend · over time</p>
-            <h2 className="csl-h2">Coming next</h2>
-            <p>Track one metric across 2021–2025. Your current selection is kept.</p>
-          </div>
+          <TrendLens trend={trend} selection={selection} />
         )}
       </div>
     </div>

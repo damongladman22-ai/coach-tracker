@@ -67,16 +67,18 @@ export default function ControlBar({ selection, set, onFamily }) {
               getLabel={g => g.label}
             />
           </div>
-          <div className="csl-cb-group">
-            <span className="csl-cb-label">Season</span>
-            <Seg
-              options={SEASONS}
-              value={season}
-              onChange={v => set({ season: v })}
-              getKey={s => s.key}
-              getLabel={s => s.label}
-            />
-          </div>
+          {lens !== 'trend' && (
+            <div className="csl-cb-group">
+              <span className="csl-cb-label">Season</span>
+              <Seg
+                options={SEASONS}
+                value={season}
+                onChange={v => set({ season: v })}
+                getKey={s => s.key}
+                getLabel={s => s.label}
+              />
+            </div>
+          )}
         </div>
 
         <div className="csl-cb-lower">
