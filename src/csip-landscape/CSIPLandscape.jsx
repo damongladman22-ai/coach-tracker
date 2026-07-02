@@ -1,20 +1,51 @@
+import { useState } from 'react'
 import './csip-landscape.css'
+import ControlBar from './ControlBar'
+import ProfileLens from './ProfileLens'
+import { useLandscapeBenchmarks } from './data/useLandscapeBenchmarks'
+import { FAMILIES } from './data/landscapeFormat'
 
 /**
  * CSIPLandscape — the portable module entry point for the College Soccer Landscape.
  *
- * Props (all injected; no PitchSide imports):
- *   client   — Supabase client (reads program_benchmarks / program_benchmark_bins
- *              backdrop + college_rosters for pinned programs)
- *   theme    — optional { accent, accentDeep, accentTint } colorway override
- *   backTo   — href for the back link
- *   backLabel— label for the back link
+ * Props (all injected; no PitchSide imports): client, theme, backTo, backLabel.
  *
- * STEP 1 (scaffold): renders a styled "Module mounted" placeholder so the route,
- * gate, and scoped CSS can be verified live before the control bar and the three
- * lenses (Profile / Compare / Trend) are built out.
+ * Holds the shared selection (division × gender × season × family × lens), runs
+ * the benchmark data hook against it, and renders the active lens. The control
+ * bar is persistent; selection survives lens switches (spec §3).
+ *
+ * v1: Profile lens is live. Compare / Trend render a "coming next" panel within
+ * the same shell so the architecture is in place without dead ends.
  */
+const DEFAULT_SELECTION = {
+  division: 'NCAA D1',
+  gender: 'W',
+  season: 2025,
+  family: 'size',
+  lens: 'profile',
+}
+
 export default function CSIPLandscape({ client, theme, backTo = '/', backLabel = 'Back' }) {
+  const [selection, setSelection] = useState(DEFAULT_SELECTION)
+  const set = patch => setSelection(s => ({ ...s, ...patch }))
+
+  const bench = useLandscapeBenchmarks(client, {
+    division: selection.division,
+    gender: selection.gender,
+    season: selection.season,
+  })
+
+  const onFamily = key => {
+    set({ family: key })
+    if (selection.lens === 'profile') {
+      const f = FAMILIES.find(x => x.key === key)
+      if (f) {
+        const el = typeof document !== 'undefined' && document.getElementById(f.anchor)
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }
+    }
+  }
+
   const styleVars = theme
     ? { '--accent': theme.accent, '--accent-deep': theme.accentDeep, '--accent-tint': theme.accentTint }
     : undefined
@@ -23,21 +54,28 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
     <div className="csl-root" style={styleVars}>
       <div className="csl-wrap">
         <a className="csl-back" href={backTo}>‹ {backLabel}</a>
-        <div className="csl-scaffold">
-          <p className="csl-eyebrow">CSIP · College Soccer Intelligence Platform</p>
-          <h1>College Soccer Landscape</h1>
-          <p>
-            Division- and conference-level intelligence — height distributions by
-            position, roster composition, recruiting geography, roster size, and
-            retention — time-aware across 2021–2025, comparable across segments,
-            with any program pinnable onto the backdrop.
-          </p>
-          <p>
-            Control bar and the three lenses (Profile · Compare · Trend) build out
-            from here.
-          </p>
-          <span className="csl-badge"><i />Module mounted</span>
-        </div>
+
+        <ControlBar selection={selection} set={set} onFamily={onFamily} />
+
+        {selection.lens === 'profile' && (
+          <ProfileLens bench={bench} selection={selection} />
+        )}
+
+        {selection.lens === 'compare' && (
+          <div className="csl-soon">
+            <p className="csl-eyebrow">Compare · many segments, side by side</p>
+            <h2 className="csl-h2">Coming next</h2>
+            <p>Pick 2–4 segments and see every metric as small-multiples. Your current selection is kept.</p>
+          </div>
+        )}
+
+        {selection.lens === 'trend' && (
+          <div className="csl-soon">
+            <p className="csl-eyebrow">Trend · over time</p>
+            <h2 className="csl-h2">Coming next</h2>
+            <p>Track one metric across 2021–2025. Your current selection is kept.</p>
+          </div>
+        )}
       </div>
     </div>
   )
