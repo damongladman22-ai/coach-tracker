@@ -296,3 +296,11 @@
 .csl-cmp-track{stroke:var(--line); stroke-width:2}
 .csl-cmp-axlab{font-size:10.5px; fill:var(--slate-2); font-variant-numeric:tabular-nums}
 @media (max-width:820px){ .csl-cmp-panels{grid-template-columns:1fr} }
+
+/* Compare — height density card */
+.csl-cmp-full{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 16px 10px; margin-bottom:18px}
+.csl-dens-grid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px}
+.csl-dens-grid .csl-cmp-panel{border:0.5px solid var(--line); border-radius:12px; padding:10px 10px 4px}
+.csl-dens-read{display:inline-flex; gap:10px; font-family:"Barlow Condensed",sans-serif; font-size:15px; font-weight:700}
+.csl-cmp-grid{stroke:var(--line); stroke-width:0.5}
+@media (max-width:820px){ .csl-dens-grid{grid-template-columns:1fr} }

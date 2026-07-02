@@ -60,14 +60,21 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
 
   const compare = useLandscapeCompare(client, compareSegments)
 
+  const COMPARE_ANCHOR = {
+    size: 'csl-sec-height', roster: 'csl-sec-roster', position: 'csl-sec-position',
+    class: 'csl-sec-class', geography: 'csl-sec-intl', retention: 'csl-sec-retention',
+  }
+
   const onFamily = key => {
     set({ family: key })
-    if (selection.lens === 'profile') {
-      const f = FAMILIES.find(x => x.key === key)
-      if (f) {
-        const el = typeof document !== 'undefined' && document.getElementById(f.anchor)
-        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
+    const anchor = selection.lens === 'profile'
+      ? (FAMILIES.find(x => x.key === key) || {}).anchor
+      : selection.lens === 'compare'
+        ? COMPARE_ANCHOR[key]
+        : null
+    if (anchor) {
+      const el = typeof document !== 'undefined' && document.getElementById(anchor)
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 
@@ -87,7 +94,7 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
         )}
 
         {selection.lens === 'compare' && (
-          <CompareLens compare={compare} segments={compareSegments} setSegments={setCompareSegments} />
+          <CompareLens client={client} compare={compare} segments={compareSegments} setSegments={setCompareSegments} />
         )}
 
         {selection.lens === 'trend' && (
