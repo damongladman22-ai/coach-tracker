@@ -90,7 +90,7 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
         <ControlBar selection={selection} set={set} onFamily={onFamily} />
 
         {selection.lens === 'profile' && (
-          <ProfileLens bench={bench} geo={geo} selection={selection} />
+          <ProfileLens client={client} bench={bench} geo={geo} selection={selection} />
         )}
 
         {selection.lens === 'compare' && (

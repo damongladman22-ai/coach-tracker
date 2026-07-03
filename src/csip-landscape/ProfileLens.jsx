@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import {
   pct, pct1, inchesToFtIn, whole, seasonLabel, genderLabel, divShort, THIN_N,
 } from './data/landscapeFormat'
 import GeographyMap from './GeographyMap'
 import InfoTip from './InfoTip'
+import PinControl from './PinControl'
+import { useLandscapePin } from './data/useLandscapePin'
 import { PROFILE_INFO } from './data/landscapeInfo'
 
 /* ------------------------------------------------------------------ helpers */
@@ -38,7 +41,7 @@ function Section({ id, title, hint, row, info, children }) {
 }
 
 /** Horizontal share bars (0–1 fractions), median fill + p25–p75 IQR overlay. */
-function ShareBars({ items, get, domainMax }) {
+function ShareBars({ items, get, domainMax, pin }) {
   const rows = items
     .map(it => ({
       ...it,
@@ -56,16 +59,21 @@ function ShareBars({ items, get, domainMax }) {
       {rows.map(r => {
         const med = r.row.median ?? r.row.mean ?? 0
         const lo = r.row.p25, hi = r.row.p75
+        const p = pin && pin[r.bucket]
         return (
           <div className="csl-bar-row" key={r.label}>
             <span className="csl-bar-label">{r.label}</span>
             <div className="csl-bar-track">
               <div className="csl-bar-fill" style={{ width: asPct(med) }} />
+              {p && p.share != null && (
+                <span className="csl-pin-mark" style={{ left: asPct(p.share) }} title={`Pinned: ${pct(p.share)} · ${p.count}`} />
+              )}
             </div>
             <span className="csl-bar-val">
               <b>{pct(med)}</b>
               {r.count?.median != null && <span className="csl-bar-count"> · {Math.round(r.count.median)}</span>}
               {lo != null && hi != null && <i className="csl-iqrtext"> {pct(lo)}–{pct(hi)}</i>}
+              {p && p.share != null && <span className="csl-pin-val"> · pin {pct(p.share)}·{p.count}</span>}
             </span>
           </div>
         )
@@ -75,9 +83,10 @@ function ShareBars({ items, get, domainMax }) {
 }
 
 /** Height-by-position: dot at median + IQR band on a fixed 60–74" axis. */
-function HeightByPosition({ get }) {
+function HeightByPosition({ get, pin }) {
   const AXIS_LO = 60, AXIS_HI = 74, SPAN = AXIS_HI - AXIS_LO
   const posFor = v => `${((v - AXIS_LO) / SPAN) * 100}%`
+  const posClamp = v => `${Math.min(100, Math.max(0, ((v - AXIS_LO) / SPAN) * 100))}%`
   const positions = [
     { bucket: 'GK', label: 'Goalkeepers' },
     { bucket: 'D', label: 'Defenders' },
@@ -104,6 +113,7 @@ function HeightByPosition({ get }) {
       {rows.map(r => {
         const med = r.row.median ?? r.row.mean
         const lo = r.row.p25, hi = r.row.p75
+        const pv = pin ? pin[r.bucket] : null
         return (
           <div className="csl-hbp-row" key={r.bucket}>
             <span className="csl-bar-label">{r.label}</span>
@@ -112,10 +122,14 @@ function HeightByPosition({ get }) {
                 <div className="csl-hbp-iqr" style={{ left: posFor(lo), width: posFor(hi - lo + AXIS_LO) }} />
               )}
               <div className="csl-hbp-dot" style={{ left: posFor(med) }} />
+              {pv != null && (
+                <span className="csl-pin-mark csl-pin-mark--v" style={{ left: posClamp(pv) }} title={`Pinned: ${inchesToFtIn(pv)}`} />
+              )}
             </div>
             <span className="csl-bar-val">
               <b>{inchesToFtIn(med)}</b>
               {lo != null && hi != null && <i className="csl-iqrtext"> {inchesToFtIn(lo)}–{inchesToFtIn(hi)}</i>}
+              {pv != null && <span className="csl-pin-val"> · pin {inchesToFtIn(pv)}</span>}
             </span>
           </div>
         )
@@ -135,7 +149,7 @@ function HeightByPosition({ get }) {
 }
 
 /** Roster-size spread: median + middle-half band on a 0–max axis. */
-function RosterSize({ get }) {
+function RosterSize({ get, pin }) {
   const row = get('overall', 'ALL', 'roster_size')
   if (!row) return <p className="csl-empty">No roster-size data for this selection.</p>
   const med = row.median ?? row.mean
@@ -151,13 +165,17 @@ function RosterSize({ get }) {
           <div className="csl-spread-band" style={{ left: posFor(lo), width: posFor(hi - lo) }} />
         )}
         <div className="csl-spread-dot" style={{ left: posFor(med) }} />
+        {pin != null && (
+          <span className="csl-pin-mark csl-pin-mark--v" style={{ left: posFor(pin) }} title={`Pinned: ${pin}`} />
+        )}
         {ticks.map(t => (
           <span key={t} className="csl-spread-tick" style={{ left: posFor(t) }}>{t}</span>
         ))}
       </div>
       <p className="csl-spread-read">
         Typical program carries <b>{whole(med)}</b> players
-        {lo != null && hi != null && <> — middle-half <b>{whole(lo)}–{whole(hi)}</b></>}.
+        {lo != null && hi != null && <> — middle-half <b>{whole(lo)}–{whole(hi)}</b></>}
+        {pin != null && <> · pinned program <b className="csl-pin-val">{pin}</b></>}.
       </p>
     </div>
   )
@@ -197,9 +215,14 @@ function Retention({ get, season }) {
 
 /* -------------------------------------------------------------------- lens */
 
-export default function ProfileLens({ bench, geo, selection }) {
+export default function ProfileLens({ client, bench, geo, selection }) {
   const { loading, error, get } = bench
   const { division, gender, season } = selection
+
+  const [pinnedId, setPinnedId] = useState(null)
+  const [pinnedName, setPinnedName] = useState(null)
+  const pin = useLandscapePin(client, pinnedId, season)
+  const showPin = pinnedId && pin.hasSeason
 
   if (loading) return <div className="csl-state">Loading benchmarks…</div>
   if (error) {
@@ -244,7 +267,26 @@ export default function ProfileLens({ bench, geo, selection }) {
         <h1 className="csl-lens-title">
           {divShort(division)} {genderLabel(gender)} <span className="csl-lens-season">· {seasonLabel(season)}</span>
         </h1>
+        <PinControl
+          client={client} division={division} gender={gender}
+          pinnedId={pinnedId} pinnedName={pinnedName}
+          onPin={(id, name) => { setPinnedId(id); setPinnedName(name) }}
+          onClear={() => { setPinnedId(null); setPinnedName(null) }}
+        />
       </div>
+
+      {pinnedId && (
+        <div className="csl-pin-banner">
+          <i className="csl-pin-dot" />
+          <b>{pin.school?.school || pinnedName}</b>
+          <span className="csl-pin-banner-sub">
+            {pin.loading ? 'loading roster…'
+              : pin.error ? 'couldn’t load this program'
+              : pin.hasSeason ? `${seasonLabel(season)} · ${pin.roster} players — plotted below in blue`
+              : `no ${seasonLabel(season)} roster on file${pin.seasonsAvailable.length ? ` (has ${pin.seasonsAvailable.join(', ')})` : ''}`}
+          </span>
+        </div>
+      )}
 
       <div className="csl-kpis">
         <div className="csl-kpi">
@@ -266,19 +308,19 @@ export default function ProfileLens({ bench, geo, selection }) {
       </div>
 
       <Section id="csl-sec-size" title="Height by position" hint="Player-level distribution" row={heightRow} info={PROFILE_INFO.size}>
-        <HeightByPosition get={get} />
+        <HeightByPosition get={get} pin={showPin ? pin.heightByPos : null} />
       </Section>
 
       <Section id="csl-sec-roster" title="Roster size" hint="Median program" row={rosterRow} info={PROFILE_INFO.roster}>
-        <RosterSize get={get} />
+        <RosterSize get={get} pin={showPin ? pin.roster : null} />
       </Section>
 
       <Section id="csl-sec-position" title="Position composition" hint="Median program share" row={posShareRow} info={PROFILE_INFO.position}>
-        <ShareBars items={positionItems} get={get} />
+        <ShareBars items={positionItems} get={get} pin={showPin ? pin.posShare : null} />
       </Section>
 
       <Section id="csl-sec-class" title="Class composition" hint="Median program share" row={classShareRow} info={PROFILE_INFO.class}>
-        <ShareBars items={classItems} get={get} />
+        <ShareBars items={classItems} get={get} pin={showPin ? pin.classShare : null} />
       </Section>
 
       <Section id="csl-sec-geography" title="Recruiting geography" hint="Player-level footprint" row={geoRow} info={PROFILE_INFO.geography}>
