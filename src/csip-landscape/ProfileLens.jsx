@@ -357,8 +357,14 @@ export default function ProfileLens({ client, bench, geo, selection }) {
       </Section>
 
       <Section id="csl-sec-geography" title="Recruiting geography" hint="Player-level footprint" row={geoRow} info={PROFILE_INFO.geography}>
-        <GeographyMap geo={geo} segmentLabel={segmentLabel} />
-        {showPin && <PinFootprint geo={pin.geo} intl={pin.intl} name={pin.school?.school || pinnedName} />}
+        <div className={showPin ? 'csl-geosec csl-geosec--pinned' : 'csl-geosec'}>
+          <GeographyMap geo={geo} segmentLabel={segmentLabel} />
+          {showPin && (
+            <div className="csl-geosec-rail">
+              <PinFootprint geo={pin.geo} intl={pin.intl} name={pin.school?.school || pinnedName} />
+            </div>
+          )}
+        </div>
       </Section>
 
       <Section id="csl-sec-retention" title="Retention" hint="Season-over-season" row={retRow} info={PROFILE_INFO.retention}>

@@ -444,3 +444,11 @@
 .csl-pinfp-list b{font-variant-numeric:tabular-nums; color:var(--ink)}
 .csl-muted{color:var(--slate-2)}
 @media (max-width:640px){ .csl-pinfp-cols{grid-template-columns:1fr; gap:10px} }
+
+/* Pinned geography — footprint rail beside the division map (desktop) */
+.csl-geosec-rail{min-width:0}
+@media (min-width:1024px){
+  .csl-geosec--pinned{display:grid; grid-template-columns:minmax(0,1fr) 288px; gap:22px; align-items:start}
+  .csl-geosec--pinned .csl-pinfp{margin-top:0}
+  .csl-geosec--pinned .csl-pinfp-cols{grid-template-columns:1fr; gap:12px}
+}
