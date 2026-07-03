@@ -215,6 +215,38 @@ function Retention({ get, season }) {
 
 /* -------------------------------------------------------------------- lens */
 
+function PinFootprint({ geo, intl, name }) {
+  if (!geo) return null
+  const top = geo.topStates.slice(0, 6)
+  const cty = geo.topCountries.slice(0, 6)
+  const placed = geo.domestic + geo.intl
+  return (
+    <div className="csl-pinfp">
+      <div className="csl-pinfp-h"><i className="csl-pin-dot" /><b>{name}</b> · own footprint</div>
+      <div className="csl-pinfp-split">
+        <span><b className="csl-pin-val">{intl.share != null ? pct(intl.share) : '—'}</b> international</span>
+        <span className="csl-muted">{geo.intl} of {placed} placed players{geo.unknown ? ` · ${geo.unknown} unlisted` : ''}</span>
+      </div>
+      <div className="csl-pinfp-cols">
+        <div>
+          <p className="csl-eyebrow">Top states</p>
+          <ul className="csl-pinfp-list">
+            {top.map(([n, c]) => <li key={n}><span>{n}</span><b>{c}</b></li>)}
+            {!top.length && <li className="csl-muted">None listed</li>}
+          </ul>
+        </div>
+        <div>
+          <p className="csl-eyebrow">International</p>
+          <ul className="csl-pinfp-list">
+            {cty.map(([n, c]) => <li key={n}><span>{n}</span><b>{c}</b></li>)}
+            {!cty.length && <li className="csl-muted">None</li>}
+          </ul>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function ProfileLens({ client, bench, geo, selection }) {
   const { loading, error, get } = bench
   const { division, gender, season } = selection
@@ -300,6 +332,7 @@ export default function ProfileLens({ client, bench, geo, selection }) {
         <div className="csl-kpi">
           <div className="csl-kpi-v csl-num">{pct(intlRow?.median)}</div>
           <div className="csl-kpi-l">International (median)</div>
+          {showPin && pin.intl.share != null && <div className="csl-kpi-pin">pin {pct(pin.intl.share)}</div>}
         </div>
         <div className="csl-kpi">
           <div className="csl-kpi-v csl-num">{pct(frRow?.median)}</div>
@@ -325,6 +358,7 @@ export default function ProfileLens({ client, bench, geo, selection }) {
 
       <Section id="csl-sec-geography" title="Recruiting geography" hint="Player-level footprint" row={geoRow} info={PROFILE_INFO.geography}>
         <GeographyMap geo={geo} segmentLabel={segmentLabel} />
+        {showPin && <PinFootprint geo={pin.geo} intl={pin.intl} name={pin.school?.school || pinnedName} />}
       </Section>
 
       <Section id="csl-sec-retention" title="Retention" hint="Season-over-season" row={retRow} info={PROFILE_INFO.retention}>

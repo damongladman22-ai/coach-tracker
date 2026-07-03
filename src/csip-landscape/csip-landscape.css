@@ -430,3 +430,17 @@
 .csl-pin-mark{position:absolute; top:-4px; bottom:-4px; width:2.5px; background:var(--pin); transform:translateX(-1.25px); z-index:5; border-radius:2px}
 .csl-pin-mark::after{content:''; position:absolute; top:-5px; left:50%; transform:translateX(-50%); width:9px; height:9px; background:var(--pin); border-radius:50%; box-shadow:0 0 0 2px var(--card)}
 .csl-pin-val{color:var(--pin); font-weight:700}
+
+/* Pin overlays — intl KPI + geography footprint */
+.csl-kpi-pin{font-size:12px; font-weight:700; color:var(--pin); margin-top:2px}
+.csl-pinfp{margin-top:16px; border:1px solid rgba(27,95,208,.28); border-radius:12px; padding:12px 14px; background:rgba(27,95,208,.05)}
+.csl-pinfp-h{display:flex; align-items:center; gap:8px; font-size:14px; color:var(--ink); margin-bottom:8px}
+.csl-pinfp-split{display:flex; flex-wrap:wrap; gap:6px 14px; align-items:baseline; margin-bottom:12px; font-size:14px}
+.csl-pinfp-split .csl-pin-val{font-size:18px}
+.csl-pinfp-cols{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+.csl-pinfp-list{list-style:none; margin:0; padding:0}
+.csl-pinfp-list li{display:flex; justify-content:space-between; gap:10px; font-size:13px; padding:3px 0; border-bottom:1px solid var(--line)}
+.csl-pinfp-list li:last-child{border-bottom:none}
+.csl-pinfp-list b{font-variant-numeric:tabular-nums; color:var(--ink)}
+.csl-muted{color:var(--slate-2)}
+@media (max-width:640px){ .csl-pinfp-cols{grid-template-columns:1fr; gap:10px} }

@@ -68,20 +68,29 @@ export function useLandscapePin(client, schoolId, season) {
   const classTotal = CLASSES.reduce((a, c) => a + classCounts[c], 0)
   const classShare = Object.fromEntries(CLASSES.map(c => [c, { count: classCounts[c], share: classTotal ? classCounts[c] / classTotal : null }]))
 
-  let intlCount = 0, domesticCount = 0
+  let intlCount = 0, domesticCount = 0, unknown = 0
+  const states = {}, countries = {}
   for (const r of rows) {
     const country = (r.hometown_country || '').trim()
     const stateName = (r.hometown_state || '').trim()
     const isIntl = !!country && !US_NAMES.has(country)
-    if (isIntl) intlCount++
-    else if (stateName || (country && US_NAMES.has(country))) domesticCount++
+    if (isIntl) { intlCount++; countries[country] = (countries[country] || 0) + 1 }
+    else if (stateName) { domesticCount++; states[stateName] = (states[stateName] || 0) + 1 }
+    else if (country && US_NAMES.has(country)) { domesticCount++ }
+    else { unknown++ }
   }
   const known = intlCount + domesticCount
   const intl = { count: intlCount, known, share: known ? intlCount / known : null }
+  const geo = {
+    states, countries, unknown,
+    domestic: domesticCount, intl: intlCount, total: rows.length,
+    topStates: Object.entries(states).sort((a, b) => b[1] - a[1]),
+    topCountries: Object.entries(countries).sort((a, b) => b[1] - a[1]),
+  }
 
   return {
     loading: state.loading, error: state.error, school: state.school,
     seasonsAvailable, hasSeason, roster: rows.length,
-    heightByPos, posShare, classShare, intl,
+    heightByPos, posShare, classShare, intl, geo,
   }
 }
