@@ -247,6 +247,44 @@ function PinFootprint({ geo, intl, name }) {
   )
 }
 
+function rankTop(dict, n) {
+  return Object.entries(dict || {}).sort((a, b) => b[1] - a[1]).slice(0, n)
+}
+
+/** Compact division-vs-program footprint, self-contained for mobile (both together). */
+function GeoPinCompareMobile({ div, prog, progIntl, name }) {
+  const dDom = Object.values(div.states || {}).reduce((a, b) => a + b, 0)
+  const dIntl = Object.values(div.countries || {}).reduce((a, b) => a + b, 0)
+  const dShare = (dDom + dIntl) ? dIntl / (dDom + dIntl) : null
+
+  const col = (title, share, states, countries, accent) => (
+    <div className={`csl-mc-col${accent ? ' csl-mc-col--pin' : ''}`}>
+      <div className="csl-mc-title">{title}</div>
+      <div className="csl-mc-intl"><b>{share != null ? pct(share) : '—'}</b> international</div>
+      <p className="csl-eyebrow">Top states</p>
+      <ul className="csl-pinfp-list">
+        {rankTop(states, 4).map(([n, c]) => <li key={n}><span>{n}</span><b>{c}</b></li>)}
+        {!Object.keys(states || {}).length && <li className="csl-muted">—</li>}
+      </ul>
+      <p className="csl-eyebrow">International</p>
+      <ul className="csl-pinfp-list">
+        {rankTop(countries, 3).map(([n, c]) => <li key={n}><span>{n}</span><b>{c}</b></li>)}
+        {!Object.keys(countries || {}).length && <li className="csl-muted">—</li>}
+      </ul>
+    </div>
+  )
+
+  return (
+    <div className="csl-geo-mobcmp">
+      <div className="csl-geo-mobcmp-h"><i className="csl-pin-dot" />Division vs <b>{name}</b> — footprint</div>
+      <div className="csl-mc-cols">
+        {col('Division', dShare, div.states, div.countries, false)}
+        {col(name, progIntl.share, prog.states, prog.countries, true)}
+      </div>
+    </div>
+  )
+}
+
 export default function ProfileLens({ client, bench, geo, selection }) {
   const { loading, error, get } = bench
   const { division, gender, season } = selection
@@ -358,6 +396,9 @@ export default function ProfileLens({ client, bench, geo, selection }) {
 
       <Section id="csl-sec-geography" title="Recruiting geography" hint="Player-level footprint" row={geoRow} info={PROFILE_INFO.geography}>
         <div className={showPin ? 'csl-geosec csl-geosec--pinned' : 'csl-geosec'}>
+          {showPin && (
+            <GeoPinCompareMobile div={geo || {}} prog={pin.geo} progIntl={pin.intl} name={pin.school?.school || pinnedName} />
+          )}
           <GeographyMap geo={geo} segmentLabel={segmentLabel} />
           {showPin && (
             <div className="csl-geosec-rail">
