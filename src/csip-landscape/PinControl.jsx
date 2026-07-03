@@ -2,12 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { divShort, genderLabel } from './data/landscapeFormat'
 
 /**
- * PinControl — a self-contained, prop-injected program picker (never imports an
- * app client). Loads the schools for the current division + gender once, filters
- * client-side, and reports the chosen school up. Shows the current pin with a
- * clear button.
+ * PinControl — prop-injected program picker (never imports an app client).
+ * Supports pinning up to `max` programs; shows each as a colored chip with a
+ * clear button, and a search to add more while under the cap.
  */
-export default function PinControl({ client, division, gender, pinnedId, pinnedName, onPin, onClear }) {
+export default function PinControl({ client, division, gender, pins, colors, onAdd, onRemove, max = 3 }) {
   const [schools, setSchools] = useState([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -47,27 +46,34 @@ export default function PinControl({ client, division, gender, pinnedId, pinnedN
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('touchstart', onDoc) }
   }, [open])
 
+  const pinnedIds = new Set(pins.map(p => p.id))
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
-    if (!q) return schools.slice(0, 40)
-    return schools.filter(s => s.school.toLowerCase().includes(q)).slice(0, 40)
-  }, [query, schools])
+    const base = schools.filter(s => !pinnedIds.has(s.id))
+    if (!q) return base.slice(0, 40)
+    return base.filter(s => s.school.toLowerCase().includes(q)).slice(0, 40)
+  }, [query, schools, pins])
+
+  const atMax = pins.length >= max
 
   return (
     <div className="csl-pinctl" ref={ref}>
-      <span className="csl-glabel">Pin a program</span>
-      {pinnedId ? (
-        <span className="csl-pin-chip">
-          <i className="csl-pin-dot" />
-          {pinnedName}
-          <button type="button" className="csl-pin-x" aria-label="Clear pinned program" onClick={onClear}>×</button>
+      <span className="csl-glabel">Pin programs</span>
+
+      {pins.map((p, i) => (
+        <span className="csl-pin-chip" key={p.id} style={{ '--c': colors[i] }}>
+          <i className="csl-pin-dot" style={{ background: colors[i] }} />
+          {p.name}
+          <button type="button" className="csl-pin-x" aria-label={`Unpin ${p.name}`} onClick={() => onRemove(p.id)}>×</button>
         </span>
-      ) : (
+      ))}
+
+      {!atMax && (
         <div className="csl-pin-search">
           <input
             className="csl-pin-input"
             type="text"
-            placeholder={loading ? 'Loading programs…' : `Search ${divShort(division)} ${genderLabel(gender)} programs…`}
+            placeholder={loading ? 'Loading programs…' : pins.length ? 'Add another…' : `Search ${divShort(division)} ${genderLabel(gender)} programs…`}
             value={query}
             disabled={loading}
             onFocus={() => setOpen(true)}
@@ -78,7 +84,7 @@ export default function PinControl({ client, division, gender, pinnedId, pinnedN
             <ul className="csl-pin-menu" role="listbox">
               {matches.map(s => (
                 <li key={s.id}>
-                  <button type="button" className="csl-pin-opt" onClick={() => { onPin(s.id, s.school); setQuery(''); setOpen(false) }}>
+                  <button type="button" className="csl-pin-opt" onClick={() => { onAdd(s.id, s.school); setQuery(''); setOpen(false) }}>
                     <span className="csl-pin-opt-name">{s.school}</span>
                     {(s.city || s.state) && <span className="csl-pin-opt-loc">{[s.city, s.state].filter(Boolean).join(', ')}</span>}
                   </button>

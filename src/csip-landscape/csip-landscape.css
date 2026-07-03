@@ -422,13 +422,13 @@
 .csl-pin-opt-name{font-size:14px; color:var(--ink); font-weight:600}
 .csl-pin-opt-loc{font-size:12px; color:var(--slate-2)}
 .csl-pin-empty{padding:10px; font-size:13px; color:var(--slate-2)}
-.csl-pin-chip{display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:var(--pin); background:rgba(27,95,208,.08); border:1px solid rgba(27,95,208,.28); padding:6px 10px; border-radius:999px}
-.csl-pin-x{appearance:none; border:none; background:none; cursor:pointer; font-size:18px; line-height:1; color:var(--pin); padding:0 2px}
+.csl-pin-chip{display:inline-flex; align-items:center; gap:8px; font-size:14px; font-weight:600; color:var(--c,var(--pin)); background:color-mix(in srgb, var(--c,var(--pin)) 8%, transparent); border:1px solid color-mix(in srgb, var(--c,var(--pin)) 34%, transparent); padding:6px 10px; border-radius:999px}
+.csl-pin-x{appearance:none; border:none; background:none; cursor:pointer; font-size:18px; line-height:1; color:var(--c,var(--pin)); padding:0 2px}
 .csl-pin-dot{width:11px; height:11px; border-radius:3px; background:var(--pin); display:inline-block; flex:none}
 .csl-pin-banner{display:flex; align-items:center; gap:10px; flex-wrap:wrap; background:rgba(27,95,208,.07); border-left:3px solid var(--pin); border-radius:8px; padding:10px 14px; margin-bottom:18px; font-size:14px; color:var(--ink)}
 .csl-pin-banner-sub{color:var(--slate); font-size:13px}
-.csl-pin-mark{position:absolute; top:-4px; bottom:-4px; width:2.5px; background:var(--pin); transform:translateX(-1.25px); z-index:5; border-radius:2px}
-.csl-pin-mark::after{content:''; position:absolute; top:-5px; left:50%; transform:translateX(-50%); width:9px; height:9px; background:var(--pin); border-radius:50%; box-shadow:0 0 0 2px var(--card)}
+.csl-pin-mark{position:absolute; top:-4px; bottom:-4px; width:2.5px; color:var(--pin); background:currentColor; transform:translateX(-1.25px); z-index:5; border-radius:2px}
+.csl-pin-mark::after{content:''; position:absolute; top:-5px; left:50%; transform:translateX(-50%); width:9px; height:9px; background:currentColor; border-radius:50%; box-shadow:0 0 0 2px var(--card)}
 .csl-pin-val{color:var(--pin); font-weight:700}
 
 /* Pin overlays — intl KPI + geography footprint */
@@ -465,3 +465,12 @@
 .csl-mc-col .csl-eyebrow{margin:8px 0 3px}
 @media (min-width:1024px){ .csl-geo-mobcmp{display:none} }
 @media (max-width:1023px){ .csl-geosec-rail{display:none} }
+
+
+/* Multi-pin — banner chips + international-share comparison */
+.csl-pin-bwrap{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:18px}
+.csl-pin-bchip{display:inline-flex; align-items:center; gap:8px; font-size:14px; background:color-mix(in srgb, var(--c,var(--pin)) 6%, transparent); border-left:3px solid var(--c,var(--pin)); border-radius:8px; padding:8px 12px}
+.csl-pin-bchip b{color:var(--ink); font-weight:600}
+.csl-isc{margin-bottom:16px}
+.csl-isc-row{display:flex; align-items:center; gap:12px; margin:8px 0}
+.csl-isc-name{width:160px; flex:none; display:flex; align-items:center; gap:7px; font-size:13px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
