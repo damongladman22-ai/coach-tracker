@@ -312,6 +312,20 @@ function IntlShareCompare({ divGeo, pins }) {
 
 /* -------------------------------------------------------------------- lens */
 
+/** Compact colour key repeated inside each pinned card, so the mapping travels with the data. */
+function PinLegend({ pins }) {
+  if (!pins?.length) return null
+  return (
+    <div className="csl-pinlegend">
+      {pins.map((p, i) => (
+        <span key={i} className="csl-pinleg-item" style={{ color: p.color }}>
+          <i style={{ background: p.color }} />{p.name}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 export default function ProfileLens({ client, bench, geo, selection }) {
   const { loading, error, get } = bench
   const { division, gender, season } = selection
@@ -423,18 +437,22 @@ export default function ProfileLens({ client, bench, geo, selection }) {
       </div>
 
       <Section id="csl-sec-size" title="Height by position" hint="Player-level distribution" row={heightRow} info={PROFILE_INFO.size}>
+        {showPin && <PinLegend pins={active} />}
         <HeightByPosition get={get} pins={showPin ? heightPins : null} />
       </Section>
 
       <Section id="csl-sec-roster" title="Roster size" hint="Median program" row={rosterRow} info={PROFILE_INFO.roster}>
+        {showPin && <PinLegend pins={active} />}
         <RosterSize get={get} pins={showPin ? rosterPins : null} />
       </Section>
 
       <Section id="csl-sec-position" title="Position composition" hint="Median program share" row={posShareRow} info={PROFILE_INFO.position}>
+        {showPin && <PinLegend pins={active} />}
         <ShareBars items={positionItems} get={get} pins={showPin ? posPins : null} />
       </Section>
 
       <Section id="csl-sec-class" title="Class composition" hint="Median program share" row={classShareRow} info={PROFILE_INFO.class}>
+        {showPin && <PinLegend pins={active} />}
         <ShareBars items={classItems} get={get} pins={showPin ? classPins : null} />
       </Section>
 
