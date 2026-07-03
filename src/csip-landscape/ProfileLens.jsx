@@ -50,14 +50,12 @@ function ShareBars({ items, get, domainMax, pins }) {
 
   const dmax = domainMax || Math.max(0.4, ...rows.map(r => r.row.p75 ?? r.row.median ?? 0))
   const asPct = v => `${Math.min(100, Math.max(0, (v / dmax) * 100))}%`
-  const first = pins && pins[0]
 
   return (
     <div className="csl-bars">
       {rows.map(r => {
         const med = r.row.median ?? r.row.mean ?? 0
         const lo = r.row.p25, hi = r.row.p75
-        const f = first && first.shareMap?.[r.bucket]
         return (
           <div className="csl-bar-row" key={r.label}>
             <span className="csl-bar-label">{r.label}</span>
@@ -71,10 +69,17 @@ function ShareBars({ items, get, domainMax, pins }) {
               })}
             </div>
             <span className="csl-bar-val">
-              <b>{pct(med)}</b>
-              {r.count?.median != null && <span className="csl-bar-count"> · {Math.round(r.count.median)}</span>}
-              {lo != null && hi != null && <i className="csl-iqrtext"> {pct(lo)}–{pct(hi)}</i>}
-              {f && f.share != null && <span className="csl-pin-val" style={{ color: first.color }}> · {pct(f.share)}·{f.count}</span>}
+              <span className="csl-bv-med">
+                <b>{pct(med)}</b>
+                {r.count?.median != null && <span className="csl-bar-count"> · {Math.round(r.count.median)}</span>}
+                {lo != null && hi != null && <i className="csl-iqrtext"> {pct(lo)}–{pct(hi)}</i>}
+              </span>
+              {pins && pins.map((pp, idx) => {
+                const c = pp.shareMap?.[r.bucket]
+                return c && c.share != null
+                  ? <span key={idx} className="csl-bv-pin" style={{ color: pp.color }}>{pct(c.share)} · {c.count}</span>
+                  : null
+              })}
             </span>
           </div>
         )
@@ -96,7 +101,6 @@ function HeightByPosition({ get, pins }) {
   const overall = get('overall', 'ALL', 'height_inches')
   if (!rows.length && !overall) return <p className="csl-empty">No height data for this selection.</p>
   const ticks = [60, 64, 68, 72]
-  const first = pins && pins[0]
 
   return (
     <div className="csl-hbp">
@@ -107,7 +111,6 @@ function HeightByPosition({ get, pins }) {
       {rows.map(r => {
         const med = r.row.median ?? r.row.mean
         const lo = r.row.p25, hi = r.row.p75
-        const fv = first ? first.heightByPos?.[r.bucket] : null
         return (
           <div className="csl-hbp-row" key={r.bucket}>
             <span className="csl-bar-label">{r.label}</span>
@@ -124,9 +127,14 @@ function HeightByPosition({ get, pins }) {
               })}
             </div>
             <span className="csl-bar-val">
-              <b>{inchesToFtIn(med)}</b>
-              {lo != null && hi != null && <i className="csl-iqrtext"> {inchesToFtIn(lo)}–{inchesToFtIn(hi)}</i>}
-              {fv != null && <span className="csl-pin-val" style={{ color: first.color }}> · {inchesToFtIn(fv)}</span>}
+              <span className="csl-bv-med">
+                <b>{inchesToFtIn(med)}</b>
+                {lo != null && hi != null && <i className="csl-iqrtext"> {inchesToFtIn(lo)}–{inchesToFtIn(hi)}</i>}
+              </span>
+              {pins && pins.map((pp, idx) => {
+                const v = pp.heightByPos?.[r.bucket]
+                return v != null ? <span key={idx} className="csl-bv-pin" style={{ color: pp.color }}>{inchesToFtIn(v)}</span> : null
+              })}
             </span>
           </div>
         )
@@ -153,7 +161,6 @@ function RosterSize({ get, pins }) {
   const posFor = v => `${Math.min(100, (v / axisMax) * 100)}%`
   const ticks = []
   for (let t = 0; t <= axisMax; t += 10) ticks.push(t)
-  const first = pins && pins[0]
   return (
     <div className="csl-spread">
       <div className="csl-spread-track">
@@ -168,9 +175,17 @@ function RosterSize({ get, pins }) {
       </div>
       <p className="csl-spread-read">
         Typical program carries <b>{whole(med)}</b> players
-        {lo != null && hi != null && <> — middle-half <b>{whole(lo)}–{whole(hi)}</b></>}
-        {first && first.roster != null && <> · pinned <b className="csl-pin-val" style={{ color: first.color }}>{first.roster}</b></>}.
+        {lo != null && hi != null && <> — middle-half <b>{whole(lo)}–{whole(hi)}</b></>}.
       </p>
+      {pins && pins.length > 0 && (
+        <div className="csl-spread-pins">
+          {pins.map((pp, idx) => pp.roster != null && (
+            <span key={idx} className="csl-spread-pin" style={{ color: pp.color }}>
+              <i className="csl-pin-dot" style={{ background: pp.color }} />{pp.name}: <b>{pp.roster}</b>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
