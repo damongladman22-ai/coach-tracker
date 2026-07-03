@@ -284,7 +284,10 @@
 .csl-cmp-add{font-size:12.5px; font-weight:600; color:var(--slate); background:var(--card); border:1px dashed var(--slate-2); border-radius:10px; padding:7px 13px; cursor:pointer}
 .csl-cmp-add:hover{color:var(--ink); border-color:var(--ink)}
 .csl-cmp-legend{display:flex; flex-wrap:wrap; gap:16px; margin-bottom:16px}
-.csl-cmp-lk{display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--ink)}
+.csl-cmp-lk{appearance:none; border:1px solid transparent; background:none; cursor:pointer; font-family:inherit; display:inline-flex; align-items:center; gap:7px; font-size:13px; font-weight:600; color:var(--ink); padding:5px 10px; border-radius:999px; transition:opacity .15s, background .15s, border-color .15s}
+.csl-cmp-lk:hover{background:var(--paper)}
+.csl-cmp-lk--on{background:var(--paper); border-color:var(--line)}
+.csl-cmp-lk:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
 .csl-cmp-panels{display:grid; grid-template-columns:repeat(2,1fr); gap:18px}
 .csl-cmp-panel{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 16px 8px; min-width:0}
 .csl-cmp-panel-h{display:flex; justify-content:flex-start; align-items:baseline; gap:10px; margin-bottom:6px}

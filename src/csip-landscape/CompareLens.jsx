@@ -221,7 +221,9 @@ function GroupCard({ card, segments, get, hovered }) {
 }
 
 export default function CompareLens({ client, compare, segments, setSegments }) {
-  const [hovered, setHovered] = useState(null)
+  const [hover, setHover] = useState(null)
+  const [pinned, setPinned] = useState(null)
+  const hovered = hover != null ? hover : (pinned != null && pinned < segments.length ? pinned : null)
   const bins = useLandscapeBins(client, segments, 'position', 'height_inches')
   const geo = useLandscapeGeoCompare(client, segments)
 
@@ -265,22 +267,25 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
         <>
           <div className="csl-cmp-legend">
             {segments.map((sg, i) => (
-              <span
-                className="csl-cmp-lk" key={i}
+              <button
+                type="button"
+                className={`csl-cmp-lk${pinned === i ? ' csl-cmp-lk--on' : ''}`} key={i}
                 style={{ opacity: dimOf(hovered, i) }}
-                onMouseEnter={() => setHovered(i)}
-                onMouseLeave={() => setHovered(null)}
+                aria-pressed={pinned === i}
+                onMouseEnter={() => setHover(i)}
+                onMouseLeave={() => setHover(null)}
+                onClick={() => setPinned(pinned === i ? null : i)}
               >
                 <i className="csl-cmp-dot" style={{ background: CMP_COLORS[i] }} />
                 {segLabel(sg)}
-              </span>
+              </button>
             ))}
           </div>
 
           <section className="csl-cmp-full" id="csl-sec-height">
             <div className="csl-cmp-panel-h">
               <h3 className="csl-cmp-panel-title">Height by position</h3>
-              <span className="csl-cmp-panel-hint">Distribution · marker = median · hover a segment to isolate</span>
+              <span className="csl-cmp-panel-hint">Distribution · marker = median · hover or tap the legend to isolate</span>
               <InfoTip {...COMPARE_INFO.height} />
             </div>
             <RidgeHeight segments={segments} bins={bins} hovered={hovered} />

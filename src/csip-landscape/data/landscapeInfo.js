@@ -85,7 +85,7 @@ export const COMPARE_INFO = {
   height: {
     title: 'Height by position',
     what: 'The height distribution at each position, laid over your segments together.',
-    read: 'Each curve is a segment’s distribution; the dashed line and the value on the right are that segment’s median. Hover a segment to isolate it.',
+    read: 'Each curve is a segment’s distribution; the dashed line and the value on the right are that segment’s median. Hover or tap the legend to isolate a segment.',
     source: 'Player-level, from the benchmark histograms.',
   },
   roster: {
@@ -117,5 +117,11 @@ export const COMPARE_INFO = {
     what: 'Return and newcomer rates in each segment.',
     read: 'Higher return means more continuity. No 2021, and none for JC.',
     source: 'Median across programs.',
+  },
+  geography: {
+    title: 'Recruiting geography',
+    what: 'Where each segment’s players come from — the recruiting footprint, side by side.',
+    read: 'Darker regions send more players. Toggle U.S. / World. The bars below compare each segment’s international share (of players with a listed hometown).',
+    source: 'Player-level counts, pooled across programs.',
   },
 }
