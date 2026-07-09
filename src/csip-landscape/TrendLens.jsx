@@ -57,6 +57,8 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlay
   const dn = [...points].reverse().map(p => `${x(p.season).toFixed(1)},${y(p.p25 ?? p.median).toFixed(1)}`)
   const band = points.length > 1 ? `M${up.join(' L')} L${dn.join(' L')} Z` : ''
   const line = `M${points.map(p => `${x(p.season).toFixed(1)},${y(p.median).toFixed(1)}`).join(' L')}`
+  const backdrop = overlays.length > 0
+  const bandColor = backdrop ? '#7c8896' : color
 
   return (
     <div className="csl-ed">
@@ -69,17 +71,17 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlay
         </span>
       </div>
       <svg viewBox={`0 0 ${VBW} ${VBH}`} className="csl-ed-svg" xmlns="http://www.w3.org/2000/svg">
-        {band && <path d={band} fill={color} fillOpacity={0.12} />}
-        <path d={line} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        <circle cx={x(last.season)} cy={y(last.median)} r={4} fill={color} />
+        {band && <path d={band} fill={bandColor} fillOpacity={backdrop ? 0.14 : 0.12} />}
+        <path d={line} fill="none" stroke={bandColor} strokeWidth={backdrop ? 2 : 2.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        <circle cx={x(last.season)} cy={y(last.median)} r={backdrop ? 3.5 : 4} fill={bandColor} />
         {overlays.map((o, oi) => {
           if (!o.points || !o.points.length) return null
           const ol = `M${o.points.map(pt => `${x(pt.season).toFixed(1)},${y(pt.value).toFixed(1)}`).join(' L')}`
           const lp = o.points[o.points.length - 1]
           return (
             <g key={oi}>
-              <path d={ol} fill="none" stroke={o.color} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-              <circle cx={x(lp.season)} cy={y(lp.value)} r={3.5} fill={o.color}>
+              <path d={ol} fill="none" stroke={o.color} strokeWidth={2.75} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+              <circle cx={x(lp.season)} cy={y(lp.value)} r={4} fill={o.color}>
                 <title>{`${o.name}: ${fmtVal(lp.value, fmt)} (${lp.season})`}</title>
               </circle>
             </g>
