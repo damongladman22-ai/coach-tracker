@@ -14,12 +14,30 @@ export const PIN_COLORS = ['#1b5fd0', '#e08600', '#7a3aa7']
 const US_NAMES = new Set(['United States', 'USA', 'US', 'U.S.', 'U.S.A.'])
 const POS = ['GK', 'D', 'M', 'F']
 const CLASSES = ['FR', 'SO', 'JR', 'SR', 'GR']
+const SEASONS = [2021, 2022, 2023, 2024, 2025]
 
 function median(arr) {
   if (!arr.length) return null
   const s = [...arr].sort((a, b) => a - b)
   const m = Math.floor(s.length / 2)
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
+}
+
+/** Per-season trajectory for the Trend lens (season-independent of the picker). */
+function computeSeries(rosters) {
+  const roster = SEASONS
+    .map(s => ({ season: s, value: rosters.filter(r => r.roster_season === s).length }))
+    .filter(p => p.value > 0)
+  const heightByPos = {}
+  for (const p of POS) {
+    heightByPos[p] = SEASONS
+      .map(s => {
+        const med = median(rosters.filter(r => r.roster_season === s && r.position === p && r.height_inches != null).map(r => r.height_inches))
+        return med != null ? { season: s, value: med } : null
+      })
+      .filter(Boolean)
+  }
+  return { roster, heightByPos }
 }
 
 function computeProgram(school, rosters, season) {
@@ -99,8 +117,8 @@ export function useLandscapePins(client, ids, season) {
 
   const items = useMemo(() => (ids || []).map(id => {
     const r = raw.byId[id]
-    if (!r) return { loading: raw.loading, hasSeason: false, seasonsAvailable: [], roster: 0, school: null }
-    return computeProgram(r.school, r.rosters, season)
+    if (!r) return { loading: raw.loading, hasSeason: false, seasonsAvailable: [], roster: 0, school: null, series: null }
+    return { ...computeProgram(r.school, r.rosters, season), series: computeSeries(r.rosters) }
   }), [raw, key, season])
 
   return { loading: raw.loading, error: raw.error, items }

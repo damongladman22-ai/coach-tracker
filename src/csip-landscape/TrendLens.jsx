@@ -3,6 +3,8 @@ import { pct, inchesToFtIn, whole, divShort, genderLabel } from './data/landscap
 import InfoTip from './InfoTip'
 import { TREND_INFO } from './data/landscapeInfo'
 import GeographyTrend from './GeographyTrend'
+import PinControl from './PinControl'
+import { useLandscapePins, PIN_COLORS } from './data/useLandscapePins'
 
 /**
  * TrendLens — Lens C. One segment, one metric family, across 2021–2025.
@@ -36,7 +38,7 @@ function seasonPoints(get, dim, bucket, metric) {
     .filter(Boolean)
 }
 
-function EditorialArea({ points, fmt, color = '#2a78d6', label, compact }) {
+function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlays = [] }) {
   if (!points.length) return <div className="csl-ed"><p className="csl-empty">No data.</p></div>
   const last = points[points.length - 1], first = points[0]
   const delta = last.median - first.median
@@ -45,6 +47,7 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact }) {
   const VBW = 600, VBH = compact ? 96 : 150, pad = 10
   let lo = Infinity, hi = -Infinity
   points.forEach(p => { lo = Math.min(lo, p.p25 ?? p.median); hi = Math.max(hi, p.p75 ?? p.median) })
+  overlays.forEach(o => o.points.forEach(pt => { lo = Math.min(lo, pt.value); hi = Math.max(hi, pt.value) }))
   const padY = (hi - lo) * 0.18 || 1
   lo -= padY; hi += padY
   if (fmt === 'pct') lo = Math.max(0, lo)
@@ -69,6 +72,19 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact }) {
         {band && <path d={band} fill={color} fillOpacity={0.12} />}
         <path d={line} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
         <circle cx={x(last.season)} cy={y(last.median)} r={4} fill={color} />
+        {overlays.map((o, oi) => {
+          if (!o.points || !o.points.length) return null
+          const ol = `M${o.points.map(pt => `${x(pt.season).toFixed(1)},${y(pt.value).toFixed(1)}`).join(' L')}`
+          const lp = o.points[o.points.length - 1]
+          return (
+            <g key={oi}>
+              <path d={ol} fill="none" stroke={o.color} strokeWidth={2} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+              <circle cx={x(lp.season)} cy={y(lp.value)} r={3.5} fill={o.color}>
+                <title>{`${o.name}: ${fmtVal(lp.value, fmt)} (${lp.season})`}</title>
+              </circle>
+            </g>
+          )
+        })}
       </svg>
       <div className="csl-ed-axis">
         {SEASONS_ALL.map((s, i) => (
@@ -148,6 +164,31 @@ const HPOS = [
 
 export default function TrendLens({ client, trend, selection }) {
   const { division, gender, family } = selection
+  const [pins, setPins] = useState([]) // [{ id, name }]
+  const pinData = useLandscapePins(client, pins.map(p => p.id), 2025)
+  const active = pins
+    .map((p, i) => ({ id: p.id, name: pinData.items[i]?.school?.school || p.name, color: PIN_COLORS[i], d: pinData.items[i] }))
+    .filter(a => a.d && a.d.series)
+  const addPin = (id, name) => setPins(ps => ps.length >= 3 || ps.some(p => p.id === id) ? ps : [...ps, { id, name }])
+  const removePin = id => setPins(ps => ps.filter(p => p.id !== id))
+
+  const pinBar = (
+    <div className="csl-tl-pinbar">
+      <PinControl
+        client={client} division={division} gender={gender}
+        pins={pins} colors={PIN_COLORS} max={3}
+        onAdd={addPin} onRemove={removePin}
+      />
+      {active.length > 0 && (
+        <div className="csl-pinlegend">
+          {active.map((a, i) => (
+            <span key={i} className="csl-pinleg-item" style={{ color: a.color }}><i style={{ background: a.color }} />{a.name}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+
   if (trend.loading) return <div className="csl-tl-loading">Loading trend…</div>
   if (trend.error) return <p className="csl-empty">Couldn’t load trend data.</p>
   const get = trend.get
@@ -170,14 +211,19 @@ export default function TrendLens({ client, trend, selection }) {
     return (
       <div className="csl-tlwrap">
         {head('Height by position', 'Are rosters getting taller — and where?', TREND_INFO.size)}
+        {pinBar}
         <div className="csl-ed-grid">
           {HPOS.map((p, i) => (
             <div className="csl-cmp-panel" key={p.k}>
-              <EditorialArea points={seasonPoints(get, 'position', p.k, 'height_inches')} fmt="inches" color={SF_COLORS[i]} label={p.label} compact />
+              <EditorialArea
+                points={seasonPoints(get, 'position', p.k, 'height_inches')}
+                fmt="inches" color={SF_COLORS[i]} label={p.label} compact
+                overlays={active.map(a => ({ color: a.color, name: a.name, points: a.d.series.heightByPos[p.k] || [] }))}
+              />
             </div>
           ))}
         </div>
-        <p className="csl-note">Median height per position each season, with the p25–p75 band. Change measured from that position’s first tracked season.</p>
+        <p className="csl-note">Median height per position each season, with the p25–p75 band. Change measured from that position’s first tracked season. Pinned programs plot their own median as a line.</p>
       </div>
     )
   }
@@ -186,8 +232,12 @@ export default function TrendLens({ client, trend, selection }) {
     return (
       <div className="csl-tlwrap">
         {head('Roster size', 'Are rosters getting bigger?', TREND_INFO.roster)}
-        <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'roster_size')} fmt="whole" color="#2a78d6" />
-        <p className="csl-note">Median roster per season, with the p25–p75 band. Conference-level ‘ALL’ (division-wide).</p>
+        {pinBar}
+        <EditorialArea
+          points={seasonPoints(get, 'overall', 'ALL', 'roster_size')} fmt="whole" color="#2a78d6"
+          overlays={active.map(a => ({ color: a.color, name: a.name, points: a.d.series.roster || [] }))}
+        />
+        <p className="csl-note">Median roster per season, with the p25–p75 band. Conference-level ‘ALL’ (division-wide). Pinned programs plot their own roster as a line.</p>
       </div>
     )
   }
