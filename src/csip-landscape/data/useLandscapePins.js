@@ -23,6 +23,41 @@ function median(arr) {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2
 }
 
+function quantile(sorted, q) {
+  if (!sorted.length) return null
+  const pos = (sorted.length - 1) * q
+  const b = Math.floor(pos)
+  const rest = pos - b
+  return sorted[b + 1] !== undefined ? sorted[b] + rest * (sorted[b + 1] - sorted[b]) : sorted[b]
+}
+
+/** Median + IQR height per position for a set of rows (for the Compare ridge whisker). */
+function heightDistByPos(rows) {
+  const out = {}
+  for (const p of POS) {
+    const vals = rows.filter(r => r.position === p && r.height_inches != null).map(r => r.height_inches).sort((a, b) => a - b)
+    out[p] = vals.length ? { median: quantile(vals, 0.5), p25: quantile(vals, 0.25), p75: quantile(vals, 0.75), n: vals.length } : null
+  }
+  return out
+}
+
+/** Latest-season snapshot for the Compare lens: a program as one entrant. */
+function computeSnapshot(school, rosters) {
+  const seasons = [...new Set(rosters.map(r => r.roster_season))].sort((a, b) => a - b)
+  const latest = seasons.length ? seasons[seasons.length - 1] : null
+  if (latest == null) return null
+  const base = computeProgram(school, rosters, latest)
+  const rows = rosters.filter(r => r.roster_season === latest)
+  const { returnRate, newcomerRate } = retentionSeries(rosters)
+  return {
+    ...base,
+    season: latest,
+    heightDist: heightDistByPos(rows),
+    returnRate: returnRate.length ? returnRate[returnRate.length - 1] : null,
+    newcomerRate: newcomerRate.length ? newcomerRate[newcomerRate.length - 1] : null,
+  }
+}
+
 /** Per-season trajectory for the Trend lens (season-independent of the picker). */
 function computeSeries(rosters) {
   const roster = SEASONS
@@ -151,7 +186,7 @@ export function useLandscapePins(client, ids, season) {
   const items = useMemo(() => (ids || []).map(id => {
     const r = raw.byId[id]
     if (!r) return { loading: raw.loading, hasSeason: false, seasonsAvailable: [], roster: 0, school: null, series: null }
-    return { ...computeProgram(r.school, r.rosters, season), series: computeSeries(r.rosters) }
+    return { ...computeProgram(r.school, r.rosters, season), series: computeSeries(r.rosters), snapshot: computeSnapshot(r.school, r.rosters) }
   }), [raw, key, season])
 
   return { loading: raw.loading, error: raw.error, items }

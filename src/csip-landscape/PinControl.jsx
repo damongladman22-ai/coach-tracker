@@ -12,16 +12,17 @@ export default function PinControl({ client, division, gender, pins, colors, onA
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
+  const scoped = !!(division && gender)
 
   useEffect(() => {
-    if (!client || !division || !gender) return
+    if (!client || !scoped) return
     let cancelled = false
     setLoading(true)
     ;(async () => {
       try {
         const { data, error } = await client
           .from('schools')
-          .select('id, school, city, state')
+          .select('id, school, city, state, division, program_gender')
           .eq('division', division)
           .eq('program_gender', gender)
           .neq('is_active', false)
@@ -36,7 +37,34 @@ export default function PinControl({ client, division, gender, pins, colors, onA
       }
     })()
     return () => { cancelled = true }
-  }, [client, division, gender])
+  }, [client, division, gender, scoped])
+
+  useEffect(() => {
+    if (!client || scoped) return
+    const q = query.trim()
+    if (q.length < 2) { setSchools([]); setLoading(false); return }
+    let cancelled = false
+    setLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await client
+          .from('schools')
+          .select('id, school, city, state, division, program_gender')
+          .ilike('school', `%${q}%`)
+          .neq('is_active', false)
+          .order('school')
+          .limit(40)
+        if (cancelled) return
+        if (error) throw error
+        setSchools(data || [])
+      } catch {
+        if (!cancelled) setSchools([])
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }, 200)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [client, scoped, query])
 
   useEffect(() => {
     if (!open) return
@@ -73,9 +101,9 @@ export default function PinControl({ client, division, gender, pins, colors, onA
           <input
             className="csl-pin-input"
             type="text"
-            placeholder={loading ? 'Loading programs…' : pins.length ? 'Add another…' : `Search ${divShort(division)} ${genderLabel(gender)} programs…`}
+            placeholder={loading && scoped ? 'Loading programs…' : pins.length ? 'Add another…' : scoped ? `Search ${divShort(division)} ${genderLabel(gender)} programs…` : 'Search all programs…'}
             value={query}
-            disabled={loading}
+            disabled={scoped && loading}
             onFocus={() => setOpen(true)}
             onChange={e => { setQuery(e.target.value); setOpen(true) }}
             aria-label="Search programs to pin"
@@ -86,13 +114,20 @@ export default function PinControl({ client, division, gender, pins, colors, onA
                 <li key={s.id}>
                   <button type="button" className="csl-pin-opt" onClick={() => { onAdd(s.id, s.school); setQuery(''); setOpen(false) }}>
                     <span className="csl-pin-opt-name">{s.school}</span>
-                    {(s.city || s.state) && <span className="csl-pin-opt-loc">{[s.city, s.state].filter(Boolean).join(', ')}</span>}
+                    <span className="csl-pin-opt-loc">
+                      {!scoped && s.division && `${divShort(s.division)} ${genderLabel(s.program_gender)}`}
+                      {!scoped && (s.city || s.state) && ' · '}
+                      {(s.city || s.state) && [s.city, s.state].filter(Boolean).join(', ')}
+                    </span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          {open && !loading && matches.length === 0 && (
+          {open && !scoped && query.trim().length < 2 && (
+            <ul className="csl-pin-menu"><li className="csl-pin-empty">Type to search programs…</li></ul>
+          )}
+          {open && !loading && matches.length === 0 && (scoped || query.trim().length >= 2) && (
             <ul className="csl-pin-menu"><li className="csl-pin-empty">No matching programs</li></ul>
           )}
         </div>

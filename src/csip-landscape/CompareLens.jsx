@@ -7,6 +7,8 @@ import { useLandscapeGeoCompare } from './data/useLandscapeGeoCompare'
 import GeographyCompare from './GeographyCompare'
 import InfoTip from './InfoTip'
 import { COMPARE_INFO } from './data/landscapeInfo'
+import PinControl from './PinControl'
+import { useLandscapePins, PIN_COLORS } from './data/useLandscapePins'
 
 /**
  * CompareLens — Lens B. Assemble 2–4 arbitrary segments (division × gender ×
@@ -62,6 +64,19 @@ function fmtVal(v, fmt) {
 const segLabel = sg => `${divShort(sg.division)} ${genderLabel(sg.gender)} · ${seasonLabel(sg.season)}`
 const dimOf = (hovered, i) => (hovered != null && hovered !== i ? 0.28 : 1)
 
+const shortName = n => (n || '').replace(/\s+(University|College)$/i, '').slice(0, 20)
+
+/** Map a pinned program's latest-season snapshot onto a card's dim/bucket/metric. */
+function pinValue(snap, dim, bucket, metric) {
+  if (!snap) return { v: null, cnt: null }
+  if (metric === 'roster_size') return { v: snap.roster ?? null, cnt: null }
+  if (dim === 'position') { const o = snap.posShare?.[bucket]; return { v: o?.share ?? null, cnt: o?.count ?? null } }
+  if (dim === 'class') { const o = snap.classShare?.[bucket]; return { v: o?.share ?? null, cnt: o?.count ?? null } }
+  if (metric === 'return_rate') return { v: snap.returnRate?.value ?? null, cnt: null }
+  if (metric === 'newcomer_rate') return { v: snap.newcomerRate?.value ?? null, cnt: null }
+  return { v: null, cnt: null }
+}
+
 function smoothPath(pts) {
   if (pts.length < 2) return pts.length ? `M${pts[0][0]},${pts[0][1]}` : ''
   let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`
@@ -85,7 +100,7 @@ function medianFromBins(bins) {
   return bins[bins.length - 1].hi
 }
 
-function RidgeHeight({ segments, bins, hovered }) {
+function RidgeHeight({ segments, bins, hovered, pins = [] }) {
   if (bins.loading) return <div className="csl-tl-loading">Loading distributions…</div>
   if (bins.error) return <p className="csl-empty">Couldn’t load height distributions.</p>
 
@@ -93,6 +108,10 @@ function RidgeHeight({ segments, bins, hovered }) {
   segments.forEach((s, i) => HPOS.forEach(p => bins.get(i, p.k).forEach(b => {
     if (b.count > 0) { if (b.lo < lo) lo = b.lo; if (b.hi > hi) hi = b.hi }
   })))
+  pins.forEach(pn => HPOS.forEach(p => {
+    const hd = pn.snap?.heightDist?.[p.k]
+    if (hd) { if (hd.p25 < lo) lo = hd.p25; if (hd.p75 > hi) hi = hd.p75 }
+  }))
   if (!isFinite(lo)) return <p className="csl-empty">No height distribution for these segments.</p>
 
   const VBW = 1000, topPad = 8, ridH = 96, VBH = topPad + ridH + 8, baseY = topPad + ridH
@@ -107,6 +126,7 @@ function RidgeHeight({ segments, bins, hovered }) {
           .map((s, i) => ({ i, med: medianFromBins(bins.get(i, p.k)) }))
           .filter(o => o.med != null)
           .sort((a, b) => b.med - a.med)
+        const pinsHere = pins.map(pn => ({ ...pn, hd: pn.snap?.heightDist?.[p.k] })).filter(pn => pn.hd)
         return (
           <div className="csl-rl-block" key={p.k}>
             <div className="csl-rl-head">
@@ -118,6 +138,11 @@ function RidgeHeight({ segments, bins, hovered }) {
                     <b key={i} style={{ color: CMP_COLORS[i], opacity: dimOf(hovered, i) }}>{inchesToFtIn(m)}</b>
                   )
                 })}
+                {pinsHere.map((pn, pi) => (
+                  <span key={`p${pi}`} className="csl-rl-pinmed" style={{ color: pn.color }}>
+                    <i style={{ background: pn.color }} />{inchesToFtIn(pn.hd.median)}
+                  </span>
+                ))}
               </span>
             </div>
             <svg viewBox={`0 0 ${VBW} ${VBH}`} className="csl-rl-svg" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
@@ -140,6 +165,21 @@ function RidgeHeight({ segments, bins, hovered }) {
                 )
               })}
             </svg>
+            {pinsHere.length > 0 && (
+              <div className="csl-rl-pins">
+                {pinsHere.map((pn, pi) => {
+                  const L = pctX(pn.hd.p25), W = pctX(pn.hd.p75) - pctX(pn.hd.p25), M = pctX(pn.hd.median)
+                  return (
+                    <div className="csl-rl-pinlane" key={pi} title={`${pn.name}: ${inchesToFtIn(pn.hd.median)} (IQR ${inchesToFtIn(pn.hd.p25)}–${inchesToFtIn(pn.hd.p75)}, n=${pn.hd.n})`}>
+                      <span className="csl-rl-piqr" style={{ left: `${L}%`, width: `${W}%`, background: pn.color }} />
+                      <span className="csl-rl-pcap" style={{ left: `${pctX(pn.hd.p25)}%`, background: pn.color }} />
+                      <span className="csl-rl-pcap" style={{ left: `${pctX(pn.hd.p75)}%`, background: pn.color }} />
+                      <span className="csl-rl-pmed" style={{ left: `${M}%`, background: pn.color }} />
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
         )
       })}
@@ -155,9 +195,10 @@ function RidgeHeight({ segments, bins, hovered }) {
   )
 }
 
-function ValueCard({ card, segments, get, hovered }) {
+function ValueCard({ card, segments, get, hovered, pins = [] }) {
   const vals = segments.map((s, i) => get(i, card.dim, card.bucket, card.metric)?.median ?? null)
-  const max = Math.max(...vals.filter(v => v != null), 0.0001) * 1.15
+  const pinVals = pins.map(pn => pinValue(pn.snap, card.dim, card.bucket, card.metric).v)
+  const max = Math.max(...[...vals, ...pinVals].filter(v => v != null), 0.0001) * 1.15
   return (
     <section className="csl-cmp-panel" id={card.anchor}>
       <div className="csl-cmp-panel-h">
@@ -175,17 +216,26 @@ function ValueCard({ card, segments, get, hovered }) {
             <span className="csl-hbar-val csl-hbar-val--big">{fmtVal(vals[i], card.fmt)}</span>
           </div>
         ))}
+        {pins.map((pn, pi) => (
+          <div className="csl-hbar-row csl-hbar-row--pin" key={`p${pi}`}>
+            <span className="csl-hbar-key csl-hbar-key--pin" title={`${pn.name} · '${String(pn.snap?.season ?? '').slice(-2)}`}><i className="csl-cmp-dot" style={{ background: pn.color }} /><span className="csl-hbar-keytx">{shortName(pn.name)}</span></span>
+            <span className="csl-hbar-track">
+              <span className="csl-hbar-fill" style={{ width: pinVals[pi] == null ? 0 : `${100 * pinVals[pi] / max}%`, background: pn.color }} />
+            </span>
+            <span className="csl-hbar-val csl-hbar-val--big">{fmtVal(pinVals[pi], card.fmt)}</span>
+          </div>
+        ))}
       </div>
     </section>
   )
 }
 
-function GroupCard({ card, segments, get, hovered }) {
+function GroupCard({ card, segments, get, hovered, pins = [] }) {
   let max = 0
-  card.groups.forEach(g => segments.forEach((s, i) => {
-    const v = get(i, g.dim, g.bucket, g.metric)?.median
-    if (v != null && v > max) max = v
-  }))
+  card.groups.forEach(g => {
+    segments.forEach((s, i) => { const v = get(i, g.dim, g.bucket, g.metric)?.median; if (v != null && v > max) max = v })
+    pins.forEach(pn => { const v = pinValue(pn.snap, g.dim, g.bucket, g.metric).v; if (v != null && v > max) max = v })
+  })
   max = (max || 0.0001) * 1.12
   return (
     <section className="csl-cmp-panel" id={card.anchor}>
@@ -203,12 +253,28 @@ function GroupCard({ card, segments, get, hovered }) {
               const cnt = card.showCount ? get(i, g.dim, g.bucket, 'count')?.median : null
               return (
                 <div className="csl-hbar-row" key={i} style={{ opacity: dimOf(hovered, i) }}>
+                  <span className="csl-hbar-key"><i className="csl-cmp-dot" style={{ background: CMP_COLORS[i] }} />{divShort(sg.division)}</span>
                   <span className="csl-hbar-track">
                     <span className="csl-hbar-fill" style={{ width: v == null ? 0 : `${100 * v / max}%`, background: CMP_COLORS[i] }} />
                   </span>
                   <span className="csl-hbar-val">
                     <span style={{ color: CMP_COLORS[i] }}>{fmtVal(v, card.fmt)}</span>
                     {cnt != null && <span className="csl-hbar-cnt"> · {Math.round(cnt)}</span>}
+                  </span>
+                </div>
+              )
+            })}
+            {pins.map((pn, pi) => {
+              const { v, cnt } = pinValue(pn.snap, g.dim, g.bucket, g.metric)
+              return (
+                <div className="csl-hbar-row csl-hbar-row--pin" key={`p${pi}`}>
+                  <span className="csl-hbar-key csl-hbar-key--pin" title={pn.name}><i className="csl-cmp-dot" style={{ background: pn.color }} /><span className="csl-hbar-keytx">{shortName(pn.name)}</span></span>
+                  <span className="csl-hbar-track">
+                    <span className="csl-hbar-fill" style={{ width: v == null ? 0 : `${100 * v / max}%`, background: pn.color }} />
+                  </span>
+                  <span className="csl-hbar-val">
+                    <span style={{ color: pn.color }}>{fmtVal(v, card.fmt)}</span>
+                    {card.showCount && cnt != null && <span className="csl-hbar-cnt"> · {Math.round(cnt)}</span>}
                   </span>
                 </div>
               )
@@ -223,9 +289,16 @@ function GroupCard({ card, segments, get, hovered }) {
 export default function CompareLens({ client, compare, segments, setSegments }) {
   const [hover, setHover] = useState(null)
   const [pinned, setPinned] = useState(null)
+  const [pins, setPins] = useState([]) // [{ id, name }]
   const hovered = hover != null ? hover : (pinned != null && pinned < segments.length ? pinned : null)
   const bins = useLandscapeBins(client, segments, 'position', 'height_inches')
   const geo = useLandscapeGeoCompare(client, segments)
+  const pinData = useLandscapePins(client, pins.map(p => p.id), 2025)
+  const active = pins
+    .map((p, i) => ({ id: p.id, name: pinData.items[i]?.school?.school || p.name, color: PIN_COLORS[i], snap: pinData.items[i]?.snapshot }))
+    .filter(a => a.snap)
+  const addPin = (id, name) => setPins(ps => ps.length >= 3 || ps.some(p => p.id === id) ? ps : [...ps, { id, name }])
+  const removePin = id => setPins(ps => ps.filter(p => p.id !== id))
 
   const addSegment = () => {
     if (segments.length >= 4) return
@@ -282,18 +355,25 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
             ))}
           </div>
 
+          <div className="csl-cmp-pinbar">
+            <PinControl client={client} pins={pins} colors={PIN_COLORS} max={3} onAdd={addPin} onRemove={removePin} />
+            {active.length > 0 && (
+              <span className="csl-cmp-pinnote">Programs shown at their latest season; height as median · IQR.</span>
+            )}
+          </div>
+
           <section className="csl-cmp-full" id="csl-sec-height">
             <div className="csl-cmp-panel-h">
               <h3 className="csl-cmp-panel-title">Height by position</h3>
               <span className="csl-cmp-panel-hint">Distribution · marker = median · hover or tap the legend to isolate</span>
               <InfoTip {...COMPARE_INFO.height} />
             </div>
-            <RidgeHeight segments={segments} bins={bins} hovered={hovered} />
+            <RidgeHeight segments={segments} bins={bins} hovered={hovered} pins={active} />
           </section>
 
           <div className="csl-cmp-panels">
-            {VALUE_CARDS.map(c => <ValueCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} />)}
-            {GROUP_CARDS.map(c => <GroupCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} />)}
+            {VALUE_CARDS.map(c => <ValueCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} pins={active} />)}
+            {GROUP_CARDS.map(c => <GroupCard key={c.key} card={c} segments={segments} get={compare.get} hovered={hovered} pins={active} />)}
           </div>
 
           <section className="csl-cmp-full" id="csl-sec-intl">
@@ -302,7 +382,7 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
               <span className="csl-cmp-panel-hint">Footprint per segment · player-level</span>
               <InfoTip {...COMPARE_INFO.geography} />
             </div>
-            <GeographyCompare geo={geo} segments={segments} colors={CMP_COLORS} hovered={hovered} />
+            <GeographyCompare geo={geo} segments={segments} colors={CMP_COLORS} hovered={hovered} pins={active} />
           </section>
 
           <p className="csl-note">
