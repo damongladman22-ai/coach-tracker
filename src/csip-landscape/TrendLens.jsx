@@ -261,15 +261,22 @@ export default function TrendLens({ client, trend, selection }) {
     return (
       <div className="csl-tlwrap">
         {head('Retention', 'Is the squad turning over faster?', TREND_INFO.retention)}
+        {pinBar}
         <div className="csl-ed-grid">
           <div className="csl-cmp-panel">
-            <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'return_rate')} fmt="pct" color="#1baf7a" label="Return rate" compact />
+            <EditorialArea
+              points={seasonPoints(get, 'overall', 'ALL', 'return_rate')} fmt="pct" color="#1baf7a" label="Return rate" compact
+              overlays={active.map(a => ({ color: a.color, name: a.name, points: a.d.series.returnRate || [] }))}
+            />
           </div>
           <div className="csl-cmp-panel">
-            <EditorialArea points={seasonPoints(get, 'overall', 'ALL', 'newcomer_rate')} fmt="pct" color="#eda100" label="Newcomer rate" compact />
+            <EditorialArea
+              points={seasonPoints(get, 'overall', 'ALL', 'newcomer_rate')} fmt="pct" color="#eda100" label="Newcomer rate" compact
+              overlays={active.map(a => ({ color: a.color, name: a.name, points: a.d.series.newcomerRate || [] }))}
+            />
           </div>
         </div>
-        <p className="csl-note">Median program rate each season, with the p25–p75 band. Retention needs a prior season, so it starts at 2022.</p>
+        <p className="csl-note">Median program rate each season, with the p25–p75 band. Retention needs a prior season, so it starts at 2022. Pinned programs plot their own return/newcomer rate — same definition as the benchmark (non-graduating players back the next season; class-null excluded).</p>
       </div>
     )
   }

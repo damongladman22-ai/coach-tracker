@@ -37,7 +37,40 @@ function computeSeries(rosters) {
       })
       .filter(Boolean)
   }
-  return { roster, heightByPos }
+  const { returnRate, newcomerRate } = retentionSeries(rosters)
+  return { roster, heightByPos, returnRate, newcomerRate }
+}
+
+/**
+ * Retention per the benchmark definition (CSIP spec §6): for transition Y→Y+1,
+ * stored under Y+1. return_rate = of non-graduating (class ≠ SR/GR) classified
+ * players in Y, the fraction whose player_id appears in Y+1. newcomer_rate =
+ * share of classified Y+1 roster with no player_id on the Y roster. Class-null
+ * players excluded; both seasons must clear a light roster floor.
+ */
+function retentionSeries(rosters) {
+  const CLASS = new Set(['FR', 'SO', 'JR', 'SR', 'GR'])
+  const bySeason = {}
+  for (const r of rosters) { const s = r.roster_season; (bySeason[s] = bySeason[s] || []).push(r) }
+  const returnRate = [], newcomerRate = []
+  for (const Y of [2021, 2022, 2023, 2024]) {
+    const Yp = Y + 1
+    const prev = bySeason[Y], cur = bySeason[Yp]
+    if (!prev || !cur || prev.length < 9 || cur.length < 9) continue
+    const prevIds = new Set(prev.filter(r => r.player_id != null).map(r => r.player_id))
+    const curIds = new Set(cur.filter(r => r.player_id != null).map(r => r.player_id))
+    const eligible = prev.filter(r => CLASS.has(r.class_year) && r.player_id != null && r.class_year !== 'SR' && r.class_year !== 'GR')
+    if (eligible.length) {
+      const returned = eligible.filter(r => curIds.has(r.player_id)).length
+      returnRate.push({ season: Yp, value: returned / eligible.length })
+    }
+    const curClassified = cur.filter(r => CLASS.has(r.class_year) && r.player_id != null)
+    if (curClassified.length) {
+      const newc = curClassified.filter(r => !prevIds.has(r.player_id)).length
+      newcomerRate.push({ season: Yp, value: newc / curClassified.length })
+    }
+  }
+  return { returnRate, newcomerRate }
 }
 
 function computeProgram(school, rosters, season) {
@@ -98,7 +131,7 @@ export function useLandscapePins(client, ids, season) {
           const [schoolRes, rostersRes] = await Promise.all([
             client.from('schools').select('id, school, division, conference, program_gender').eq('id', id).single(),
             client.from('college_rosters')
-              .select('roster_season, position, class_year, height_inches, hometown_state, hometown_country')
+              .select('roster_season, position, class_year, height_inches, hometown_state, hometown_country, player_id')
               .eq('school_id', id).eq('is_active', true),
           ])
           if (schoolRes.error) throw schoolRes.error
