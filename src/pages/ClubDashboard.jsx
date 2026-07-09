@@ -7,7 +7,7 @@ import FeedbackButton from '../components/FeedbackButton'
 import SeasonSelector from '../components/SeasonSelector'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PullToRefresh from '../components/PullToRefresh'
-import { computeRecord } from '../components/ScoreInput'
+import { computeRecord, gameResult } from '../components/ScoreInput'
 import { useFavorite, useFavorites } from '../hooks/useFavorite'
 
 /**
@@ -23,18 +23,22 @@ import { useFavorite, useFavorites } from '../hooks/useFavorite'
  *
  * Sprint 3 additions to the team card:
  *  - Favorite star (top-right) — toggles localStorage-backed favorites
- *  - LIVE TRACKER button when the team has games in progress, with smart
- *    routing: one live game → direct to that game; multiple → event-team page
- *  - Next-game one-liner ("Plays Sat 2pm · vs ABC") when there's an upcoming
- *    game and no live one
+ *  - OPEN TRACKER pill (header, left of the star) when the team has an
+ *    upcoming game attached to an event that isn't past/closed. This mirrors
+ *    the "Open Tracker" button on PublicTeamPage exactly — same show-rule
+ *    (via the shared gameResult helper), same label, same cyan styling, and
+ *    the same /e/:eventSlug/:teamSlug destination — so the home card and the
+ *    team page can never disagree about when a tracker is reachable.
+ *  - Next-game one-liner ("Plays Sat 2pm · vs ABC") whenever there's an
+ *    upcoming game
  *
  * Performance model (do not regress):
- *  - Loads in two phases. Phase 1 fetches teams + events in PARALLEL (both
- *    only depend on the season). As soon as teams return, the page renders —
- *    the team cards appear immediately instead of waiting on everything.
+ *  - Loads in two phases. Phase 1 fetches teams (the page content). As soon as
+ *    teams return, the page renders — the team cards appear immediately instead
+ *    of waiting on everything.
  *  - Phase 2 fetches games (which needs the team IDs from phase 1) and fills
- *    in each card's record / live button / next-game line. While phase 2 is
- *    in flight the cards show a quiet "–" for their numbers, then fill in.
+ *    in each card's record / open-tracker pill / next-game line. While phase 2
+ *    is in flight the cards show a quiet "–" for their numbers, then fill in.
  *  - Phase 2 is non-fatal: if games fail or time out, the cards stay visible
  *    without records rather than blanking the whole page.
  *  - Every query is wrapped in withTimeout(), so a stalled request surfaces a
@@ -92,23 +96,17 @@ export default function ClubDashboard() {
       setError(null)
 
       // -------------------------------------------------------------------
-      // Phase 1 — teams + events, in parallel. Both only need the season.
-      // Teams are the page content, so the moment this resolves we render.
+      // Phase 1 — teams (the page content). The moment this resolves we
+      // render; per-card stats fill in during phase 2.
       // -------------------------------------------------------------------
-      const [teamsRes, eventsRes] = await withTimeout(
-        Promise.all([
-          supabase
-            .from('teams')
-            .select(
-              '*, age_groups(id, name, sort_order), programs(id, name, sort_order)'
-            )
-            .eq('season_id', seasonId)
-            .eq('active', true),
-          supabase
-            .from('events')
-            .select('id, start_date, end_date, slug, event_name')
-            .eq('season_id', seasonId),
-        ]),
+      const teamsRes = await withTimeout(
+        supabase
+          .from('teams')
+          .select(
+            '*, age_groups(id, name, sort_order), programs(id, name, sort_order)'
+          )
+          .eq('season_id', seasonId)
+          .eq('active', true),
         QUERY_TIMEOUT_MS,
         'Loading teams'
       )
@@ -121,8 +119,6 @@ export default function ClubDashboard() {
       setTeams(teamList)
       setLoading(false) // ← cards render now; stats fill in during phase 2
 
-      const eventsData = eventsRes.data || []
-
       if (teamList.length === 0) {
         setTeamStats({})
         setStatsLoading(false)
@@ -131,8 +127,9 @@ export default function ClubDashboard() {
 
       // -------------------------------------------------------------------
       // Phase 2 — games (needs team IDs from phase 1). Drives each card's
-      // record, LIVE button, and next-game line. Non-fatal: a failure here
-      // leaves the cards visible without records rather than blanking the page.
+      // record, Open Tracker pill, and next-game line. Non-fatal: a failure
+      // here leaves the cards visible without records rather than blanking
+      // the page.
       // -------------------------------------------------------------------
       try {
         const teamIds = teamList.map((t) => t.id)
@@ -141,7 +138,7 @@ export default function ClubDashboard() {
           supabase
             .from('games')
             .select(
-              'id, team_id, event_id, is_closed, our_score, opponent_score, game_date, game_time, timezone, opponent, is_home, events(id, slug, event_name)'
+              'id, team_id, event_id, is_closed, result, our_score, opponent_score, game_date, game_time, timezone, opponent, is_home, events(id, slug, event_name)'
             )
             .in('team_id', teamIds),
           QUERY_TIMEOUT_MS,
@@ -153,43 +150,39 @@ export default function ClubDashboard() {
         const today = new Date()
         today.setHours(0, 0, 0, 0)
         const todayStr = isoDate(today)
-        const activeEventIds = new Set(
-          eventsData
-            .filter((ev) => {
-              const start = parseDate(ev.start_date)
-              const end = ev.end_date ? parseDate(ev.end_date) : start
-              const endInc = new Date(end)
-              endInc.setDate(endInc.getDate() + 1)
-              return today >= start && today < endInc
-            })
-            .map((ev) => ev.id)
-        )
 
         // Per-team derived data:
         //   - all games (for record + games count)
-        //   - live games (today's date + event active + not closed)
+        //   - open-tracker game (soonest game attached to an event that is
+        //     not past and not closed) — mirrors PublicTeamPage's GameCard
+        //     "Open Tracker" rule exactly, using the shared gameResult signal
         //   - next game (date >= today, not closed, soonest)
         const teamGames = new Map()
-        const teamLive = new Map()
+        const teamOpen = new Map()
         const teamNext = new Map()
         games.forEach((g) => {
           if (!teamGames.has(g.team_id)) teamGames.set(g.team_id, [])
           teamGames.get(g.team_id).push(g)
 
-          // Live game check
-          if (
-            g.game_date === todayStr &&
-            !g.is_closed &&
-            g.event_id &&
-            activeEventIds.has(g.event_id) &&
-            g.events?.slug
-          ) {
-            if (!teamLive.has(g.team_id)) teamLive.set(g.team_id, [])
-            teamLive.get(g.team_id).push({
-              gameId: g.id,
-              eventSlug: g.events.slug,
-              eventName: g.events.event_name,
-            })
+          // Open-tracker candidate — identical logic to PublicTeamPage:
+          // attached to an event, not closed, and not "past". "Past" is
+          // date-only (no time-of-day), keyed off result/score presence or
+          // an earlier date, so the home card and team page never disagree.
+          const eventSlug = g.events?.slug
+          const hasResult =
+            !!gameResult(g).label ||
+            g.our_score != null ||
+            g.opponent_score != null
+          const isPast =
+            hasResult || g.is_closed ? true : parseDate(g.game_date) < today
+          if (eventSlug && !isPast && !g.is_closed) {
+            const existing = teamOpen.get(g.team_id)
+            if (!existing || g.game_date < existing.gameDate) {
+              teamOpen.set(g.team_id, {
+                gameDate: g.game_date,
+                eventSlug,
+              })
+            }
           }
 
           // Next-game candidate
@@ -213,7 +206,7 @@ export default function ClubDashboard() {
           stats[t.id] = {
             games: list.length,
             record: computeRecord(list),
-            liveGames: teamLive.get(t.id) || [],
+            openTracker: teamOpen.get(t.id) || null,
             nextGame: teamNext.get(t.id) || null,
           }
         })
@@ -550,36 +543,30 @@ function ControlGroup({ label, children }) {
  * Tap zones:
  *   - Card body → /t/:teamSlug (team page)
  *   - Star button → toggle favorite
- *   - LIVE TRACKER button → smart-routed to live game or event-team page
+ *   - OPEN TRACKER pill → /e/:eventSlug/:teamSlug (same destination as the
+ *     team page's Open Tracker button)
  *
  * Using a div+onClick (not <Link>) because we have nested actionable elements
- * (star, LIVE button), and nested <Link>s are invalid HTML.
+ * (star, Open Tracker pill), and nested <Link>s are invalid HTML.
  *
  * `statsLoading` is true while phase 2 (games) is still in flight. Until the
  * team's stats arrive, the mini-stat row shows a quiet "–" instead of a
- * misleading 0-0-0 record, and the live/next-game cues are simply omitted.
+ * misleading 0-0-0 record, and the open-tracker / next-game cues are simply
+ * omitted.
  */
 function TeamCard({ team, stats, statsLoading }) {
   const navigate = useNavigate()
   const [isFavorite, setFavorite] = useFavorite(team.id)
   const pending = statsLoading && !stats
   const r = stats?.record
-  const liveGames = stats?.liveGames || []
-  const hasLive = liveGames.length > 0
+  const openTracker = stats?.openTracker
   const nextGame = stats?.nextGame
 
-  // Smart routing for LIVE button
-  let liveHref = null
-  if (hasLive) {
-    if (liveGames.length === 1) {
-      // Single live game — go straight to it
-      liveHref = `/e/${liveGames[0].eventSlug}/${team.slug}/game/${liveGames[0].gameId}`
-    } else {
-      // Multiple live games (same day, possibly same event) — go to event-team
-      // landing so they can pick. Use the first one's event slug.
-      liveHref = `/e/${liveGames[0].eventSlug}/${team.slug}`
-    }
-  }
+  // Open Tracker destination — the event-team landing, exactly matching the
+  // "Open Tracker" button on PublicTeamPage.
+  const trackerHref = openTracker
+    ? `/e/${openTracker.eventSlug}/${team.slug}`
+    : null
 
   const goToTeam = () => navigate(`/t/${team.slug}`)
   const handleKey = (e) => {
@@ -599,10 +586,25 @@ function TeamCard({ team, stats, statsLoading }) {
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-gray-900 truncate">
+          <div
+            className="font-semibold text-gray-900 break-words"
+            title={team.name}
+          >
             {team.name}
           </div>
         </div>
+        {trackerHref && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              navigate(trackerHref)
+            }}
+            className="flex-shrink-0 text-xs font-medium bg-cyan-100 text-cyan-700 hover:bg-cyan-200 active:bg-cyan-300 px-2.5 py-1 rounded-lg whitespace-nowrap"
+          >
+            Open Tracker
+          </button>
+        )}
         <button
           type="button"
           onClick={(e) => {
@@ -619,8 +621,8 @@ function TeamCard({ team, stats, statsLoading }) {
         </button>
       </div>
 
-      {/* Next game line (only when no live game; otherwise LIVE button covers it) */}
-      {!hasLive && nextGame && (
+      {/* Next game line — shown whenever there's an upcoming game */}
+      {nextGame && (
         <div className="text-xs text-gray-600 mt-2 truncate">
           {formatNextGame(nextGame)}
         </div>
@@ -634,33 +636,6 @@ function TeamCard({ team, stats, statsLoading }) {
         <MiniStat value={pending ? '–' : r?.ties ?? 0} label="D" />
         <MiniStat value={pending ? '–' : formatGD(r?.gd)} label="GD" />
       </div>
-
-      {/* LIVE TRACKER button — replaces the old static badge */}
-      {hasLive && liveHref && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation()
-            navigate(liveHref)
-          }}
-          className="mt-3 w-full bg-gradient-to-r from-emerald-500 to-cyan-600 text-white text-sm font-semibold rounded-lg py-2.5 px-3 flex items-center justify-center gap-2 shadow-sm hover:opacity-95 active:opacity-90"
-        >
-          <span
-            className="h-2 w-2 rounded-full bg-white animate-pulse"
-            aria-hidden="true"
-          />
-          <span>LIVE TRACKER</span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            aria-hidden="true"
-          >
-            <path d="M8 5v14l11-7z" />
-          </svg>
-        </button>
-      )}
     </div>
   )
 }
