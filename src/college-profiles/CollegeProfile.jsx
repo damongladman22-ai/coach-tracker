@@ -1,5 +1,6 @@
 import './college-profile.css'
 import { useProgramProfile } from './data/useProgramProfile'
+import { useSizeBenchmark } from './data/useSizeBenchmark'
 import {
   rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
   projectedOpeningsByYear, newcomers, geographyOverTime, compositionOverTime, sizeProfile,
@@ -44,6 +45,7 @@ const NAV = [
 export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme }) {
   const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw } =
     useProgramProfile(client, schoolId)
+  const sizeBench = useSizeBenchmark(client, school, currentSeason)
 
   const styleVars = theme
     ? { '--accent': theme.accent, '--accent-deep': theme.accentDeep, '--accent-tint': theme.accentTint }
@@ -102,7 +104,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             </div>
             <div id="sec-trends" className="cp-anchor cp-pair">
               <CompositionOverTime data={compData} />
-              <SizeProfile data={sizeData} />
+              <SizeProfile data={sizeData} benchmark={sizeBench} />
             </div>
             <div id="sec-geography" className="cp-anchor">
               <GeographyTrend data={geoTime} />

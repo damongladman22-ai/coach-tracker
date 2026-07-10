@@ -206,11 +206,19 @@ export function compositionOverTime(rosters, seasons) {
 }
 
 
+/** Median of a numeric array (assumes length > 0). */
+function medianOf(nums) {
+  const s = [...nums].sort((a, b) => a - b)
+  const mid = s.length >> 1
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2
+}
+
 /**
- * Size profile: average height by position group for the current roster, with
- * min/max spread and sample size, on a shared height domain. Descriptive only;
- * a division benchmark is a future comparative overlay.
- * Returns { domainMin, domainMax, groups:[{k,label,n,avg,min,max}] }
+ * Size profile: height by position group for the current roster, with the
+ * program median (the headline), average, min/max spread, and sample size, on
+ * a shared height domain. The division/conference benchmark overlay (median +
+ * p25–p75 IQR band) is applied at the card layer from program_benchmarks.
+ * Returns { domainMin, domainMax, groups:[{k,label,n,median,avg,min,max}] }
  */
 export function sizeProfile(currentRoster) {
   const groups = [
@@ -227,9 +235,10 @@ export function sizeProfile(currentRoster) {
     if (!hs.length) return { ...g, n: 0 }
     const n = hs.length
     const avg = hs.reduce((a, b) => a + b, 0) / n
+    const median = medianOf(hs)
     const min = Math.min(...hs), max = Math.max(...hs)
     dMin = Math.min(dMin, min); dMax = Math.max(dMax, max)
-    return { ...g, n, avg, min, max }
+    return { ...g, n, median, avg, min, max }
   })
   if (!isFinite(dMin)) { dMin = 60; dMax = 76 } else { dMin -= 1; dMax += 1 }
   return { domainMin: dMin, domainMax: dMax, groups: out }
