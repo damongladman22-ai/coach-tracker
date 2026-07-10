@@ -1,6 +1,7 @@
 import './college-profile.css'
+import { useState } from 'react'
 import { useProgramProfile } from './data/useProgramProfile'
-import { useSizeBenchmark } from './data/useSizeBenchmark'
+import { useProgramBenchmarks } from './data/useProgramBenchmarks'
 import {
   rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
   projectedOpeningsByYear, newcomers, geographyOverTime, compositionOverTime, sizeProfile,
@@ -45,7 +46,11 @@ const NAV = [
 export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme }) {
   const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw } =
     useProgramProfile(client, schoolId)
-  const sizeBench = useSizeBenchmark(client, school, currentSeason)
+  const benchmarks = useProgramBenchmarks(client, school, currentSeason)
+  const [peer, setPeer] = useState('div')
+  const hasConf = !!benchmarks.conf
+  const activePeer = peer === 'conf' && hasConf ? 'conf' : 'div'
+  const scope = activePeer === 'conf' ? benchmarks.conf : benchmarks.div
 
   const styleVars = theme
     ? { '--accent': theme.accent, '--accent-deep': theme.accentDeep, '--accent-tint': theme.accentTint }
@@ -84,12 +89,29 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               seasons={seasons}
               lastSynced={fmtDate(lastSyncedRaw)}
             />
+            {benchmarks.div && (
+              <div className="cp-peerbar">
+                <span className="cp-peerbar-l">Compared against</span>
+                <div className="cp-peer-toggle" role="tablist" aria-label="Benchmark peer group">
+                  <button type="button" role="tab" aria-selected={activePeer === 'div'}
+                    className={`cp-peer-tgl${activePeer === 'div' ? ' cp-peer-tgl--on' : ''}`}
+                    onClick={() => setPeer('div')}>{benchmarks.divLabel} {benchmarks.genderWord}</button>
+                  {hasConf && (
+                    <button type="button" role="tab" aria-selected={activePeer === 'conf'}
+                      className={`cp-peer-tgl${activePeer === 'conf' ? ' cp-peer-tgl--on' : ''}`}
+                      onClick={() => setPeer('conf')}>{benchmarks.confLabel}</button>
+                  )}
+                </div>
+                <span className="cp-peerbar-note">Every card below compares to this peer group</span>
+              </div>
+            )}
             <KpiStrip
               rosterSize={rosterSize(currentRoster)}
               returnRate={returnStats?.rate}
               projectedOpenings={projectedOpeningsAfterCurrent(currentRoster)}
               newcomers={newcomers(rosters, currentRoster, currentSeason)}
               currentSeason={currentSeason}
+              benchmark={scope}
             />
             <SectionNav items={NAV} />
             <div id="sec-squad" className="cp-anchor">
@@ -104,7 +126,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             </div>
             <div id="sec-trends" className="cp-anchor cp-pair">
               <CompositionOverTime data={compData} />
-              <SizeProfile data={sizeData} benchmark={sizeBench} />
+              <SizeProfile data={sizeData} benchmark={scope} season={currentSeason} />
             </div>
             <div id="sec-geography" className="cp-anchor">
               <GeographyTrend data={geoTime} />

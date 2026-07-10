@@ -56,12 +56,30 @@
 
 /* ---------- kpi strip ---------- */
 .cp-kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:20px}
-.cp-kpi{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 20px}
+.cp-kpi{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 20px;
+  display:flex; flex-direction:column}
 .cp-kpi-v{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:42px; line-height:.95; color:var(--ink); font-variant-numeric:tabular-nums}
 .cp-kpi-v small{font-size:20px; color:var(--slate); font-weight:600}
 .cp-kpi-l{font-size:12.5px; color:var(--slate); margin-top:4px; font-weight:500}
 .cp-kpi-l b{color:var(--ink); font-weight:600}
 .cp-kpi--feature .cp-kpi-v,.cp-kpi--feature .cp-kpi-v small{color:var(--accent)}
+.cp-kpi-bm{margin-top:auto; padding-top:10px; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px;
+  font-size:11px; color:var(--slate); border-top:1px solid var(--line)}
+.cp-kpi-bm b{color:var(--ink); font-weight:700}
+.cp-kpi-bm--thin{opacity:.72; font-style:italic}
+.cp-kpi-delta{font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums}
+.cp-kpi-bn{color:var(--slate-2)}
+
+/* ---------- global peer toggle bar ---------- */
+.cp-peerbar{display:flex; align-items:center; flex-wrap:wrap; gap:8px 12px; margin:0 0 18px;
+  background:var(--card); border:1px solid var(--line); border-radius:999px; box-shadow:var(--shadow); padding:8px 12px 8px 16px}
+.cp-peerbar-l{font-size:11px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--slate)}
+.cp-peer-toggle{display:inline-flex; gap:4px; background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:3px}
+.cp-peer-tgl{font-size:12.5px; font-weight:600; color:var(--slate); background:none; border:none; border-radius:999px;
+  padding:5px 14px; cursor:pointer; font-family:inherit; white-space:nowrap; transition:all .12s}
+.cp-peer-tgl:not(.cp-peer-tgl--on):hover{color:var(--ink)}
+.cp-peer-tgl--on,.cp-peer-tgl--on:hover{background:var(--ink); color:#fff}
+.cp-peerbar-note{font-size:11.5px; color:var(--slate-2); margin-left:auto}
 
 /* ---------- section heading ---------- */
 .cp-sec{margin-top:12px; margin-bottom:22px}
