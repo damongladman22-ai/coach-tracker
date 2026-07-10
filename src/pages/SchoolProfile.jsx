@@ -1,6 +1,8 @@
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useCollegeProfilesAccess } from '../college-profiles/access/useCollegeProfilesAccess'
+import { useCollegeProfileLogos } from '../college-profiles/access/useCollegeProfileLogos'
+import { brandingFor } from '../college-profiles/data/schoolBranding'
 import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import CollegeProfile from '../college-profiles/CollegeProfile'
 import { PageLoader } from '../components/LoadingStates'
@@ -9,8 +11,14 @@ import { PageLoader } from '../components/LoadingStates'
  * SchoolProfile — PitchSide's thin host for the portable College Profiles module.
  *
  * Keeps PitchSide-specific concerns OUT of the module: reads :schoolId, runs the
- * access gate with the app's shared supabase client, and injects the client +
- * back-link target into the module.
+ * access gate with the app's shared supabase client, resolves per-school branding
+ * (colorway + logo), and injects the client + back-link target + theme + logo
+ * into the module.
+ *
+ * Branding: brandingFor(schoolId) returns { theme, logoUrl } for pilot schools
+ * (null otherwise → module defaults). The colorway (theme) always applies; the
+ * logo is gated by the global kill switch (useCollegeProfileLogos) — off → the
+ * module falls back to its monogram crest.
  *
  * Gate outcomes:
  *   checking → loader
@@ -22,6 +30,7 @@ import { PageLoader } from '../components/LoadingStates'
 export default function SchoolProfile() {
   const { schoolId } = useParams()
   const status = useCollegeProfilesAccess(supabase)
+  const logosEnabled = useCollegeProfileLogos(supabase)
 
   if (status === 'checking') {
     return <PageLoader message="Loading…" />
@@ -45,12 +54,17 @@ export default function SchoolProfile() {
     return <ProfileLocked backTo="/directory" backLabel="Back to Coach Directory" />
   }
 
+  const brand = brandingFor(schoolId)
+  const logoUrl = logosEnabled && brand?.logoUrl ? brand.logoUrl : null
+
   return (
     <CollegeProfile
       client={supabase}
       schoolId={schoolId}
       backTo="/directory"
       backLabel="Back to Coach Directory"
+      theme={brand?.theme}
+      logoUrl={logoUrl}
     />
   )
 }

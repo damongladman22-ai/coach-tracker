@@ -20,7 +20,9 @@ import CoachStaff from './cards/CoachStaff'
 
 /**
  * CollegeProfile — the portable module entry point.
- * Props (all injected; no PitchSide imports): client, schoolId, backTo, backLabel, theme
+ * Props (all injected; no PitchSide imports): client, schoolId, backTo, backLabel, theme, logoUrl
+ *   theme   → { accent, accentDeep, accentTint } drives the .cp-root CSS vars
+ *   logoUrl → school mark for the masthead crest; falsy → monogram fallback
  */
 function fmtDate(iso) {
   if (!iso) return null
@@ -43,7 +45,7 @@ const NAV = [
   { id: 'sec-staff', label: 'Staff' },
 ]
 
-export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme }) {
+export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme, logoUrl }) {
   const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw } =
     useProgramProfile(client, schoolId)
   const benchmarks = useProgramBenchmarks(client, school, currentSeason)
@@ -88,6 +90,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               currentRoster={currentRoster}
               seasons={seasons}
               lastSynced={fmtDate(lastSyncedRaw)}
+              logoUrl={logoUrl}
             />
             {benchmarks.div && (
               <div className="cp-peerbar">

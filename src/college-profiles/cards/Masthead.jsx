@@ -1,8 +1,15 @@
+import { useState, useEffect } from 'react'
+
 /**
- * Masthead — program identity header: monogram crest, name, division · conference,
+ * Masthead — program identity header: crest, name, division · conference,
  * location, and at-a-glance tags. Brand-color theming comes from CSS vars on the
- * .cp-root wrapper (a per-school theme map fills these later); the logo slot is a
- * future drop-in. No logo in v1 — monogram + colorway only.
+ * .cp-root wrapper (filled per-school by the host's theme prop).
+ *
+ * Crest: renders the school logo when a logoUrl is supplied (white circle, logo
+ * contained); otherwise a monogram on the accent fill. If the logo fails to load
+ * it falls back to the monogram (onError), and the fallback state resets when the
+ * logoUrl changes (navigating between programs). The host gates logoUrl behind
+ * the logo kill switch, so "logos off" simply means monogram everywhere.
  */
 function deriveMonogram(name) {
   if (!name) return '—'
@@ -11,14 +18,23 @@ function deriveMonogram(name) {
   return (letters || name.slice(0, 2)).toUpperCase()
 }
 
-export default function Masthead({ school, currentRoster, seasons, lastSynced }) {
+export default function Masthead({ school, currentRoster, seasons, lastSynced, logoUrl }) {
   const monogram = deriveMonogram(school?.school)
   const eyebrow = [school?.division, school?.conference].filter(Boolean).join(' · ')
   const loc = [school?.city, school?.state].filter(Boolean).join(', ')
 
+  const [logoOk, setLogoOk] = useState(true)
+  useEffect(() => { setLogoOk(true) }, [logoUrl])
+  const showLogo = !!logoUrl && logoOk
+
   return (
     <header className="cp-masthead">
-      <div className="cp-crest" aria-hidden="true">{monogram}</div>
+      <div className={`cp-crest${showLogo ? ' cp-crest--logo' : ''}`} aria-hidden={showLogo ? undefined : 'true'}>
+        {showLogo
+          ? <img className="cp-crest-img" src={logoUrl} alt={`${school?.school || 'Program'} logo`}
+              onError={() => setLogoOk(false)} />
+          : monogram}
+      </div>
       <div className="cp-mast-body">
         {eyebrow && <p className="cp-mast-eyebrow">{eyebrow}</p>}
         <h1 className="cp-mast-title">{school?.school}</h1>
