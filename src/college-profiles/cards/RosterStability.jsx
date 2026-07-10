@@ -1,15 +1,21 @@
 /**
  * RosterStability — the program's underclassman retention, positive framing.
  * Big return-rate number, per-transition trend bars, and the early-departure
- * note underneath (never the headline).
+ * note underneath (never the headline). When a peer group is selected, the
+ * headline carries a "vs peer median" line (pooled all-seasons, matching the
+ * multi-year-average framing of the headline number).
  */
 function pct1(x) { return x == null ? '—' : (Math.round(x * 1000) / 10).toFixed(1) }
 function pct0(x) { return x == null ? '—' : Math.round(x * 100) }
+function signPts(n) { return n > 0 ? `+${n} pts` : n < 0 ? `\u2212${Math.abs(n)} pts` : '\u00B10 pts' }
 
-export default function RosterStability({ stats }) {
+export default function RosterStability({ stats, benchmark }) {
   const rate = stats?.rate
   const transitions = stats?.transitions || []
   const early = stats?.earlyDeparture
+
+  const b = benchmark ? benchmark.cell('return_rate', 'overall', 'ALL', { pooled: true }) : null
+  const scopeLabel = benchmark ? `${benchmark.label} ${benchmark.genderWord}`.trim() : ''
 
   let depLine = null
   if (early != null && early > 0) {
@@ -29,6 +35,14 @@ export default function RosterStability({ stats }) {
         <span className="cp-stab-pct cp-num">%</span>
       </div>
       <div className="cp-stab-sub">of <b>non-senior players return</b> the following season, averaged across tracked years.</div>
+
+      {b && rate != null && (
+        <div className="cp-stab-bench">
+          vs <b>{scopeLabel}</b> median <b className="cp-num">{pct1(b.median)}%</b>
+          <span className="cp-stab-delta">{signPts(Math.round((rate - b.median) * 100))}</span>
+          <span className="cp-stab-bn">n {b.n.toLocaleString()}</span>
+        </div>
+      )}
 
       {transitions.length > 0 && (
         <div className="cp-trend">

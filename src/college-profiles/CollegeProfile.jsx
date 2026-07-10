@@ -119,17 +119,17 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             </div>
             <div id="sec-openings" className="cp-anchor cp-two">
               <ProjectedOpenings buckets={openingBuckets} />
-              <RosterStability stats={returnStats} />
+              <RosterStability stats={returnStats} benchmark={scope} />
             </div>
             <div id="sec-roster" className="cp-anchor">
               <RosterTable roster={currentRoster} />
             </div>
             <div id="sec-trends" className="cp-anchor cp-pair">
-              <CompositionOverTime data={compData} />
+              <CompositionOverTime data={compData} benchmark={scope} />
               <SizeProfile data={sizeData} benchmark={scope} season={currentSeason} />
             </div>
             <div id="sec-geography" className="cp-anchor">
-              <GeographyTrend data={geoTime} />
+              <GeographyTrend data={geoTime} benchmark={scope} />
             </div>
             <div id="sec-staff" className="cp-anchor cp-sec">
               <CoachStaff coaches={coaches} />

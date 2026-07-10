@@ -28,11 +28,26 @@ function Flag({ code }) {
     : <span className="cp-flag cp-flag--none" aria-hidden="true" />
 }
 
-export default function GeographyTrend({ data }) {
+export default function GeographyTrend({ data, benchmark }) {
   const [mode, setMode] = useState('recruit')   // 'recruit' | 'roster'
   const [sel, setSel] = useState('all')         // 'all' | year
   const [mapMode, setMapMode] = useState('us')  // 'us' | 'world'
   const [tip, setTip] = useState(null)
+
+  // international share vs peer (latest full-roster season, among known-origin players)
+  const benchSeason = data?.seasons?.length ? data.seasons[data.seasons.length - 1] : null
+  const benchScope = benchSeason != null ? data.byRoster[benchSeason] : null
+  const intlCount = benchScope ? Object.values(benchScope.intl).reduce((a, b) => a + b, 0) : 0
+  const domCount = benchScope ? Object.values(benchScope.states).reduce((a, b) => a + b, 0) : 0
+  const knownOrigin = intlCount + domCount
+  const progIntlShare = knownOrigin ? intlCount / knownOrigin : null
+  const bIntl = benchmark ? benchmark.cell('share', 'origin', 'international') : null
+  const geoScopeLabel = benchmark ? `${benchmark.label} ${benchmark.genderWord}`.trim() : ''
+  const geoThin = !!bIntl && bIntl.n < 25
+  const pc0 = x => Math.round(x * 100)
+  const geoAxisMax = Math.min(1, Math.max(0.05, progIntlShare || 0, bIntl ? bIntl.p75 : 0) + 0.05)
+  const gpos = v => `${(100 * v / geoAxisMax).toFixed(1)}%`
+  const gwid = (a, b) => `${(100 * (b - a) / geoAxisMax).toFixed(1)}%`
 
   const scope = sel === 'all'
     ? data.all
@@ -72,6 +87,23 @@ export default function GeographyTrend({ data }) {
       </div>
 
       <div className="cp-panel">
+        {bIntl && progIntlShare != null && (
+          <div className="cp-geo-bench">
+            <span className="cp-geo-bench-lab">International recruits <span className="cp-muted">· {benchSeason} roster</span></span>
+            <div className="cp-cb-track cp-geo-bench-track">
+              <span className="cp-size-bench-band" style={{ left: gpos(bIntl.p25), width: gwid(bIntl.p25, bIntl.p75) }}
+                title={`${geoScopeLabel}: middle 50% ${pc0(bIntl.p25)}–${pc0(bIntl.p75)}%`} />
+              <span className="cp-size-bench-tick" style={{ left: gpos(bIntl.median) }}
+                title={`${geoScopeLabel} median ${pc0(bIntl.median)}% (n ${bIntl.n.toLocaleString()})`} />
+              <span className="cp-cb-dot" style={{ left: gpos(progIntlShare) }} />
+            </div>
+            <span className="cp-geo-bench-read">
+              <b className="cp-num">{pc0(progIntlShare)}%</b> here
+              <span className={`cp-cb-sub${geoThin ? ' cp-cb-sub--thin' : ''}`}>{benchmark.label} median {pc0(bIntl.median)}% · n {bIntl.n.toLocaleString()}</span>
+            </span>
+          </div>
+        )}
+
         <div className="cp-geoctl">
           <div className="cp-fgrp">
             <span className="cp-glabel">View</span>
