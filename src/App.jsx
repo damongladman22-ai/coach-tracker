@@ -43,6 +43,10 @@ const ManageAdmins = lazy(() => import('./pages/ManageAdmins'))
 const Feedback = lazy(() => import('./pages/Feedback'))
 const OwnerCoachReview = lazy(() => import('./pages/OwnerCoachReview'))
 
+// CsipGate — shared passcode fence wrapping all CSIP routes (owner bypasses).
+// Eager (small) so it can wrap the lazy CSIP pages as a layout route.
+import CsipGate from './components/CsipGate'
+
 // College Profiles — portable premium module, hosted via a thin wrapper page.
 // Gated inside the host (global kill switch + owner bypass); lazy-loaded.
 const SchoolProfile = lazy(() => import('./pages/SchoolProfile'))
@@ -122,11 +126,13 @@ function App() {
             <Route path="/e/:eventSlug/:teamSlug/summary" element={<ParentSummary />} />
             <Route path="/e/:eventSlug" element={<EventLanding />} />
 
-            {/* College Profiles (premium module) — gated inside the host page. */}
-            <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
-
-            {/* College Soccer Landscape (premium module) — gated inside the host page. */}
-            <Route path="/landscape" element={<Landscape session={session} />} />
+            {/* CSIP surfaces (College Profiles + Landscape) — wrapped in one
+                shared passcode fence (CsipGate); the platform owner bypasses it.
+                Each host page still runs its own kill-switch gate inside. */}
+            <Route element={<CsipGate session={session} />}>
+              <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
+              <Route path="/landscape" element={<Landscape session={session} />} />
+            </Route>
           
             {/* Default - Club Dashboard for public, Admin Dashboard if logged in */}
             <Route path="/" element={session ? <AdminDashboard session={session} /> : <ClubDashboard />} />
