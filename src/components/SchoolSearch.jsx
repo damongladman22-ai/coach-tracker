@@ -10,22 +10,32 @@ import { Spinner } from './LoadingStates';
  * - Debounced input (150ms delay)
  * - Fuzzy matching (handles typos)
  * - Mobile-optimized with large touch targets
+ * - Optional gender scoping: pass programGender ('M'/'W') to restrict the
+ *   pool to one side. Legacy null-program_gender rows count as women's ('W').
+ *   Omit (or null) to search all active schools.
  */
-export function SchoolSearch({ selectedSchool, onSelect }) {
+export function SchoolSearch({ selectedSchool, onSelect, programGender = null }) {
   const [query, setQuery] = useState('');
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(true);
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const inputRef = useRef(null);
 
-  // Load all schools once on mount (client-side caching).
+  // Load all schools when the gender scope resolves (client-side caching).
   // Filters out inactive schools — this component is the picker for
   // live coach attendance entry (admin Attendance Matrix and similar
   // flows), where you wouldn't be tagging coaches against a defunct
   // women's soccer program. The admin Schools page has its own list
   // for managing inactive status; this picker is for active use only.
+  // When programGender is 'M'/'W', the pool is scoped to that side (legacy
+  // null-program_gender rows are the original women's-only seed, so they
+  // count as 'W'); when null, all active schools load. Re-runs if the scope
+  // changes (the caller's team gender may resolve after first render).
   useEffect(() => {
+    let cancelled = false;
+
     async function loadSchools() {
+      setLoading(true);
       try {
         // Fetch all schools in batches (Supabase default max is 1000)
         let allSchools = [];
@@ -33,10 +43,18 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
         const batchSize = 1000;
         
         while (true) {
-          const { data, error } = await supabase
+          let query = supabase
             .from('schools')
             .select('id, school, city, state, division, conference')
-            .neq('is_active', false)
+            .neq('is_active', false);
+
+          if (programGender === 'W') {
+            query = query.or('program_gender.eq.W,program_gender.is.null');
+          } else if (programGender === 'M') {
+            query = query.eq('program_gender', 'M');
+          }
+
+          const { data, error } = await query
             .order('school')
             .range(from, from + batchSize - 1);
           
@@ -49,16 +67,17 @@ export function SchoolSearch({ selectedSchool, onSelect }) {
           from += batchSize;
         }
         
-        setSchools(allSchools);
+        if (!cancelled) setSchools(allSchools);
       } catch (err) {
         console.error('Error loading schools:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
 
     loadSchools();
-  }, []);
+    return () => { cancelled = true; };
+  }, [programGender]);
 
   // Debounce the search query
   useEffect(() => {

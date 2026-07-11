@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import FeedbackButton from '../components/FeedbackButton'
+import GenderBadge from '../components/GenderBadge'
+import { teamGenderToProgramGender, programGenderLabel } from '../lib/lookups'
 
 export default function GameAttendance() {
   const { eventSlug, teamSlug, gameId } = useParams()
@@ -20,6 +22,15 @@ export default function GameAttendance() {
   const [newCoach, setNewCoach] = useState({ first_name: '', last_name: '' })
   const [saving, setSaving] = useState(false)
 
+  // The game's team gender ('Boys'/'Girls') maps to schools.program_gender
+  // ('M'/'W'). This scopes the college search so a girls game only surfaces
+  // women's programs (and vice versa). null when team gender is unknown, in
+  // which case the search falls back to showing all active schools.
+  const programGender = useMemo(
+    () => teamGenderToProgramGender(game?.teams?.gender),
+    [game]
+  )
+
   useEffect(() => {
     fetchGameData()
   }, [gameId])
@@ -29,7 +40,7 @@ export default function GameAttendance() {
     const [gameResult, attendanceResult, settingResult] = await Promise.all([
       supabase
         .from('games')
-        .select('*')
+        .select('*, teams(gender)')
         .eq('id', gameId)
         .single(),
       supabase
@@ -86,6 +97,11 @@ export default function GameAttendance() {
   // Filters to active schools only — parents/players logging coach
   // attendance at a live game shouldn't see programs that no longer
   // exist. (Admin Schools page handles managing inactive status.)
+  // Also scopes to the game's side (program_gender): a girls game only
+  // surfaces women's programs, a boys game only men's. Legacy rows with a
+  // null program_gender are the original women's-only seed, so they belong
+  // on the W side (matches DedupSchools back-compat handling). When team
+  // gender is unknown, no gender filter is applied.
   const loadAllSchools = async () => {
     if (allSchools.length > 0) return // Already loaded
     
@@ -96,10 +112,18 @@ export default function GameAttendance() {
       const batchSize = 1000
       
       while (true) {
-        const { data, error } = await supabase
+        let query = supabase
           .from('schools')
           .select('id, school, city, state, division')
           .neq('is_active', false)
+
+        if (programGender === 'W') {
+          query = query.or('program_gender.eq.W,program_gender.is.null')
+        } else if (programGender === 'M') {
+          query = query.eq('program_gender', 'M')
+        }
+
+        const { data, error } = await query
           .order('school')
           .range(from, from + batchSize - 1)
         
@@ -414,7 +438,14 @@ export default function GameAttendance() {
                       </div>
                     )}
                   </div>
-                  
+
+                  {programGender && (
+                    <div className="flex items-center gap-1.5 text-sm text-gray-500 mb-3 -mt-1">
+                      <GenderBadge gender={programGender} size="xs" />
+                      <span>Showing {programGenderLabel(programGender).toLowerCase()} programs only</span>
+                    </div>
+                  )}
+
                   {filteredSchools.length > 0 && (
                     <div className="space-y-2" role="listbox" aria-label="Search results">
                       {filteredSchools.map((school) => (
