@@ -147,6 +147,9 @@ export default function HamburgerMenu({ className = '', dark = true }) {
             <DrawerLink to="/home" onClick={close} icon={HomeIcon}>
               Home
             </DrawerLink>
+            <DrawerLink to="/schools" onClick={close} icon={CollegeIcon}>
+              Explore Colleges
+            </DrawerLink>
             <DrawerLink to="/directory" onClick={close} icon={DirectoryIcon}>
               Coach Directory
             </DrawerLink>
@@ -230,6 +233,26 @@ function HomeIcon() {
     >
       <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  )
+}
+
+function CollegeIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="text-gray-500 flex-shrink-0"
+      aria-hidden="true"
+    >
+      <path d="M22 10 12 5 2 10l10 5 10-5Z" />
+      <path d="M6 12v5c0 1 2.5 2.5 6 2.5s6-1.5 6-2.5v-5" />
     </svg>
   )
 }

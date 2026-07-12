@@ -51,6 +51,9 @@ import CsipGate from './components/CsipGate'
 // Gated inside the host (global kill switch + owner bypass); lazy-loaded.
 const SchoolProfile = lazy(() => import('./pages/SchoolProfile'))
 
+// Explore Colleges — the CSIP index (front door); lazy-loaded, gated by CsipGate.
+const CollegeExplore = lazy(() => import('./pages/CollegeExplore'))
+
 // College Soccer Landscape — portable premium module (sibling to College Profiles),
 // hosted via a thin wrapper page. Gated inside the host (kill switch + owner bypass); lazy-loaded.
 const Landscape = lazy(() => import('./pages/Landscape'))
@@ -130,6 +133,7 @@ function App() {
                 shared passcode fence (CsipGate); the platform owner bypasses it.
                 Each host page still runs its own kill-switch gate inside. */}
             <Route element={<CsipGate session={session} />}>
+              <Route path="/schools" element={<CollegeExplore session={session} />} />
               <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
               <Route path="/landscape" element={<Landscape session={session} />} />
             </Route>
