@@ -18,10 +18,14 @@ function deriveMonogram(name) {
   return (letters || name.slice(0, 2)).toUpperCase()
 }
 
-export default function Masthead({ school, currentRoster, seasons, lastSynced, logoUrl }) {
+const GENDER_LABEL = { W: "Women's Soccer", M: "Men's Soccer" }
+
+export default function Masthead({ school, currentRoster, seasons, lastSynced, logoUrl, rosterUrl, homeUrl }) {
   const monogram = deriveMonogram(school?.school)
-  const eyebrow = [school?.division, school?.conference].filter(Boolean).join(' · ')
+  const genderLabel = GENDER_LABEL[school?.program_gender] || null
+  const eyebrow = [school?.division, school?.conference, genderLabel].filter(Boolean).join(' · ')
   const loc = [school?.city, school?.state].filter(Boolean).join(', ')
+  const home = homeUrl || school?.athletics_url || null
 
   const [logoOk, setLogoOk] = useState(true)
   useEffect(() => { setLogoOk(true) }, [logoUrl])
@@ -40,8 +44,11 @@ export default function Masthead({ school, currentRoster, seasons, lastSynced, l
         <h1 className="cp-mast-title">{school?.school}</h1>
         <p className="cp-mast-meta">
           {loc}
-          {school?.athletics_url && (
-            <> · <a href={school.athletics_url} target="_blank" rel="noreferrer">Athletics site ↗</a></>
+          {rosterUrl && (
+            <> · <a href={rosterUrl} target="_blank" rel="noreferrer">Roster ↗</a></>
+          )}
+          {home && (
+            <> · <a href={home} target="_blank" rel="noreferrer">Athletics site ↗</a></>
           )}
         </p>
         <div className="cp-tags">

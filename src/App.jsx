@@ -47,6 +47,9 @@ const OwnerCoachReview = lazy(() => import('./pages/OwnerCoachReview'))
 // Eager (small) so it can wrap the lazy CSIP pages as a layout route.
 import CsipGate from './components/CsipGate'
 
+// CsipShell — shared CSIP chrome (Explore | Landscape tabs) inside the gate.
+import CsipShell from './components/CsipShell'
+
 // College Profiles — portable premium module, hosted via a thin wrapper page.
 // Gated inside the host (global kill switch + owner bypass); lazy-loaded.
 const SchoolProfile = lazy(() => import('./pages/SchoolProfile'))
@@ -133,9 +136,11 @@ function App() {
                 shared passcode fence (CsipGate); the platform owner bypasses it.
                 Each host page still runs its own kill-switch gate inside. */}
             <Route element={<CsipGate session={session} />}>
-              <Route path="/schools" element={<CollegeExplore session={session} />} />
-              <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
-              <Route path="/landscape" element={<Landscape session={session} />} />
+              <Route element={<CsipShell />}>
+                <Route path="/schools" element={<CollegeExplore session={session} />} />
+                <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
+                <Route path="/landscape" element={<Landscape session={session} />} />
+              </Route>
             </Route>
           
             {/* Default - Club Dashboard for public, Admin Dashboard if logged in */}

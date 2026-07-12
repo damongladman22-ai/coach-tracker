@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import OPLogo from '../components/OPLogo'
-import HamburgerMenu from '../components/HamburgerMenu'
 import GenderBadge from '../components/GenderBadge'
 import { PageLoader } from '../components/LoadingStates'
 import { useCollegeProfilesAccess } from '../college-profiles/access/useCollegeProfilesAccess'
@@ -156,21 +154,6 @@ export default function CollegeExplore() {
 
   return (
     <div className="min-h-screen bg-[#F2F3F5]">
-      <header className="bg-[#0a1628] text-white">
-        <div className="max-w-5xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <OPLogo className="h-10 w-10" />
-              <div>
-                <div className="text-[11px] uppercase tracking-wider text-gray-400">College Soccer Intelligence</div>
-                <h1 className="text-lg font-semibold leading-tight">Explore Colleges</h1>
-              </div>
-            </div>
-            <HamburgerMenu />
-          </div>
-        </div>
-      </header>
-
       <div className="max-w-5xl mx-auto px-4 py-5">
         {/* Filters */}
         <div className="bg-white border border-gray-200 rounded-xl p-3 mb-4">

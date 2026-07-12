@@ -46,7 +46,7 @@ const NAV = [
 ]
 
 export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme, logoUrl }) {
-  const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw } =
+  const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw, rosterUrl, homeUrl } =
     useProgramProfile(client, schoolId)
   const benchmarks = useProgramBenchmarks(client, school, currentSeason)
   const [peer, setPeer] = useState('div')
@@ -91,6 +91,8 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               seasons={seasons}
               lastSynced={fmtDate(lastSyncedRaw)}
               logoUrl={logoUrl}
+              rosterUrl={rosterUrl}
+              homeUrl={homeUrl}
             />
             {benchmarks.div && (
               <div className="cp-peerbar">

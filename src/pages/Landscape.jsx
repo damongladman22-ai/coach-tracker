@@ -39,14 +39,14 @@ export default function Landscape() {
   }
 
   if (status === 'locked') {
-    return <LandscapeLocked backTo="/directory" backLabel="Back to Coach Directory" />
+    return <LandscapeLocked backTo="/schools" backLabel="Explore Colleges" />
   }
 
   return (
     <CSIPLandscape
       client={supabase}
-      backTo="/directory"
-      backLabel="Back to Coach Directory"
+      backTo="/schools"
+      backLabel="Explore Colleges"
     />
   )
 }

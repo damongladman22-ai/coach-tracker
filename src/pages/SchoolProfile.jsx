@@ -51,7 +51,7 @@ export default function SchoolProfile() {
   }
 
   if (status === 'locked') {
-    return <ProfileLocked backTo="/directory" backLabel="Back to Coach Directory" />
+    return <ProfileLocked backTo="/schools" backLabel="Explore Colleges" />
   }
 
   const brand = brandingFor(schoolId)
@@ -61,8 +61,8 @@ export default function SchoolProfile() {
     <CollegeProfile
       client={supabase}
       schoolId={schoolId}
-      backTo="/directory"
-      backLabel="Back to Coach Directory"
+      backTo="/schools"
+      backLabel="Explore Colleges"
       theme={brand?.theme}
       logoUrl={logoUrl}
     />
