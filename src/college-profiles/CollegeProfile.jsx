@@ -17,6 +17,8 @@ import SizeProfile from './cards/SizeProfile'
 import SectionNav from './cards/SectionNav'
 import GeographyTrend from './cards/GeographyTrend'
 import CoachStaff from './cards/CoachStaff'
+import ProgramResults from './cards/ProgramResults'
+import { useProgramResults } from './data/useProgramResults'
 
 /**
  * CollegeProfile — the portable module entry point.
@@ -49,6 +51,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw, rosterUrl, homeUrl } =
     useProgramProfile(client, schoolId)
   const benchmarks = useProgramBenchmarks(client, school, currentSeason)
+  const results = useProgramResults(client, schoolId)
   const [peer, setPeer] = useState('div')
   const hasConf = !!benchmarks.conf
   const activePeer = peer === 'conf' && hasConf ? 'conf' : 'div'
@@ -94,6 +97,11 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               rosterUrl={rosterUrl}
               homeUrl={homeUrl}
             />
+            {results.rows.length > 0 && (
+              <div className="cp-perf-sec">
+                <ProgramResults rows={results.rows} />
+              </div>
+            )}
             {benchmarks.div && (
               <div className="cp-peerbar">
                 <span className="cp-peerbar-l">Compared against</span>
