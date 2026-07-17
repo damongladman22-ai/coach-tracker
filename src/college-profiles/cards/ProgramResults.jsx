@@ -22,7 +22,7 @@ function rankSystem(division) {
   return null
 }
 
-const subValStyle = { display: 'block', fontSize: '0.74em', opacity: 0.6, fontWeight: 400, marginTop: 2 }
+const subValStyle = { display: 'block', fontSize: '0.9em', opacity: 0.72, fontWeight: 400, marginTop: 3 }
 
 export default function ProgramResults({ rows }) {
   if (!rows || rows.length === 0) return null
@@ -52,7 +52,7 @@ export default function ProgramResults({ rows }) {
         </div>
 
         {(showLatestConf || showLatestRank) && (
-          <div style={{ marginTop: 8, display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: '0.92em' }}>
+          <div style={{ marginTop: 8, display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: '0.95em', lineHeight: 1.5 }}>
             {showLatestConf && (
               <span>
                 <span style={{ opacity: 0.6 }}>Conference </span>
