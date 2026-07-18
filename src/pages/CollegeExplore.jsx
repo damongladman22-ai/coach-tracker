@@ -15,9 +15,10 @@ import { brandingFor } from '../college-profiles/data/schoolBranding'
  * v_college_index view (non-empty programs only), fetched in chunks to clear the
  * 1000-row PostgREST cap, then filters/searches/sorts entirely client-side.
  *
- * Filter-first: gender / division / conference narrow the list; search spans the
- * FULL non-empty set (ignores the filters), so a name always finds its program.
- * Sorted richest-first (season depth) by default. Rows deep-link to /school/:id.
+ * Filter-first: gender / division / conference narrow the list; search applies
+ * WITHIN the active filters (set filters to "All" to search everything).
+ * Sorted by name (A–Z) by default; "Most data" sort available. Rows deep-link
+ * to /school/:id.
  *
  * Sits under CsipGate (passcode) in the router; this component still runs the
  * College Profiles kill-switch gate, mirroring SchoolProfile.
@@ -83,7 +84,7 @@ export default function CollegeExplore() {
   const [division, setDivision] = useState('All')
   const [conference, setConference] = useState('All')
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState('depth')          // 'depth' | 'name'
+  const [sort, setSort] = useState('name')           // 'name' | 'depth'
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -110,16 +111,12 @@ export default function CollegeExplore() {
   const filtered = useMemo(() => {
     if (!rows) return []
     const query = q.trim().toLowerCase()
-    let out
-    if (query) {
-      out = rows.filter(r => (r.school || '').toLowerCase().includes(query))
-    } else {
-      out = rows.filter(r =>
-        (gender === 'All' || r.program_gender === gender) &&
-        (division === 'All' || r.division === division) &&
-        (conference === 'All' || r.conference === conference)
-      )
-    }
+    let out = rows.filter(r =>
+      (gender === 'All' || r.program_gender === gender) &&
+      (division === 'All' || r.division === division) &&
+      (conference === 'All' || r.conference === conference) &&
+      (!query || (r.school || '').toLowerCase().includes(query))
+    )
     out = [...out]
     if (sort === 'name') {
       out.sort((a, b) => (a.school || '').localeCompare(b.school || ''))
@@ -149,7 +146,6 @@ export default function CollegeExplore() {
 
   const shown = filtered.slice(0, RENDER_CAP)
   const truncated = filtered.length - shown.length
-  const searching = q.trim().length > 0
   const selectCls = 'text-sm border border-gray-300 rounded-lg px-2.5 py-2 bg-white text-gray-800'
 
   return (
@@ -166,18 +162,18 @@ export default function CollegeExplore() {
             className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 mb-3 outline-none focus:border-gray-500"
           />
           <div className="flex flex-wrap gap-2 items-center">
-            <select className={selectCls} value={gender} onChange={e => setGender(e.target.value)} disabled={searching}>
+            <select className={selectCls} value={gender} onChange={e => setGender(e.target.value)}>
               <option value="All">All genders</option>
               <option value="W">Women</option>
               <option value="M">Men</option>
             </select>
             <select className={selectCls} value={division}
-              onChange={e => { setDivision(e.target.value); setConference('All') }} disabled={searching}>
+              onChange={e => { setDivision(e.target.value); setConference('All') }}>
               <option value="All">All divisions</option>
               {divisions.map(d => <option key={d} value={d}>{d}</option>)}
             </select>
             <select className={selectCls} value={conference}
-              onChange={e => setConference(e.target.value)} disabled={searching || division === 'All'}>
+              onChange={e => setConference(e.target.value)} disabled={division === 'All'}>
               <option value="All">{division === 'All' ? 'All conferences' : 'All conferences'}</option>
               {conferences.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
@@ -189,9 +185,6 @@ export default function CollegeExplore() {
               </select>
             </div>
           </div>
-          {searching && (
-            <p className="text-xs text-gray-500 mt-2">Searching all colleges — filters are paused while you search.</p>
-          )}
         </div>
 
         {/* States */}
@@ -233,7 +226,7 @@ export default function CollegeExplore() {
               ))}
               {shown.length === 0 && (
                 <div className="px-3 py-10 text-center text-gray-500 text-sm">
-                  No colleges match. Try clearing a filter or searching by name.
+                  No colleges match. Try clearing a filter or your search.
                 </div>
               )}
             </div>
