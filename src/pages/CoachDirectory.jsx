@@ -485,66 +485,64 @@ export default function CoachDirectory() {
 
     try {
       if (editingCoach) {
-        // Update existing coach. source='manual' asserts human authority over
-        // this row: the Coach Refresh pipeline emits no changes for manual
-        // rows, so a person's correction can never be overwritten by a
-        // re-scrape (e.g. a parser regression re-garbling a fixed name).
-        // Without this flip, edits to scraped rows stayed source='scraped'
-        // and the next refresh would revert them. See
-        // PitchSide_Ingest_Pipeline_Reference.docx (source-priority chain).
-        const { error } = await supabase
-          .from('coaches')
-          .update({
-            first_name: coachForm.first_name.trim(),
-            last_name: coachForm.last_name.trim(),
-            title: coachForm.title.trim() || null,
-            email: coachForm.email.trim() || null,
-            phone: coachForm.phone.trim() || null,
-            source: 'manual'
-          })
-          .eq('id', editingCoach.id);
+        // Update existing coach via the crowdsource RPC. The coaches table is
+        // RLS-locked to admins (June hardening); this SECURITY DEFINER
+        // function is the sanctioned crowd-source path. It only touches
+        // name/contact fields and always stamps source='manual' so the Coach
+        // Refresh pipeline can never overwrite a human correction. The
+        // zero-row check below is the honesty fix: a filtered write must
+        // surface as an error, never a success toast.
+        const { data: rpcData, error } = await supabase
+          .rpc('crowdsource_coach_edit', {
+            p_coach_id: editingCoach.id,
+            p_first_name: coachForm.first_name.trim(),
+            p_last_name: coachForm.last_name.trim(),
+            p_title: coachForm.title.trim() || null,
+            p_email: coachForm.email.trim() || null,
+            p_phone: coachForm.phone.trim() || null
+          });
 
         if (error) throw error;
+        const updated = rpcData && rpcData[0];
+        if (!updated) throw new Error('Update was not applied');
 
-        // Update local state (including the source flip)
+        // Update local state from the server-confirmed row (preserve the
+        // joined schools relation, which the RPC does not return)
         setCoaches(prev => prev.map(c => 
-          c.id === editingCoach.id 
-            ? { 
-                ...c, 
-                first_name: coachForm.first_name.trim(),
-                last_name: coachForm.last_name.trim(),
-                title: coachForm.title.trim() || null,
-                email: coachForm.email.trim() || null,
-                phone: coachForm.phone.trim() || null,
-                source: 'manual'
-              }
-            : c
+          c.id === editingCoach.id ? { ...c, ...updated } : c
         ));
 
         setToast({ show: true, message: 'Coach updated!', type: 'success' });
       } else if (showAddCoach) {
-        // Add new coach. source='manual' tags this row so the Coach Refresh
-        // pipeline leaves it alone (its deactivation pass operates on
-        // source='scraped' only). See PitchSide_Ingest_Pipeline_Reference.docx
-        // for the cross-pipeline source-priority chain.
-        const { data, error } = await supabase
-          .from('coaches')
-          .insert({
-            school_id: showAddCoach,
-            first_name: coachForm.first_name.trim(),
-            last_name: coachForm.last_name.trim(),
-            title: coachForm.title.trim() || null,
-            email: coachForm.email.trim() || null,
-            phone: coachForm.phone.trim() || null,
-            source: 'manual'
-          })
-          .select('*, schools(*)')
-          .single();
+        // Add new coach via the crowdsource RPC (RLS-locked table; the
+        // SECURITY DEFINER function is the sanctioned anon path). The
+        // function stamps source='manual' server-side so the Coach Refresh
+        // pipeline leaves this row alone. See
+        // PitchSide_Ingest_Pipeline_Reference.docx (source-priority chain).
+        const { data: rpcData, error } = await supabase
+          .rpc('crowdsource_coach_add', {
+            p_school_id: showAddCoach,
+            p_first_name: coachForm.first_name.trim(),
+            p_last_name: coachForm.last_name.trim(),
+            p_title: coachForm.title.trim() || null,
+            p_email: coachForm.email.trim() || null,
+            p_phone: coachForm.phone.trim() || null
+          });
 
         if (error) throw error;
+        const inserted = rpcData && rpcData[0];
+        if (!inserted) throw new Error('Add was not applied');
+
+        // Re-fetch with the schools join (the RPC returns the bare row;
+        // the directory rendering needs coach.schools). SELECT is public.
+        const { data: withSchool } = await supabase
+          .from('coaches')
+          .select('*, schools(*)')
+          .eq('id', inserted.id)
+          .single();
 
         // Add to local state
-        setCoaches(prev => [...prev, data]);
+        setCoaches(prev => [...prev, withSchool || inserted]);
 
         setToast({ show: true, message: 'Coach added!', type: 'success' });
       }
@@ -571,13 +569,19 @@ export default function CoachDirectory() {
         .delete()
         .eq('coach_id', coach.id);
 
-      // Delete the coach
-      const { error } = await supabase
+      // Delete the coach. Deletes remain admin-only by RLS design; the
+      // .select('id') + zero-row check makes a filtered delete surface as an
+      // error instead of a false success toast.
+      const { data: deleted, error } = await supabase
         .from('coaches')
         .delete()
-        .eq('id', coach.id);
+        .eq('id', coach.id)
+        .select('id');
 
       if (error) throw error;
+      if (!deleted || deleted.length === 0) {
+        throw new Error('Delete not permitted — admin sign-in required. Use "Mark Inactive" instead.');
+      }
 
       // Update local state
       setCoaches(prev => prev.filter(c => c.id !== coach.id));
@@ -606,18 +610,22 @@ export default function CoachDirectory() {
     setTogglingActive(coach.id);
 
     try {
-      // source='manual': the person is asserting this coach's lifecycle
-      // (arrived/left) — refresh must not reverse it on the next scrape.
-      const { error } = await supabase
-        .from('coaches')
-        .update({ is_active: nextActive, source: 'manual' })
-        .eq('id', coach.id);
+      // Lifecycle assertion via the crowdsource RPC: flips source='manual'
+      // server-side so refresh cannot reverse it, and errors honestly if the
+      // write doesn't land instead of showing a false success.
+      const { data: rpcData, error } = await supabase
+        .rpc('crowdsource_coach_set_active', {
+          p_coach_id: coach.id,
+          p_active: nextActive
+        });
 
       if (error) throw error;
+      const toggled = rpcData && rpcData[0];
+      if (!toggled) throw new Error('Update was not applied');
 
       // Update local state
       setCoaches(prev => prev.map(c =>
-        c.id === coach.id ? { ...c, is_active: nextActive, source: 'manual' } : c
+        c.id === coach.id ? { ...c, ...toggled } : c
       ));
 
       setToast({

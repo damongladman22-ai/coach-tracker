@@ -209,26 +209,30 @@ export default function GameAttendance() {
   const addNewCoach = async () => {
     if (!newCoach.first_name || !newCoach.last_name || !selectedSchool) return
 
-    // Parent-side add-on-the-fly during attendance logging. source='manual'
-    // tags this row so the Coach Refresh pipeline leaves it alone. Without
-    // this tag, refresh's missing-from-source pass would false-positive
-    // deactivate these on every run. See PitchSide_Ingest_Pipeline_Reference.docx.
-    const { data, error } = await supabase
-      .from('coaches')
-      .insert([{ 
-        first_name: newCoach.first_name,
-        last_name: newCoach.last_name,
-        school_id: selectedSchool.id,
-        source: 'manual'
-      }])
-      .select()
-      .single()
-    
+    // Parent-side add-on-the-fly via the crowdsource RPC. The coaches table
+    // is RLS-locked to admins; this SECURITY DEFINER function is the
+    // sanctioned anon path and stamps source='manual' server-side so the
+    // Coach Refresh pipeline leaves the row alone.
+    // See PitchSide_Ingest_Pipeline_Reference.docx.
+    const { data: rpcData, error } = await supabase
+      .rpc('crowdsource_coach_add', {
+        p_school_id: selectedSchool.id,
+        p_first_name: newCoach.first_name,
+        p_last_name: newCoach.last_name
+      })
+
+    const data = rpcData && rpcData[0]
+
     if (!error && data) {
       setCoaches(prev => [...prev, data].sort((a, b) => a.last_name.localeCompare(b.last_name)))
       setSelectedCoaches(prev => [...prev, data.id])
       setNewCoach({ first_name: '', last_name: '' })
       setShowAddCoachForm(false)
+    } else {
+      // Honesty fix: this path previously failed silently when the write was
+      // rejected, leaving the parent believing the coach was added.
+      console.error('Error adding coach:', error)
+      alert('Could not add coach: ' + (error?.message || 'unknown error'))
     }
   }
 
