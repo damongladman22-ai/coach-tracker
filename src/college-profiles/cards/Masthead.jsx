@@ -20,7 +20,7 @@ function deriveMonogram(name) {
 
 const GENDER_LABEL = { W: "Women's Soccer", M: "Men's Soccer" }
 
-export default function Masthead({ school, currentRoster, seasons, lastSynced, logoUrl, rosterUrl, homeUrl }) {
+export default function Masthead({ school, currentRoster, seasons, logoUrl, rosterUrl, homeUrl }) {
   const monogram = deriveMonogram(school?.school)
   const genderLabel = GENDER_LABEL[school?.program_gender] || null
   const eyebrow = [school?.division, school?.conference, genderLabel].filter(Boolean).join(' · ')
@@ -54,7 +54,6 @@ export default function Masthead({ school, currentRoster, seasons, lastSynced, l
         <div className="cp-tags">
           <span className="cp-tag"><b>{currentRoster?.length ?? 0}</b> active players</span>
           <span className="cp-tag"><b>{seasons?.length ?? 0}</b> seasons tracked</span>
-          {lastSynced && <span className="cp-tag">Last synced <b>{lastSynced}</b></span>}
         </div>
       </div>
     </header>
