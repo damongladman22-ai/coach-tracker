@@ -485,7 +485,13 @@ export default function CoachDirectory() {
 
     try {
       if (editingCoach) {
-        // Update existing coach
+        // Update existing coach. source='manual' asserts human authority over
+        // this row: the Coach Refresh pipeline emits no changes for manual
+        // rows, so a person's correction can never be overwritten by a
+        // re-scrape (e.g. a parser regression re-garbling a fixed name).
+        // Without this flip, edits to scraped rows stayed source='scraped'
+        // and the next refresh would revert them. See
+        // PitchSide_Ingest_Pipeline_Reference.docx (source-priority chain).
         const { error } = await supabase
           .from('coaches')
           .update({
@@ -493,13 +499,14 @@ export default function CoachDirectory() {
             last_name: coachForm.last_name.trim(),
             title: coachForm.title.trim() || null,
             email: coachForm.email.trim() || null,
-            phone: coachForm.phone.trim() || null
+            phone: coachForm.phone.trim() || null,
+            source: 'manual'
           })
           .eq('id', editingCoach.id);
 
         if (error) throw error;
 
-        // Update local state
+        // Update local state (including the source flip)
         setCoaches(prev => prev.map(c => 
           c.id === editingCoach.id 
             ? { 
@@ -508,7 +515,8 @@ export default function CoachDirectory() {
                 last_name: coachForm.last_name.trim(),
                 title: coachForm.title.trim() || null,
                 email: coachForm.email.trim() || null,
-                phone: coachForm.phone.trim() || null
+                phone: coachForm.phone.trim() || null,
+                source: 'manual'
               }
             : c
         ));
@@ -598,16 +606,18 @@ export default function CoachDirectory() {
     setTogglingActive(coach.id);
 
     try {
+      // source='manual': the person is asserting this coach's lifecycle
+      // (arrived/left) — refresh must not reverse it on the next scrape.
       const { error } = await supabase
         .from('coaches')
-        .update({ is_active: nextActive })
+        .update({ is_active: nextActive, source: 'manual' })
         .eq('id', coach.id);
 
       if (error) throw error;
 
       // Update local state
       setCoaches(prev => prev.map(c =>
-        c.id === coach.id ? { ...c, is_active: nextActive } : c
+        c.id === coach.id ? { ...c, is_active: nextActive, source: 'manual' } : c
       ));
 
       setToast({

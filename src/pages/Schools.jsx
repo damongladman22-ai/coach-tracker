@@ -331,9 +331,11 @@ export default function Schools({ session }) {
 
     setTogglingActive(coach.id)
     try {
+      // source='manual': admin is asserting this coach's lifecycle — the
+      // Coach Refresh pipeline must not reverse it on the next scrape.
       const { error } = await supabase
         .from('coaches')
-        .update({ is_active: nextActive })
+        .update({ is_active: nextActive, source: 'manual' })
         .eq('id', coach.id)
 
       if (error) throw error
@@ -342,7 +344,7 @@ export default function Schools({ session }) {
       setCoaches(prev => ({
         ...prev,
         [schoolId]: (prev[schoolId] || []).map(c =>
-          c.id === coach.id ? { ...c, is_active: nextActive } : c
+          c.id === coach.id ? { ...c, is_active: nextActive, source: 'manual' } : c
         )
       }))
     } catch (err) {
