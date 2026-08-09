@@ -34,7 +34,7 @@ const CONF_BADGE = {
 }
 
 const SELECT_COLS =
-  'id, change_type, school_id, existing_coach_id, ' +
+  'id, change_type, raw_change_type, school_id, existing_coach_id, ' +
   'first_name, last_name, title, email, phone, ' +
   'current_first_name, current_last_name, current_title, current_email, current_phone, ' +
   'source_url, confidence, created_at, schools(school, division, state)'
@@ -115,10 +115,64 @@ export default function OwnerCoachReview({ session }) {
   // Write the proposed change into `coaches`, mirroring the pipeline's apply.py
   // token-for-token via raw_change_type. Legacy rows (no raw_change_type) fall
   // back to safe field patches only — never a name.
+  //
+  // NOTE: raw_change_type was absent from SELECT_COLS until Aug 9 2026, so `raw`
+  // was always '' and every branch below keyed on it was dead. The practical
+  // effect was that name corrections were silently never written — the row was
+  // marked `applied` and nothing changed. Do not remove it from SELECT_COLS.
   async function applyChangeToCoaches(row) {
     const raw = (row.raw_change_type || '').toLowerCase()
 
     if (row.change_type === 'new_coach' || raw.includes('new_coach')) {
+      // Denton guard — never insert blind. A coach who was deactivated and has
+      // returned already has a row; inserting again mints a duplicate person and
+      // orphans their attendance history. Look first, reactivate if found.
+      //
+      // The match is deliberately STRICT (exact first+last, case-insensitive,
+      // scoped to this school) so two different people can never be folded into
+      // one. It will therefore miss a stored name carrying a glued suffix
+      // (e.g. "Kaestner MSAT", "Cabrera '24") — that is the parser's
+      // Alma-Mater/credential defect, and it must be fixed at the parser, not
+      // masked by loose matching here.
+      const first = (row.first_name || '').trim()
+      const last = (row.last_name || '').trim()
+
+      const { data: existing, error: lookupError } = await supabase
+        .from('coaches')
+        .select('id, is_active')
+        .eq('school_id', row.school_id)
+        .ilike('first_name', first)
+        .ilike('last_name', last)
+
+      if (lookupError) throw lookupError
+
+      if (existing && existing.length > 1) {
+        throw new Error(
+          `${existing.length} existing records match this name at this school — ` +
+            `resolve the duplicates before adding.`
+        )
+      }
+
+      if (existing && existing.length === 1) {
+        const match = existing[0]
+        if (match.is_active) {
+          throw new Error('this coach is already active at this school — nothing to add.')
+        }
+        // Returning coach: reactivate the original row so the id, and every
+        // attendance record hanging off it, survives.
+        const { error: reactivateError } = await supabase
+          .from('coaches')
+          .update({
+            is_active: true,
+            title: row.title || null,
+            email: row.email || null,
+            phone: row.phone || null,
+          })
+          .eq('id', match.id)
+        if (reactivateError) throw reactivateError
+        return
+      }
+
       const { error } = await supabase.from('coaches').insert({
         school_id: row.school_id,
         first_name: row.first_name || '',
