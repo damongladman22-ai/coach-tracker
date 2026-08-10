@@ -201,6 +201,16 @@ export default function OwnerCoachReview({ session }) {
     if (!row.existing_coach_id) return
     const patch = {}
     if (raw) {
+      // 'reactivated' is emitted by compare.py whenever a coach was MATCHED
+      // against the current scrape of the live staff page while their stored
+      // row is is_active=false — i.e. they are on staff and our row is wrong.
+      // It is frequently the ONLY token on the row, in which case every field
+      // matches and the patch would otherwise be empty: the change IS the
+      // flag. Before this was handled, such a row wrote nothing while still
+      // being marked `applied`, which destroyed the only signal that an
+      // employed coach was sitting invisible. 126 of 175 pending contact
+      // updates on Aug 10 2026 were exactly this shape.
+      if (raw.includes('reactivated')) patch.is_active = true
       if (raw.includes('email_changed')) patch.email = row.email
       if (raw.includes('title_changed')) patch.title = row.title
       if (raw.includes('phone_changed')) patch.phone = row.phone
@@ -465,7 +475,12 @@ function ReviewRow({ row, showType, showSchool, busy, onApprove, onReject }) {
           disabled={busy}
           className="text-sm px-3 py-1.5 rounded-md bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
         >
-          {busy ? '…' : APPROVE_LABEL[row.change_type] || 'Approve'}
+          {busy
+            ? '…'
+            : (row.change_type === 'contact_update' &&
+               (row.raw_change_type || '').toLowerCase().includes('reactivated')
+                ? 'Reactivate'
+                : APPROVE_LABEL[row.change_type] || 'Approve')}
         </button>
         <button
           onClick={onReject}
@@ -522,16 +537,39 @@ function ChangeBody({ row }) {
   }
 
   // contact_update — show only fields that actually changed
+  const raw = (row.raw_change_type || '').toLowerCase()
+  const isReactivation = raw.includes('reactivated')
   const diffs = []
   if ((row.title || '') && row.title !== row.current_title) diffs.push(['Title', row.current_title, row.title])
   if ((row.email || '') && row.email !== row.current_email) diffs.push(['Email', row.current_email, row.email])
   if ((row.phone || '') && row.phone !== row.current_phone) diffs.push(['Phone', row.current_phone, row.phone])
 
+  // A reactivation must say so. On a pure reactivation nothing else differs,
+  // so the old code fell through to "Name correction (see above)" — a card
+  // showing no change at all, with a misleading explanation. That is almost
+  // certainly why batches of these were rejected wholesale in July.
+  const reactivationNotice = isReactivation ? (
+    <div className="text-sm">
+      <span className="text-green-700 font-medium">Proposed: reactivate.</span>{' '}
+      <span className="text-gray-500">
+        This coach is listed on the live staff page but stored as inactive.
+      </span>
+      <div className="text-xs text-gray-400 mt-1">
+        Check the page before approving: support staff (operations, athletic
+        training, strength &amp; conditioning) do not belong in the coaches
+        table, and a garbled name means the parser misread the page.
+      </div>
+    </div>
+  ) : null
+
   if (diffs.length === 0) {
-    return <div className="text-sm text-gray-500">Name correction (see above).</div>
+    return reactivationNotice || (
+      <div className="text-sm text-gray-500">Name correction (see above).</div>
+    )
   }
   return (
     <div className="space-y-1 text-sm">
+      {reactivationNotice}
       {diffs.map(([label, before, after]) => (
         <div key={label} className="flex flex-wrap items-baseline gap-2">
           <span className="text-gray-400 w-14 shrink-0">{label}</span>
