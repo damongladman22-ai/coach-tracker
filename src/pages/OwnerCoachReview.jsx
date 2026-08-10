@@ -33,11 +33,28 @@ const CONF_BADGE = {
   low: 'bg-gray-100 text-gray-600',
 }
 
+// Program gender. `schools` rows are per-PROGRAM, so one institution has a
+// separate row (and separate id) for its men's and women's teams — but the
+// school NAME is identical across both, which makes an M row and a W row
+// visually indistinguishable on this screen. That is not cosmetic: the
+// per-school "Approve all" groups by name, so a single click can reach both
+// programs (Millersville's `Lyle Howe` exists once as M and once as W).
+// Deliberately chosen to be visually distinct from TYPE_BADGE (green/blue/red)
+// and CONF_BADGE (emerald/amber/gray) so three badges on one line stay legible.
+const GENDER_BADGE = {
+  M: 'bg-indigo-100 text-indigo-700',
+  W: 'bg-fuchsia-100 text-fuchsia-700',
+}
+const GENDER_LABEL = {
+  M: "Men's",
+  W: "Women's",
+}
+
 const SELECT_COLS =
   'id, change_type, raw_change_type, school_id, existing_coach_id, ' +
   'first_name, last_name, title, email, phone, ' +
   'current_first_name, current_last_name, current_title, current_email, current_phone, ' +
-  'source_url, confidence, created_at, schools(school, division, state)'
+  'source_url, confidence, created_at, schools(school, division, state, program_gender)'
 
 function fullName(first, last) {
   return [first, last].filter(Boolean).join(' ').trim()
@@ -432,6 +449,11 @@ function ReviewRow({ row, showType, showSchool, busy, onApprove, onReject }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
+            {/* Always rendered, in BOTH grouping modes. In "By school" mode the
+                school name is hidden per row, which is precisely the mode where
+                M and W rows sit merged under one heading — so this badge is the
+                only thing distinguishing them before a bulk approve. */}
+            <GenderBadge row={row} />
             {showType && (
               <span className={`text-xs font-medium px-2 py-0.5 rounded ${TYPE_BADGE[row.change_type]}`}>
                 {TYPE_BADGE_LABEL[row.change_type] || row.change_type}
@@ -579,6 +601,19 @@ function ChangeBody({ row }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// Renders nothing when the program gender is absent or unrecognised — a wrong
+// badge is worse than no badge, since the whole point is to be trusted at a
+// glance. `program_gender` is a fixed-width CHAR column, so trim before use.
+function GenderBadge({ row }) {
+  const g = (row.schools?.program_gender || '').trim().toUpperCase()
+  if (!GENDER_LABEL[g]) return null
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded ${GENDER_BADGE[g]}`}>
+      {GENDER_LABEL[g]}
+    </span>
   )
 }
 
