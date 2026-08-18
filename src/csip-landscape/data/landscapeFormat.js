@@ -7,13 +7,37 @@ export const GENDERS = [
   { key: 'M', label: 'Men' },
 ]
 
-// Seasons: real years newest-first, then the pooled "All-time" sentinel (0).
+// ── Season range: the ONE place a new season is added ────────────────────────
+// Everything season-shaped in this module derives from these two numbers. They
+// used to be duplicated as literal year arrays in useLandscapePins, TrendLens,
+// GeographyTrend and CSIPLandscape, which meant a new season needed six edits
+// and silently produced a missing data point if any were missed — including an
+// off-by-one trap in the retention loop (see TRANSITION_START_YEARS).
+export const FIRST_SEASON = 2021
+export const LATEST_SEASON = 2026
+
+/** Every loaded season, ASCENDING. Chart x-axes index into this, so order matters. */
+export const SEASON_YEARS = Array.from(
+  { length: LATEST_SEASON - FIRST_SEASON + 1 },
+  (_, i) => FIRST_SEASON + i,
+)
+
+/**
+ * Start years of each season-to-season transition, ASCENDING.
+ *
+ * Retention is a property of a TRANSITION, not a season: for Y -> Y+1 it is
+ * stored under Y+1 (CSIP spec §6). So the loop runs over start years and stops
+ * one short of the latest season, which has no successor yet. Deriving it here
+ * removes the off-by-one: bumping LATEST_SEASON extends this automatically.
+ * This is also why retention has no FIRST_SEASON value — there is no prior
+ * season to compare against.
+ */
+export const TRANSITION_START_YEARS = SEASON_YEARS.slice(0, -1)
+
+// Seasons for the picker: real years newest-first, then the pooled
+// "All-time" sentinel (0).
 export const SEASONS = [
-  { key: 2025, label: '2025' },
-  { key: 2024, label: '2024' },
-  { key: 2023, label: '2023' },
-  { key: 2022, label: '2022' },
-  { key: 2021, label: '2021' },
+  ...[...SEASON_YEARS].reverse().map(y => ({ key: y, label: String(y) })),
   { key: 0, label: 'All-time' },
 ]
 
@@ -29,7 +53,7 @@ export const FAMILIES = [
 ]
 
 export function seasonLabel(s) {
-  if (s === 0) return 'All-time (2021–2025)'
+  if (s === 0) return `All-time (${FIRST_SEASON}–${LATEST_SEASON})`
   return String(s)
 }
 

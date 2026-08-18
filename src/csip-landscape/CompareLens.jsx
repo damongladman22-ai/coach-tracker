@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   DIVISIONS, GENDERS, SEASONS, pct, inchesToFtIn, whole, divShort, genderLabel, seasonLabel,
+  LATEST_SEASON,
 } from './data/landscapeFormat'
 import { useLandscapeBins } from './data/useLandscapeBins'
 import { useLandscapeGeoCompare } from './data/useLandscapeGeoCompare'
@@ -293,7 +294,7 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
   const hovered = hover != null ? hover : (pinned != null && pinned < segments.length ? pinned : null)
   const bins = useLandscapeBins(client, segments, 'position', 'height_inches')
   const geo = useLandscapeGeoCompare(client, segments)
-  const pinData = useLandscapePins(client, pins.map(p => p.id), 2025)
+  const pinData = useLandscapePins(client, pins.map(p => p.id), LATEST_SEASON)
   const active = pins
     .map((p, i) => ({ id: p.id, name: pinData.items[i]?.school?.school || p.name, color: PIN_COLORS[i], snap: pinData.items[i]?.snapshot }))
     .filter(a => a.snap)

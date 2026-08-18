@@ -1,5 +1,8 @@
 import { useState } from 'react'
-import { pct, inchesToFtIn, whole, divShort, genderLabel } from './data/landscapeFormat'
+import {
+  pct, inchesToFtIn, whole, divShort, genderLabel,
+  SEASON_YEARS, FIRST_SEASON, LATEST_SEASON,
+} from './data/landscapeFormat'
 import InfoTip from './InfoTip'
 import { TREND_INFO } from './data/landscapeInfo'
 import GeographyTrend from './GeographyTrend'
@@ -7,13 +10,13 @@ import PinControl from './PinControl'
 import { useLandscapePins, PIN_COLORS } from './data/useLandscapePins'
 
 /**
- * TrendLens — Lens C. One segment, one metric family, across 2021–2025.
+ * TrendLens — Lens C. One segment, one metric family, across all loaded
+ * seasons (FIRST_SEASON–LATEST_SEASON in landscapeFormat).
  * Single metrics use an editorial area (hero current value + Δ, p25–p75 band +
  * median line); composition families use a stacked flow (counts stacked per
  * season, share·count on tap). Geography gets its own rich pass. Mobile-first:
  * all text is HTML; only shapes are SVG.
  */
-const SEASONS_ALL = [2021, 2022, 2023, 2024, 2025]
 const SF_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#4a3aa7', '#e34948']
 
 function fmtVal(v, fmt) {
@@ -33,7 +36,7 @@ function deltaLabel(d, fmt) {
 const dirOf = d => (Math.abs(d) < 1e-9 ? 'flat' : d > 0 ? 'up' : 'down')
 
 function seasonPoints(get, dim, bucket, metric) {
-  return SEASONS_ALL
+  return SEASON_YEARS
     .map(s => { const r = get(s, dim, bucket, metric); return r ? { season: s, ...r } : null })
     .filter(Boolean)
 }
@@ -51,7 +54,7 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlay
   const padY = (hi - lo) * 0.18 || 1
   lo -= padY; hi += padY
   if (fmt === 'pct') lo = Math.max(0, lo)
-  const x = s => pad + (SEASONS_ALL.indexOf(s) / (SEASONS_ALL.length - 1)) * (VBW - 2 * pad)
+  const x = s => pad + (SEASON_YEARS.indexOf(s) / (SEASON_YEARS.length - 1)) * (VBW - 2 * pad)
   const y = v => VBH - pad - (v - lo) / (hi - lo) * (VBH - 2 * pad)
   const up = points.map(p => `${x(p.season).toFixed(1)},${y(p.p75 ?? p.median).toFixed(1)}`)
   const dn = [...points].reverse().map(p => `${x(p.season).toFixed(1)},${y(p.p25 ?? p.median).toFixed(1)}`)
@@ -89,10 +92,10 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlay
         })}
       </svg>
       <div className="csl-ed-axis">
-        {SEASONS_ALL.map((s, i) => (
+        {SEASON_YEARS.map((s, i) => (
           <span key={s} style={{
-            left: `${(pad + (i / (SEASONS_ALL.length - 1)) * (VBW - 2 * pad)) / VBW * 100}%`,
-            transform: i === 0 ? 'translateX(0)' : i === SEASONS_ALL.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
+            left: `${(pad + (i / (SEASON_YEARS.length - 1)) * (VBW - 2 * pad)) / VBW * 100}%`,
+            transform: i === 0 ? 'translateX(0)' : i === SEASON_YEARS.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)',
           }}>{s}</span>
         ))}
       </div>
@@ -101,7 +104,7 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlay
 }
 
 function StackedFlow({ dim, groups, get }) {
-  const seasons = SEASONS_ALL.filter(s => groups.some(g => get(s, dim, g.k, 'count')))
+  const seasons = SEASON_YEARS.filter(s => groups.some(g => get(s, dim, g.k, 'count')))
   const [active, setActive] = useState(seasons[seasons.length - 1])
   if (!seasons.length) return <p className="csl-empty">No data for this selection.</p>
   const act = seasons.includes(active) ? active : seasons[seasons.length - 1]
@@ -167,7 +170,7 @@ const HPOS = [
 export default function TrendLens({ client, trend, selection }) {
   const { division, gender, family } = selection
   const [pins, setPins] = useState([]) // [{ id, name }]
-  const pinData = useLandscapePins(client, pins.map(p => p.id), 2025)
+  const pinData = useLandscapePins(client, pins.map(p => p.id), LATEST_SEASON)
   const active = pins
     .map((p, i) => ({ id: p.id, name: pinData.items[i]?.school?.school || p.name, color: PIN_COLORS[i], d: pinData.items[i] }))
     .filter(a => a.d && a.d.series)
@@ -195,7 +198,7 @@ export default function TrendLens({ client, trend, selection }) {
   if (trend.error) return <p className="csl-empty">Couldn’t load trend data.</p>
   const get = trend.get
 
-  const seg = `${divShort(division)} ${genderLabel(gender)} · 2021–2025`
+  const seg = `${divShort(division)} ${genderLabel(gender)} · ${FIRST_SEASON}–${LATEST_SEASON}`
   const head = (title, q, info) => (
     <div className="csl-tl-head">
       <div>

@@ -8,7 +8,7 @@ import { useLandscapeBenchmarks } from './data/useLandscapeBenchmarks'
 import { useLandscapeGeo } from './data/useLandscapeGeo'
 import { useLandscapeTrend } from './data/useLandscapeTrend'
 import { useLandscapeCompare } from './data/useLandscapeCompare'
-import { FAMILIES } from './data/landscapeFormat'
+import { FAMILIES, LATEST_SEASON } from './data/landscapeFormat'
 
 /**
  * CSIPLandscape — the portable module entry point for the College Soccer Landscape.
@@ -25,7 +25,7 @@ import { FAMILIES } from './data/landscapeFormat'
 const DEFAULT_SELECTION = {
   division: 'NCAA D1',
   gender: 'W',
-  season: 2025,
+  season: LATEST_SEASON,
   family: 'size',
   lens: 'profile',
 }

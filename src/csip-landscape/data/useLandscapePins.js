@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { SEASON_YEARS, TRANSITION_START_YEARS } from './landscapeFormat'
 
 /**
  * useLandscapePins — like useLandscapePin but for up to a few programs at once.
@@ -14,7 +15,6 @@ export const PIN_COLORS = ['#1b5fd0', '#e08600', '#7a3aa7']
 const US_NAMES = new Set(['United States', 'USA', 'US', 'U.S.', 'U.S.A.'])
 const POS = ['GK', 'D', 'M', 'F']
 const CLASSES = ['FR', 'SO', 'JR', 'SR', 'GR']
-const SEASONS = [2021, 2022, 2023, 2024, 2025]
 
 function median(arr) {
   if (!arr.length) return null
@@ -60,12 +60,12 @@ function computeSnapshot(school, rosters) {
 
 /** Per-season trajectory for the Trend lens (season-independent of the picker). */
 function computeSeries(rosters) {
-  const roster = SEASONS
+  const roster = SEASON_YEARS
     .map(s => ({ season: s, value: rosters.filter(r => r.roster_season === s).length }))
     .filter(p => p.value > 0)
   const heightByPos = {}
   for (const p of POS) {
-    heightByPos[p] = SEASONS
+    heightByPos[p] = SEASON_YEARS
       .map(s => {
         const med = median(rosters.filter(r => r.roster_season === s && r.position === p && r.height_inches != null).map(r => r.height_inches))
         return med != null ? { season: s, value: med } : null
@@ -88,7 +88,7 @@ function retentionSeries(rosters) {
   const bySeason = {}
   for (const r of rosters) { const s = r.roster_season; (bySeason[s] = bySeason[s] || []).push(r) }
   const returnRate = [], newcomerRate = []
-  for (const Y of [2021, 2022, 2023, 2024]) {
+  for (const Y of TRANSITION_START_YEARS) {
     const Yp = Y + 1
     const prev = bySeason[Y], cur = bySeason[Yp]
     if (!prev || !cur || prev.length < 9 || cur.length < 9) continue

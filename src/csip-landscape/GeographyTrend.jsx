@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import Choropleth from './Choropleth'
 import { useLandscapeGeoTrend } from './data/useLandscapeGeoTrend'
-import { pct, divShort, genderLabel } from './data/landscapeFormat'
+import { pct, divShort, genderLabel, SEASON_YEARS, LATEST_SEASON } from './data/landscapeFormat'
 
-const SEASONS = [2021, 2022, 2023, 2024, 2025]
 const ORIGIN_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#4a3aa7', '#e34948', '#9aa6ad']
 const TOP_N = 5
 
@@ -68,13 +67,13 @@ function OriginsFlow({ bySeason, seasonsWith }) {
 
 export default function GeographyTrend({ client, division, gender }) {
   const geo = useLandscapeGeoTrend(client, { division, gender })
-  const [season, setSeason] = useState(2025)
+  const [season, setSeason] = useState(LATEST_SEASON)
   const [mapMode, setMapMode] = useState('us')
 
   if (geo.loading) return <div className="csl-geo-loading">Loading geography…</div>
   if (geo.error) return <p className="csl-empty">Couldn’t load geography.</p>
 
-  const seasonsWith = SEASONS.filter(s => geo.bySeason[s])
+  const seasonsWith = SEASON_YEARS.filter(s => geo.bySeason[s])
   const sel = seasonsWith.includes(season) ? season : seasonsWith[seasonsWith.length - 1]
   const cur = geo.bySeason[sel] || { states: {}, countries: {}, total: 0, unknown: 0, domestic: 0, intl: 0 }
 
