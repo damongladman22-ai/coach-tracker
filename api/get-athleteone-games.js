@@ -160,6 +160,14 @@ function parseGamesFromTeamInfo(html, ourTeamIdStr) {
     )
     if (!gmMatch || !dateMatch) continue
 
+    // A date the parser refuses (unknown month, implausible year such as
+    // AthleteOne's "Jan 01, 0001" placeholder for an unscheduled fixture)
+    // means we do not know when this game is. Skip it rather than invent a
+    // date: games.game_date is NOT NULL, and a wrong date is worse than an
+    // absent game. The row reappears on a later sync once the date is set.
+    const parsedGameDate = parseTeamInfoDate(dateMatch[1])
+    if (!parsedGameDate) continue
+
     const haMatch = tr.match(/<div[^>]*>([AH])<\/div>/)
     const isHome = haMatch && haMatch[1] === 'H'
 
@@ -179,7 +187,7 @@ function parseGamesFromTeamInfo(html, ourTeamIdStr) {
 
     games.push({
       athleteone_game_id: parseInt(gmMatch[1], 10),
-      game_date: parseTeamInfoDate(dateMatch[1]),
+      game_date: parsedGameDate,
       game_time: timeMatch ? parseTeamInfoTime(timeMatch[1]) : null,
       opponent: oppMatch ? oppMatch[2].trim() : null,
       opponent_team_id: oppMatch ? oppMatch[1] : null,
@@ -195,6 +203,21 @@ function parseGamesFromTeamInfo(html, ourTeamIdStr) {
   return games
 }
 
+// Returns an ISO date string, or NULL when the source's date cannot be
+// trusted. Callers MUST skip a game whose date comes back null.
+//
+// Two ways this used to return a confident wrong answer (both fixed
+// 2026-09-11):
+//
+//   1. An unrecognised three-letter token fell through `months[m[1]] || '01'`
+//      and became JANUARY. A weekday abbreviation would have produced a real
+//      date in the wrong month.
+//   2. AthleteOne publishes a fixture with no confirmed date as .NET's
+//      DateTime.MinValue, which renders as "Jan 01, 0001" and parses
+//      perfectly. Four RL Boys teams each took two such rows into prod as
+//      games dated 0001-01-01, which sort to the top of every schedule.
+//
+// Hence: the month must be a real month, and the year must be plausible.
 function parseTeamInfoDate(s) {
   const months = {
     Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06',
@@ -202,7 +225,14 @@ function parseTeamInfoDate(s) {
   }
   const m = s.match(/([A-Z][a-z]{2})\s+(\d{1,2}),\s+(\d{4})/)
   if (!m) return null
-  return m[3] + '-' + (months[m[1]] || '01') + '-' + String(m[2]).padStart(2, '0')
+
+  const month = months[m[1]]
+  if (!month) return null
+
+  const year = parseInt(m[3], 10)
+  if (!Number.isFinite(year) || year < 2000 || year > 2100) return null
+
+  return m[3] + '-' + month + '-' + String(m[2]).padStart(2, '0')
 }
 
 function parseTeamInfoTime(s) {
