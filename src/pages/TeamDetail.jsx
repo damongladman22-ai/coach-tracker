@@ -682,7 +682,8 @@ function GameList({ games, videoCounts = {}, onEdit, onDelete, onSaveScore, form
  *    /api/ingest-athleteone, which now accepts either INGEST_SECRET or an
  *    admin JWT).
  *  - Expandable configuration form to set org_id, event_id, club_id,
- *    team_id, and the athleteone_sync_games toggle.
+ *    team_id, and the athleteone_sync_games / athleteone_sync_rosters
+ *    toggles.
  *
  * Saves config directly to the teams row via Supabase. After both refresh
  * and save, calls onReload() to refetch everything.
@@ -703,6 +704,7 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
     club_id: team.athleteone_club_id != null ? String(team.athleteone_club_id) : '',
     team_id: team.athleteone_team_id != null ? String(team.athleteone_team_id) : '',
     sync_games: !!team.athleteone_sync_games,
+    sync_rosters: !!team.athleteone_sync_rosters,
   })
   const [saving, setSaving] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
@@ -716,6 +718,7 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
       club_id: team.athleteone_club_id != null ? String(team.athleteone_club_id) : '',
       team_id: team.athleteone_team_id != null ? String(team.athleteone_team_id) : '',
       sync_games: !!team.athleteone_sync_games,
+      sync_rosters: !!team.athleteone_sync_rosters,
     })
   }, [
     team.athleteone_org_id,
@@ -723,6 +726,7 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
     team.athleteone_club_id,
     team.athleteone_team_id,
     team.athleteone_sync_games,
+    team.athleteone_sync_rosters,
   ])
 
   const metadata = team.athleteone_metadata || {}
@@ -762,9 +766,16 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
         setMessage({ type: 'error', text: teamResult.error })
       } else if (teamResult?.committed) {
         const c = teamResult.committed
+        // committed.rosters is either {players_upserted, staff_upserted} or the
+        // string 'roster sync disabled for this team' when the per-team toggle
+        // is off. Say which, rather than printing "Synced undefined players".
+        const r = c.rosters
         setMessage({
           type: 'success',
-          text: `Synced ${c.players_upserted} players, ${c.staff_upserted} staff.`,
+          text:
+            r && typeof r === 'object'
+              ? `Synced ${r.players_upserted} players, ${r.staff_upserted} staff.`
+              : 'Sync complete. Roster sync is off for this team, so players and staff were left untouched.',
         })
       } else {
         setMessage({ type: 'success', text: 'Sync complete.' })
@@ -788,6 +799,7 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
         athleteone_club_id: config.club_id ? parseInt(config.club_id, 10) : null,
         athleteone_team_id: config.team_id ? parseInt(config.team_id, 10) : null,
         athleteone_sync_games: config.sync_games,
+        athleteone_sync_rosters: config.sync_rosters,
       }
       const { error } = await supabase.from('teams').update(payload).eq('id', team.id)
       if (error) {
@@ -873,6 +885,14 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
             team.athleteone_sync_games
               ? <span className="text-emerald-700">On</span>
               : <span className="text-gray-500">Off (manual games only)</span>
+          }
+        />
+        <StatusRow
+          label="Sync roster"
+          value={
+            team.athleteone_sync_rosters
+              ? <span className="text-emerald-700">On</span>
+              : <span className="text-gray-500">Off (roster frozen)</span>
           }
         />
         <StatusRow
@@ -965,6 +985,27 @@ function AthleteOneCard({ team, playersCount, playersActive, staffCount, staffAc
                 Pull the ECNL schedule into the games table. Leave off if
                 you're maintaining games manually (e.g., to include
                 friendlies, tournaments, and league games together).
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              checked={config.sync_rosters}
+              onChange={(e) =>
+                setConfig({ ...config, sync_rosters: e.target.checked })
+              }
+              className="mt-1 h-4 w-4 text-blue-600 rounded"
+            />
+            <span>
+              <span className="font-medium">Sync roster from AthleteOne</span>
+              <span className="block text-xs text-gray-500">
+                Pull players and staff into this team. Turn it OFF once the
+                season is over. AthleteOne&rsquo;s roster is live and not
+                season-scoped, so a sync on a past season&rsquo;s team pulls
+                today&rsquo;s squad and switches that season&rsquo;s players
+                off. There is no roster history to fetch, so not syncing is
+                the only way to keep a finished season intact.
               </span>
             </span>
           </label>

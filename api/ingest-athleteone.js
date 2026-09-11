@@ -66,7 +66,7 @@ export default async function handler(req, res) {
 
   let q = supabase
     .from('teams')
-    .select('id, name, club_id, season_id, athleteone_org_id, athleteone_event_id, athleteone_team_id, athleteone_club_id, athleteone_age_group_id, athleteone_standings_org_id, athleteone_standings_season_id, athleteone_sync_games')
+    .select('id, name, club_id, season_id, athleteone_org_id, athleteone_event_id, athleteone_team_id, athleteone_club_id, athleteone_age_group_id, athleteone_standings_org_id, athleteone_standings_season_id, athleteone_sync_games, athleteone_sync_rosters')
     .not('athleteone_team_id', 'is', null)
   if (teamFilter) q = q.eq('id', teamFilter)
 
@@ -212,6 +212,21 @@ export default async function handler(req, res) {
         .update({ athleteone_metadata: standings, athleteone_last_synced_at: nowIso })
         .eq('id', team.id)
 
+      // === Roster + staff sync ===
+      // Only runs when this team has athleteone_sync_rosters=TRUE.
+      //
+      // Why this gate exists: AthleteOne's roster is LIVE and not
+      // season-scoped. get-individual-team-info returns whoever is on the team
+      // today regardless of which event you ask through, so a sync touching a
+      // past season's team pulls THIS season's squad — and the
+      // deactivate-then-upsert below then switches that season's players off.
+      // There is no roster history to fetch, so the only defence is not to
+      // sync. On 2026-09-11 this silently emptied 19 of 30 teams for
+      // 2025-2026; 526 rows had to be switched back on by hand.
+      //
+      // The deactivate MUST be inside this gate — it is the destructive half.
+      let rosterResult
+      if (team.athleteone_sync_rosters) {
       // Deactivate-then-upsert pattern (avoids the complex .not().in() filter)
       await supabase
         .from('team_players')
@@ -260,6 +275,14 @@ export default async function handler(req, res) {
           .upsert(staffRows, { onConflict: 'team_id,athleteone_staff_id' })
       }
 
+        rosterResult = {
+          players_upserted: players.length,
+          staff_upserted: staff.length,
+        }
+      } else {
+        rosterResult = 'roster sync disabled for this team'
+      }
+
       // === Events + Games sync ===
       // Only runs when this team has athleteone_sync_games=TRUE. We first
       // parse the team's event list from the hidden "Events" tab of team-info
@@ -283,8 +306,7 @@ export default async function handler(req, res) {
 
       summary.mode = 'committed'
       summary.committed = {
-        players_upserted: players.length,
-        staff_upserted: staff.length,
+        rosters: rosterResult,
         events: eventsResult,
         games: gamesResult,
       }

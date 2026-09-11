@@ -474,8 +474,14 @@ export default function AthleteOneDiscover({ session }) {
               team_id: t.id,
               name: t.name,
               success: true,
-              players: c.players_upserted ?? 0,
-              staff: c.staff_upserted ?? 0,
+              players:
+                c.rosters && typeof c.rosters === 'object'
+                  ? c.rosters.players_upserted ?? 0
+                  : 0,
+              staff:
+                c.rosters && typeof c.rosters === 'object'
+                  ? c.rosters.staff_upserted ?? 0
+                  : 0,
               games:
                 typeof c.games === 'object'
                   ? c.games.upserted ?? c.games.processed ?? '—'
