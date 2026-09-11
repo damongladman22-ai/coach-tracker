@@ -1032,11 +1032,25 @@ function guessProgramForOrg(orgId, programs) {
     const n = (p.name || '').toLowerCase()
     return wantRL ? n.includes('rl') : !n.includes('rl')
   })
-  // Prefer "ECNL" in the name
-  const ecnlMatch = candidates.find((p) =>
+  // Prefer an EXACT name match before a substring one. A plain `includes`
+  // picked "Pre-ECNL" for the ECNL competitions (2026-09-11) — it contains the
+  // string and sorted first. Wrong program on every created team, and only
+  // catchable by eye in the dropdown.
+  const want = wantRL ? 'ECNL RL' : 'ECNL'
+  const exact = candidates.find(
+    (p) => (p.name || '').trim().toUpperCase() === want
+  )
+  if (exact) return exact
+
+  // Then a substring match, but never one that merely qualifies the league
+  // ("Pre-ECNL", "ECNL Prep") when an unqualified option exists.
+  const substring = candidates.filter((p) =>
     (p.name || '').toUpperCase().includes('ECNL')
   )
-  return ecnlMatch || candidates[0] || programs[0]
+  const unqualified = substring.find(
+    (p) => !/(^|[\s-])(PRE|POST|DEV|PREP|ACADEMY)([\s-]|$)/i.test(p.name || '')
+  )
+  return unqualified || substring[0] || candidates[0] || programs[0]
 }
 
 /**

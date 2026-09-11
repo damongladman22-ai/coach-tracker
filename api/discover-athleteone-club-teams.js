@@ -281,8 +281,17 @@ function parseName(name) {
     if (gy[3]) {
       out.mixed_roster = true
       const second = 2000 + parseInt(gy[3], 10)
-      // For mixed rosters, use the OLDER year (younger U-number, older players)
-      birthYear = Math.min(birthYear, second)
+      // For mixed rosters use the YOUNGER year, because that is how ECNL
+      // labels the team and how everyone reads it. "G2009/10" is U17 on
+      // ECNL's own site, not U18 — the 2009s are the older half of a group
+      // named for its younger year.
+      //
+      // This took the OLDER year until 2026-09-11, which made every mixed
+      // team derive one band too high: G2009/10 came out U18 while the same
+      // team was correctly named U17 in PitchSide and by the league. That
+      // mismatch would have collided the proposed U17 (G2010/11) against the
+      // existing U17's slug and silently skipped a team on create.
+      birthYear = Math.max(birthYear, second)
     }
     out.birth_year = birthYear
 
