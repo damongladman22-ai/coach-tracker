@@ -30,17 +30,33 @@ import { getActiveSeasonId } from '../lib/season'
  *   13 = ECNL RL Girls
  *   16 = ECNL RL Boys
  */
+// NOTE: these carried a `default_event_id` pinned to the 2025-26 events
+// (3931 / 3887 / 3951 / 3899) until 2026-09-11. Those defaults went a year
+// stale in silence and the page pre-filled one of them on load, which is how a
+// 2026-2027 team came to be created against event 3931. That is not a cosmetic
+// error: games.athleteone_game_id is globally unique and the ingest upserts on
+// it, so syncing through a prior-season event MOVES another team's games and
+// their attendance onto the new team. See
+// claude/AthleteOne_Season_Rollover_Defect_20260911.md, Mechanism 2.
+//
+// Event ids now come from public.athleteone_events, keyed on
+// (org, club, season), populated by probe_athleteone_events.py. Org ids stay
+// here because they are stable per league and do not change season to season.
 const COMPETITIONS = [
-  { org_id: 9, label: 'ECNL Girls', gender: 'Girls', default_event_id: '3931' },
-  { org_id: 12, label: 'ECNL Boys', gender: 'Boys', default_event_id: '3887' },
-  { org_id: 13, label: 'ECNL RL Girls', gender: 'Girls', default_event_id: '3951' },
-  { org_id: 16, label: 'ECNL RL Boys', gender: 'Boys', default_event_id: '3899' },
+  { org_id: 9, label: 'ECNL Girls', gender: 'Girls' },
+  { org_id: 12, label: 'ECNL Boys', gender: 'Boys' },
+  { org_id: 13, label: 'ECNL RL Girls', gender: 'Girls' },
+  { org_id: 16, label: 'ECNL RL Boys', gender: 'Boys' },
 ]
 
 export default function AthleteOneDiscover({ session }) {
   // Form / config state
   const [orgId, setOrgId] = useState(9) // ECNL Girls default
-  const [eventId, setEventId] = useState('3931') // 2025-26 ECNL Girls default
+  // Starts empty on purpose — it is filled from the catalog once lookups load,
+  // so the page can never pre-fill a stale id.
+  const [eventId, setEventId] = useState('')
+  const [manualEvent, setManualEvent] = useState(false)
+  const [catalog, setCatalog] = useState([])
   const [clubIdInput, setClubIdInput] = useState('437') // Ohio Premier default
   const [seasonId, setSeasonId] = useState(null)
   const [programId, setProgramId] = useState('')
@@ -72,8 +88,17 @@ export default function AthleteOneDiscover({ session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // The event id is DERIVED from the catalog for the chosen competition, club
+  // and season. It is never seeded from a constant, so it cannot silently go a
+  // year stale the way the old hard-coded defaults did. Manual entry opts out.
+  useEffect(() => {
+    if (manualEvent) return
+    setEventId(resolveEventId(orgId, seasonId, clubIdInput))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalog, orgId, seasonId, clubIdInput, manualEvent])
+
   const loadLookups = async () => {
-    const [activeSeasonId, seasonsRes, programsRes, ageGroupsRes] =
+    const [activeSeasonId, seasonsRes, programsRes, ageGroupsRes, catalogRes] =
       await Promise.all([
         getActiveSeasonId(),
         supabase
@@ -88,8 +113,16 @@ export default function AthleteOneDiscover({ session }) {
           .from('age_groups')
           .select('id, name')
           .order('sort_order', { ascending: true, nullsFirst: false }),
+        supabase
+          .from('athleteone_events')
+          .select(
+            'athleteone_event_id, athleteone_club_id, athleteone_org_id, ' +
+            'league, conference, season_id, season_label, last_fixture_date, ' +
+            'club_team_count'
+          ),
       ])
 
+    setCatalog(catalogRes.data || [])
     setSeasons(seasonsRes.data || [])
     setPrograms(programsRes.data || [])
     setAgeGroups(ageGroupsRes.data || [])
@@ -102,15 +135,14 @@ export default function AthleteOneDiscover({ session }) {
     setLookupsLoaded(true)
   }
 
-  // When the AthleteOne competition changes, also (a) update the eventId to
-  // the known default for that competition (or clear it if unknown — admin
-  // must look it up on theecnl.com), and (b) re-guess the matching PitchSide
-  // program so the admin doesn't have to repick.
+  // When the AthleteOne competition changes, resolve the event id from the
+  // catalog for the SELECTED season — never from a constant — and re-guess the
+  // matching PitchSide program so the admin does not have to repick.
   const handleCompetitionChange = (newOrgId) => {
     const num = parseInt(newOrgId, 10)
     setOrgId(num)
-    const comp = COMPETITIONS.find((c) => c.org_id === num)
-    setEventId(comp?.default_event_id || '')
+    setManualEvent(false)
+    setEventId(resolveEventId(num, seasonId, clubIdInput))
     // Also clear any prior discovery results — they were for the old comp.
     setTeams([])
     setError(null)
@@ -118,6 +150,73 @@ export default function AthleteOneDiscover({ session }) {
     const guess = guessProgramForOrg(num, programs)
     if (guess) setProgramId(String(guess.id))
   }
+
+  // Every catalog row for the chosen competition and club, newest season
+  // first. This is what the event dropdown lists.
+  const eventOptions = useMemo(() => {
+    const club = parseInt(clubIdInput, 10)
+    return catalog
+      .filter((r) => r.athleteone_org_id === orgId && r.athleteone_club_id === club)
+      .sort((a, b) =>
+        String(b.last_fixture_date || '').localeCompare(
+          String(a.last_fixture_date || '')
+        )
+      )
+  }, [catalog, orgId, clubIdInput])
+
+  // The catalog's event for a competition in a given season, or '' when the
+  // catalog has nothing — an empty field the admin must fill deliberately is
+  // safer than a plausible-looking id that is a year old.
+  const resolveEventId = (forOrgId, forSeasonId, forClubId) => {
+    const club = parseInt(forClubId, 10)
+    const hit = catalog.find(
+      (r) =>
+        r.athleteone_org_id === forOrgId &&
+        r.athleteone_club_id === club &&
+        r.season_id === forSeasonId
+    )
+    return hit ? String(hit.athleteone_event_id) : ''
+  }
+
+  const selectedSeason = useMemo(
+    () => seasons.find((s) => s.id === seasonId) || null,
+    [seasons, seasonId]
+  )
+
+  const selectedEventRow = useMemo(() => {
+    const ev = parseInt(eventId, 10)
+    const club = parseInt(clubIdInput, 10)
+    if (!Number.isFinite(ev)) return null
+    return (
+      catalog.find(
+        (r) => r.athleteone_event_id === ev && r.athleteone_club_id === club
+      ) || null
+    )
+  }, [catalog, eventId, clubIdInput])
+
+  // THE GUARD. An event whose season is not the season being created, or whose
+  // last fixture predates that season's start, belongs to a different year.
+  // Creating teams against it moves games and attendance off the teams that own
+  // them. Blocked at create, warned at discover (discover is a read).
+  const eventSeasonProblem = useMemo(() => {
+    if (!selectedEventRow || !seasonId) return null
+    if (selectedEventRow.season_id && selectedEventRow.season_id !== seasonId) {
+      return `Event ${selectedEventRow.athleteone_event_id} belongs to ${
+        selectedEventRow.season_label || 'another season'
+      }, not the season selected below.`
+    }
+    if (
+      selectedSeason?.start_date &&
+      selectedEventRow.last_fixture_date &&
+      selectedEventRow.last_fixture_date < selectedSeason.start_date
+    ) {
+      return `Event ${selectedEventRow.athleteone_event_id} last played ${selectedEventRow.last_fixture_date}, before ${selectedSeason.name} even starts.`
+    }
+    return null
+  }, [selectedEventRow, selectedSeason, seasonId])
+
+  // An id typed by hand that the catalog has never seen cannot be checked.
+  const eventUnverified = !!eventId && !selectedEventRow
 
   const ageGroupByName = useMemo(() => {
     const map = new Map()
@@ -224,6 +323,20 @@ export default function AthleteOneDiscover({ session }) {
     }
     if (!programId) {
       setCreateResult({ kind: 'error', text: 'Pick a program first.' })
+      return
+    }
+    // Hard stop on a cross-season event. This is the check that would have
+    // prevented the 3931 incident: creating teams against a prior-season event
+    // moves that season's games and attendance onto the new teams.
+    if (eventSeasonProblem) {
+      setCreateResult({
+        kind: 'error',
+        text:
+          eventSeasonProblem +
+          ' Creating teams against it would move that season\'s games and ' +
+          'attendance onto these new teams. Pick the event for the season you ' +
+          'are creating.',
+      })
       return
     }
     // Validate each team has an age group set
@@ -470,32 +583,83 @@ export default function AthleteOneDiscover({ session }) {
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">
-              AthleteOne Event ID
+              AthleteOne Event
             </label>
-            <input
-              type="text"
-              inputMode="numeric"
-              value={eventId}
-              onChange={(e) => setEventId(e.target.value.replace(/[^\d]/g, ''))}
-              className={`w-full px-3 py-2 border rounded-lg text-sm ${
-                !eventId
-                  ? 'border-amber-300 bg-amber-50'
-                  : 'border-gray-300'
-              }`}
-            />
-            {!eventId ? (
-              <p className="text-xs text-amber-700 mt-0.5">
-                Event ID required. Find it on theecnl.com → Standings →{' '}
-                {competition?.label} → 2025-26 (the number in the URL).
-              </p>
+
+            {!manualEvent ? (
+              <select
+                value={eventId}
+                onChange={(e) => setEventId(e.target.value)}
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                  eventSeasonProblem
+                    ? 'border-red-400 bg-red-50'
+                    : !eventId
+                      ? 'border-amber-300 bg-amber-50'
+                      : 'border-gray-300'
+                }`}
+              >
+                <option value="">Select an event…</option>
+                {eventOptions.map((r) => (
+                  <option
+                    key={r.athleteone_event_id}
+                    value={String(r.athleteone_event_id)}
+                  >
+                    {r.season_label || 'season unknown'} — {r.league || '?'}
+                    {r.conference ? ` ${r.conference}` : ''} (
+                    {r.athleteone_event_id}) · {r.club_team_count} teams · last
+                    fixture {r.last_fixture_date || 'unknown'}
+                  </option>
+                ))}
+              </select>
             ) : (
-              <p className="text-xs text-gray-400 mt-0.5">
-                Season-specific. 2025-26 known: ECNL Girls={' '}
-                <code>3931</code>, ECNL Boys=<code>3887</code>, ECNL RL Girls={' '}
-                <code>3951</code> (or <code>3939</code> for GLA conference),
-                ECNL RL Boys=<code>3899</code>.
+              <input
+                type="text"
+                inputMode="numeric"
+                value={eventId}
+                onChange={(e) => setEventId(e.target.value.replace(/[^\d]/g, ''))}
+                className={`w-full px-3 py-2 border rounded-lg text-sm ${
+                  eventSeasonProblem
+                    ? 'border-red-400 bg-red-50'
+                    : !eventId
+                      ? 'border-amber-300 bg-amber-50'
+                      : 'border-gray-300'
+                }`}
+              />
+            )}
+
+            {eventSeasonProblem && (
+              <p className="text-xs text-red-700 mt-1 font-medium">
+                {eventSeasonProblem} Creating teams against it would move that
+                season&rsquo;s games and attendance onto the new teams.
               </p>
             )}
+
+            {!eventSeasonProblem && eventUnverified && (
+              <p className="text-xs text-amber-700 mt-1">
+                This id is not in the event catalog, so its season cannot be
+                checked. Confirm it belongs to the season you are creating
+                before continuing.
+              </p>
+            )}
+
+            {!eventSeasonProblem && !eventUnverified && !eventId && (
+              <p className="text-xs text-amber-700 mt-0.5">
+                No catalogued event for this competition in the selected season.
+                Run{' '}
+                <code>probe_athleteone_events.py</code> to find it, or enter the
+                id by hand.
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setManualEvent((v) => !v)}
+              className="text-xs text-cyan-700 hover:text-cyan-900 mt-1"
+            >
+              {manualEvent
+                ? 'Choose from the catalog instead'
+                : 'Enter an event id by hand'}
+            </button>
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">
