@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { withSeason } from '../lib/team'
 import { gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
 import HamburgerMenu from '../components/HamburgerMenu'
@@ -40,6 +41,10 @@ import GameVideosPanel from '../components/GameVideosPanel'
  */
 export default function TeamGameDetail() {
   const { teamSlug, gameId } = useParams()
+  // Carried through from the team page so the back links return to the
+  // season the reader came from, not the active one.
+  const [searchParams] = useSearchParams()
+  const seasonParam = searchParams.get('season')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [team, setTeam] = useState(null)
@@ -299,7 +304,7 @@ export default function TeamGameDetail() {
             <span className="mx-2">›</span>
             {team ? (
               <Link
-                to={`/t/${team.slug || teamSlug}`}
+                to={withSeason(`/t/${team.slug || teamSlug}`, seasonParam)}
                 className="hover:text-gray-700"
               >
                 {team.name}
@@ -315,7 +320,7 @@ export default function TeamGameDetail() {
 
           {team && (
             <Link
-              to={`/t/${team.slug || teamSlug}`}
+              to={withSeason(`/t/${team.slug || teamSlug}`, seasonParam)}
               className="inline-flex items-center gap-1 text-sm text-cyan-700 hover:text-cyan-900 font-medium mb-3"
             >
               <ChevronLeftIcon />

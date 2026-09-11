@@ -9,6 +9,7 @@ import HamburgerMenu from '../components/HamburgerMenu'
 import PullToRefresh from '../components/PullToRefresh'
 import { computeRecord, gameResult } from '../components/ScoreInput'
 import { useFavorite, useFavorites } from '../hooks/useFavorite'
+import { seasonParamForSeason, withSeason } from '../lib/team'
 
 /**
  * Club Dashboard — team-first home page.
@@ -398,7 +399,10 @@ export default function ClubDashboard() {
           <>
             {/* Postseason Pipeline ticker — hero strip above team lists.
                 Hidden until at least one team has qualified for a bracket. */}
-            <PostseasonPipelineSection postseason={postseasonData} />
+            <PostseasonPipelineSection
+              postseason={postseasonData}
+              seasonParam={seasonParamForSeason(selectedSeason)}
+            />
 
             {/* My Teams (favorites) — pinned above the grouped lists */}
             {favoriteTeams.length > 0 && (
@@ -414,6 +418,7 @@ export default function ClubDashboard() {
                       team={t}
                       stats={teamStats[t.id]}
                       statsLoading={statsLoading}
+                      seasonParam={seasonParamForSeason(selectedSeason)}
                     />
                   ))}
                 </div>
@@ -510,6 +515,7 @@ export default function ClubDashboard() {
                             team={t}
                             stats={teamStats[t.id]}
                             statsLoading={statsLoading}
+                            seasonParam={seasonParamForSeason(selectedSeason)}
                           />
                         ))}
                       </div>
@@ -554,7 +560,7 @@ function ControlGroup({ label, children }) {
  * misleading 0-0-0 record, and the open-tracker / next-game cues are simply
  * omitted.
  */
-function TeamCard({ team, stats, statsLoading }) {
+function TeamCard({ team, stats, statsLoading, seasonParam }) {
   const navigate = useNavigate()
   const [isFavorite, setFavorite] = useFavorite(team.id)
   const pending = statsLoading && !stats
@@ -568,7 +574,9 @@ function TeamCard({ team, stats, statsLoading }) {
     ? `/e/${openTracker.eventSlug}/${team.slug}`
     : null
 
-  const goToTeam = () => navigate(`/t/${team.slug}`)
+  // The season the reader picked rides along, so a past-season card opens
+  // that season's team rather than the active season's same-named one.
+  const goToTeam = () => navigate(withSeason(`/t/${team.slug}`, seasonParam))
   const handleKey = (e) => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
@@ -812,7 +820,7 @@ const TIER_PALETTES = {
   },
 }
 
-function PostseasonPipelineSection({ postseason }) {
+function PostseasonPipelineSection({ postseason, seasonParam }) {
   if (!postseason) return null
 
   // Flatten all qualified teams in tier-then-rank order. Doubled for
@@ -872,10 +880,10 @@ function PostseasonPipelineSection({ postseason }) {
           style={{ width: 'max-content' }}
         >
           {allEntries.map((entry, i) => (
-            <PostseasonPill key={`a-${i}`} entry={entry} />
+            <PostseasonPill key={`a-${i}`} entry={entry} seasonParam={seasonParam} />
           ))}
           {allEntries.map((entry, i) => (
-            <PostseasonPill key={`b-${i}`} entry={entry} ariaHidden />
+            <PostseasonPill key={`b-${i}`} entry={entry} ariaHidden seasonParam={seasonParam} />
           ))}
         </div>
       </div>
@@ -883,7 +891,7 @@ function PostseasonPipelineSection({ postseason }) {
   )
 }
 
-function PostseasonPill({ entry, ariaHidden = false }) {
+function PostseasonPill({ entry, ariaHidden = false, seasonParam }) {
   const { team, seed, place, tier } = entry
   const palette = TIER_PALETTES[tier.accent] || TIER_PALETTES.cyan
   const isCL = tier.key === 'cl'
@@ -898,7 +906,7 @@ function PostseasonPill({ entry, ariaHidden = false }) {
 
   return (
     <Link
-      to={`/t/${team.slug}`}
+      to={withSeason(`/t/${team.slug}`, seasonParam)}
       aria-hidden={ariaHidden || undefined}
       tabIndex={ariaHidden ? -1 : 0}
       className={`flex-shrink-0 inline-flex items-center gap-1.5 ${palette.pillBg} border ${palette.pillBorder} rounded-full pl-2.5 pr-3 py-1.5 text-xs font-medium hover:shadow active:scale-95 transition`}

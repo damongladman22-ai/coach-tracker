@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getActiveSeasonId } from '../lib/season'
+import { resolveTeamBySlug, withSeason } from '../lib/team'
 import { computeRecord, gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
 import VideoThumbnail from '../components/VideoThumbnail'
@@ -110,33 +110,32 @@ export default function PublicTeamPage() {
   const { videosByGame } = useRealtimeVideos(games.map((g) => g.id))
   const [isFavorite, setFavorite] = useFavorite(team?.id)
 
+  // An explicit season from the URL (?season=2025-2026). Without it the
+  // resolver falls back to the active season, then to the most recent season
+  // carrying this slug — see src/lib/team.js for why that order.
+  const [searchParams] = useSearchParams()
+  const seasonParam = searchParams.get('season')
+
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [teamSlug])
+  }, [teamSlug, seasonParam])
 
   const load = async () => {
     setLoading(true)
     setError(null)
 
-    const activeSeasonId = await getActiveSeasonId()
-    if (!activeSeasonId) {
-      setError('No active season configured.')
-      setLoading(false)
-      return
-    }
+    // Resolve the slug to one team: the season named in the URL if given,
+    // else the active season, else the most recent season that has this slug.
+    // The old hard .eq('season_id', activeSeasonId) made every past-season
+    // team page return "Team not found" the moment a new season went active.
+    const { team: teamData } = await resolveTeamBySlug(
+      teamSlug,
+      seasonParam,
+      '*, age_groups(name), programs(name), seasons(id, name, slug, start_date)'
+    )
 
-    // Find the team in the active season
-    const { data: teamData, error: teamError } = await supabase
-      .from('teams')
-      .select(
-        '*, age_groups(name), programs(name), seasons(id, name, slug)'
-      )
-      .eq('slug', teamSlug)
-      .eq('season_id', activeSeasonId)
-      .maybeSingle()
-
-    if (teamError || !teamData) {
+    if (!teamData) {
       setError('Team not found.')
       setLoading(false)
       return
@@ -1784,7 +1783,10 @@ function GameCard({
   // keyboard parity. The action button above is the exception — its
   // click stopPropagation peels off so it can route to live tracker /
   // summary instead of the read-only game detail.
-  const detailHref = `/t/${encodeURIComponent(teamSlug)}/game/${encodeURIComponent(game.id)}`
+  const detailHref = withSeason(
+    `/t/${encodeURIComponent(teamSlug)}/game/${encodeURIComponent(game.id)}`,
+    currentSeasonQS()
+  )
   const goToDetail = () => navigate(detailHref)
 
   return (
@@ -2059,7 +2061,24 @@ function RecruitingHeroPanel({
  * the URL it was navigated from.
  */
 function teamCollegeHref(teamSlug, schoolId) {
-  return `/t/${encodeURIComponent(teamSlug)}/college/${encodeURIComponent(schoolId)}`
+  return withSeason(
+    `/t/${encodeURIComponent(teamSlug)}/college/${encodeURIComponent(schoolId)}`,
+    currentSeasonQS()
+  )
+}
+
+/**
+ * currentSeasonQS — the explicit ?season= on the page's own URL, or null.
+ *
+ * Read from the live URL rather than threaded down as a prop: the href
+ * builders above are module-level helpers and only ever run while this page is
+ * mounted, so window.location is the same URL the component was routed to.
+ * Without this, drilling from a past-season team page into a game or a college
+ * would drop the season and bounce the reader to the active season's team.
+ */
+function currentSeasonQS() {
+  if (typeof window === 'undefined') return null
+  return new URLSearchParams(window.location.search).get('season') || null
 }
 
 /**

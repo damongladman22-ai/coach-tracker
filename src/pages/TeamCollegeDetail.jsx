@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { getActiveSeasonId } from '../lib/season'
+import { resolveTeamBySlug, withSeason } from '../lib/team'
 import { gameResult } from '../components/ScoreInput'
 import OPLogo from '../components/OPLogo'
 import HamburgerMenu from '../components/HamburgerMenu'
@@ -46,6 +46,10 @@ import PullToRefresh from '../components/PullToRefresh'
  */
 export default function TeamCollegeDetail() {
   const { teamSlug, schoolId } = useParams()
+  // Carried through from the team page so a past-season view stays on that
+  // season instead of bouncing the reader to the active one.
+  const [searchParams] = useSearchParams()
+  const seasonParam = searchParams.get('season')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [team, setTeam] = useState(null)
@@ -57,21 +61,14 @@ export default function TeamCollegeDetail() {
     setLoading(true)
     setError(null)
     try {
-      const activeSeasonId = await getActiveSeasonId()
-      if (!activeSeasonId) {
-        setError('No active season configured.')
-        setLoading(false)
-        return
-      }
-
-      // Team — slug + active season matches PublicTeamPage's resolution.
-      const { data: teamData, error: teamErr } = await supabase
-        .from('teams')
-        .select('id, name, slug, gender')
-        .eq('slug', teamSlug)
-        .eq('season_id', activeSeasonId)
-        .maybeSingle()
-      if (teamErr || !teamData) {
+      // Team — same resolution as PublicTeamPage: the season named in the
+      // URL if given, else active, else the most recent season with this slug.
+      const { team: teamData } = await resolveTeamBySlug(
+        teamSlug,
+        seasonParam,
+        'id, name, slug, gender, season_id, seasons(id, name, slug, start_date)'
+      )
+      if (!teamData) {
         setError('Team not found.')
         setLoading(false)
         return
@@ -141,7 +138,7 @@ export default function TeamCollegeDetail() {
     // teamSlug and schoolId are the page identity — re-running on either
     // change is correct (e.g. if a future "next college" navigation links
     // between schools without unmounting).
-  }, [teamSlug, schoolId])
+  }, [teamSlug, schoolId, seasonParam])
 
   // Group attendance by coach. Sort coaches by attendance count desc
   // (most invested first), then last name asc as the tiebreaker. Within
@@ -210,7 +207,7 @@ export default function TeamCollegeDetail() {
             </Link>
             <span className="mx-2">›</span>
             {team ? (
-              <Link to={`/t/${teamSlug}`} className="hover:text-gray-700">
+              <Link to={withSeason(`/t/${teamSlug}`, seasonParam)} className="hover:text-gray-700">
                 {team.name}
               </Link>
             ) : (
@@ -222,7 +219,7 @@ export default function TeamCollegeDetail() {
 
           {team && (
             <Link
-              to={`/t/${teamSlug}`}
+              to={withSeason(`/t/${teamSlug}`, seasonParam)}
               className="inline-flex items-center gap-1 text-sm text-cyan-700 hover:text-cyan-900 font-medium mb-3"
             >
               <ChevronLeftIcon />
@@ -429,7 +426,12 @@ function AttendedGameRow({ game, teamSlug }) {
   return (
     <li>
       <Link
-        to={`/t/${encodeURIComponent(teamSlug)}/game/${encodeURIComponent(game.id)}`}
+        to={withSeason(
+          `/t/${encodeURIComponent(teamSlug)}/game/${encodeURIComponent(game.id)}`,
+          typeof window === 'undefined'
+            ? null
+            : new URLSearchParams(window.location.search).get('season')
+        )}
         className="flex items-center justify-between gap-2 py-2 -mx-1 px-1 rounded hover:bg-gray-50 transition-colors"
       >
         <div className="min-w-0 flex-1">
