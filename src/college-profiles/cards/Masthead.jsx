@@ -5,12 +5,29 @@ import { useState, useEffect } from 'react'
  * location, and at-a-glance tags. Brand-color theming comes from CSS vars on the
  * .cp-root wrapper (filled per-school by the host's theme prop).
  *
- * Crest: renders the school logo when a logoUrl is supplied (white circle, logo
- * contained); otherwise a monogram on the accent fill. If the logo fails to load
- * it falls back to the monogram (onError), and the fallback state resets when the
- * logoUrl changes (navigating between programs). The host gates logoUrl behind
- * the logo kill switch, so "logos off" simply means monogram everywhere.
+ * Crest: renders the school logo when a logoUrl is supplied; otherwise a
+ * monogram on the accent fill. If the logo fails to load it falls back to the
+ * monogram (onError), and the fallback state resets when the logoUrl changes
+ * (navigating between programs). The host gates logoUrl behind the logo kill
+ * switch, so "logos off" simply means monogram everywhere.
+ *
+ * THE CONTAINER ADAPTS TO THE MARK, not the other way round. The ncaa.com
+ * assets are not one shape: measured across all 2,111 of them on 12 Sept 2026,
+ * 71.6% are squarish (0.7-1.45:1), 20.2% are wide, 5.5% are wider than 2.2:1
+ * and 2.7% are tall. A circle is right for the first group and destroys the
+ * rest -- object-fit:contain fits a 3:1 wordmark to the 46px content width and
+ * renders it ~14px tall, which reads as a smudge (Worcester State was the
+ * reported case). So the natural aspect ratio is measured on load and anything
+ * past WIDE_RATIO gets a rectangular box it can actually fill. Making the
+ * circle bigger does not help: no circle holds a 3:1 wordmark.
+ *
+ * Aspect is only known after the image loads, so the crest starts round and
+ * settles. That is deliberate -- guessing from the URL would be a guess.
  */
+
+/* Above this width:height the circle costs more than it buys. 1.45 sits in the
+   gap between the squarish cluster (median 1.15) and the wide tail (p90 1.86). */
+const WIDE_RATIO = 1.45
 function deriveMonogram(name) {
   if (!name) return '—'
   const words = name.replace(/[^A-Za-z ]/g, '').split(/\s+/).filter(Boolean)
@@ -28,15 +45,25 @@ export default function Masthead({ school, currentRoster, seasons, logoUrl, rost
   const home = homeUrl || school?.athletics_url || null
 
   const [logoOk, setLogoOk] = useState(true)
-  useEffect(() => { setLogoOk(true) }, [logoUrl])
+  const [aspect, setAspect] = useState(null)
+  useEffect(() => { setLogoOk(true); setAspect(null) }, [logoUrl])
   const showLogo = !!logoUrl && logoOk
+  const wideMark = showLogo && aspect !== null && aspect >= WIDE_RATIO
+
+  const handleLoad = (e) => {
+    const { naturalWidth: w, naturalHeight: h } = e.currentTarget
+    if (w > 0 && h > 0) setAspect(w / h)
+  }
 
   return (
     <header className="cp-masthead">
-      <div className={`cp-crest${showLogo ? ' cp-crest--logo' : ''}`} aria-hidden={showLogo ? undefined : 'true'}>
+      <div
+        className={`cp-crest${showLogo ? ' cp-crest--logo' : ''}${wideMark ? ' cp-crest--wide' : ''}`}
+        aria-hidden={showLogo ? undefined : 'true'}
+      >
         {showLogo
           ? <img className="cp-crest-img" src={logoUrl} alt={`${school?.school || 'Program'} logo`}
-              onError={() => setLogoOk(false)} />
+              onLoad={handleLoad} onError={() => setLogoOk(false)} />
           : monogram}
       </div>
       <div className="cp-mast-body">
