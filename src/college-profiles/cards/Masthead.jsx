@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 /**
  * Masthead — program identity header: crest, name, division · conference,
@@ -23,6 +23,14 @@ import { useState, useEffect } from 'react'
  *
  * Aspect is only known after the image loads, so the crest starts round and
  * settles. That is deliberate -- guessing from the URL would be a guess.
+ *
+ * MEASURE ON MOUNT AS WELL AS ON LOAD. A CACHED image finishes loading before
+ * React attaches onLoad, so the event never fires and the crest stays round
+ * forever. This shipped broken once and looked like a CSS problem: the live
+ * element had natural 207x105 and complete=true, but no --wide class, because
+ * the only measurement path was an event that had already been missed. The
+ * effect below reads naturalWidth/naturalHeight directly whenever logoUrl
+ * changes, which covers the cached case; onLoad still covers the network case.
  */
 
 /* Above this width:height the circle costs more than it buys. 1.45 sits in the
@@ -46,14 +54,24 @@ export default function Masthead({ school, currentRoster, seasons, logoUrl, rost
 
   const [logoOk, setLogoOk] = useState(true)
   const [aspect, setAspect] = useState(null)
-  useEffect(() => { setLogoOk(true); setAspect(null) }, [logoUrl])
+  const imgRef = useRef(null)
+
+  const measure = (node) => {
+    if (node && node.complete && node.naturalWidth > 0 && node.naturalHeight > 0) {
+      setAspect(node.naturalWidth / node.naturalHeight)
+      return true
+    }
+    return false
+  }
+
+  useEffect(() => {
+    setLogoOk(true)
+    // A cached image is already complete here and will never fire onLoad.
+    if (!measure(imgRef.current)) setAspect(null)
+  }, [logoUrl])
+
   const showLogo = !!logoUrl && logoOk
   const wideMark = showLogo && aspect !== null && aspect >= WIDE_RATIO
-
-  const handleLoad = (e) => {
-    const { naturalWidth: w, naturalHeight: h } = e.currentTarget
-    if (w > 0 && h > 0) setAspect(w / h)
-  }
 
   return (
     <header className="cp-masthead">
@@ -63,8 +81,10 @@ export default function Masthead({ school, currentRoster, seasons, logoUrl, rost
         aria-hidden={showLogo ? undefined : 'true'}
       >
         {showLogo
-          ? <img className="cp-crest-img" src={logoUrl} alt={`${school?.school || 'Program'} logo`}
-              onLoad={handleLoad} onError={() => setLogoOk(false)} />
+          ? <img ref={imgRef} className="cp-crest-img" src={logoUrl}
+              alt={`${school?.school || 'Program'} logo`}
+              onLoad={(e) => measure(e.currentTarget)}
+              onError={() => setLogoOk(false)} />
           : monogram}
       </div>
       <div className="cp-mast-body">
