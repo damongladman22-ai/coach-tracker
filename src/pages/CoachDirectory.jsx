@@ -105,7 +105,6 @@ export default function CoachDirectory() {
     phone: ''
   });
   const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(null); // coach id being deleted
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   // Debounce search input - prevents excessive filtering on each keystroke
