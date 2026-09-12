@@ -5,7 +5,7 @@
  * module's baked-asset pattern.
  *
  * LOGOS (convention, July 2026): every school's mark lives on the public logos
- * bucket keyed by its schools.id — `${LOGO_BASE}/{schools.id}.svg`. The bucket
+ * bucket keyed by its schools.id — `${LOGO_BASE}/{schools.id}.svg?v={version}`. The bucket
  * was bulk-populated from ncaa.com's official school assets (1,018 of 1,022
  * NCAA institutions; see the pipeline's map_school_logos.py + its
  * logo_mapping_review.csv for the audit trail). brandingFor() therefore builds
@@ -39,6 +39,20 @@
 
 const LOGO_BASE = 'https://pub-5a9a6178bdd845018e2dc75442615bde.r2.dev'
 
+/* R2 serves these with Cache-Control: public, max-age=604800 — a seven-day TTL,
+   flagged in the Decision Log (17 July 2026) as meaning "a correction to an
+   already-viewed logo lags up to a week", with cache-busting named as the fix
+   and deferred. 12 September 2026 is when it bit: all 2,071 marks were re-cropped
+   to their true artwork bounds and re-uploaded, the CDN served the new file
+   immediately, and browsers kept painting the old one. A hard reload does not
+   reliably revalidate a CROSS-ORIGIN subresource, so there was no way for a
+   viewer to pull the correction.
+
+   Bump this whenever the bucket's contents change. The URL becomes a new cache
+   key, so every viewer gets the new asset on their next load and the TTL keeps
+   doing its job in between. */
+const LOGO_VERSION = '20260912'
+
 const THEMES = {
   // Ohio State University (W) — scarlet / gray
   '9e2f6cff-becf-4f3d-a3bb-5f4e1aead383': {
@@ -68,7 +82,7 @@ export function brandingFor(schoolId) {
   if (!schoolId) return null
   return {
     theme: THEMES[schoolId] || null,
-    logoUrl: `${LOGO_BASE}/${schoolId}.svg`,
+    logoUrl: `${LOGO_BASE}/${schoolId}.svg?v=${LOGO_VERSION}`,
   }
 }
 
