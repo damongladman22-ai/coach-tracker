@@ -7,10 +7,11 @@ import FeedbackButton from '../components/FeedbackButton'
 import SeasonSelector from '../components/SeasonSelector'
 import HamburgerMenu from '../components/HamburgerMenu'
 import PullToRefresh from '../components/PullToRefresh'
-import { computeRecord, gameResult } from '../components/ScoreInput'
+import { computeRecord } from '../components/ScoreInput'
 import { useFavorite, useFavorites } from '../hooks/useFavorite'
 import { seasonParamForSeason, withSeason } from '../lib/team'
 import { getTimezoneAbbr } from '../utils/timezones'
+import { isTrackerOpen } from '../utils/gameStatus'
 
 /**
  * Club Dashboard — team-first home page.
@@ -156,8 +157,7 @@ export default function ClubDashboard() {
         // Per-team derived data:
         //   - all games (for record + games count)
         //   - open-tracker game (soonest game attached to an event that is
-        //     not past and not closed) — mirrors PublicTeamPage's GameCard
-        //     "Open Tracker" rule exactly, using the shared gameResult signal
+        //     not past and not closed), via the shared isTrackerOpen rule
         //   - next game (date >= today, not closed, soonest)
         const teamGames = new Map()
         const teamOpen = new Map()
@@ -166,18 +166,12 @@ export default function ClubDashboard() {
           if (!teamGames.has(g.team_id)) teamGames.set(g.team_id, [])
           teamGames.get(g.team_id).push(g)
 
-          // Open-tracker candidate — identical logic to PublicTeamPage:
-          // attached to an event, not closed, and not "past". "Past" is
-          // date-only (no time-of-day), keyed off result/score presence or
-          // an earlier date, so the home card and team page never disagree.
+          // Open-tracker candidate. The rule itself lives in
+          // utils/gameStatus.isTrackerOpen, which PublicTeamPage's GameCard
+          // also calls, so the home card and the team page cannot disagree
+          // about the same game.
           const eventSlug = g.events?.slug
-          const hasResult =
-            !!gameResult(g).label ||
-            g.our_score != null ||
-            g.opponent_score != null
-          const isPast =
-            hasResult || g.is_closed ? true : parseDate(g.game_date) < today
-          if (eventSlug && !isPast && !g.is_closed) {
+          if (isTrackerOpen(g, today)) {
             const existing = teamOpen.get(g.team_id)
             if (!existing || g.game_date < existing.gameDate) {
               teamOpen.set(g.team_id, {

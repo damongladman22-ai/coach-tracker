@@ -13,6 +13,7 @@ import PullToRefresh from '../components/PullToRefresh'
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
 import { useFavorite } from '../hooks/useFavorite'
 import { getTimezoneAbbr } from '../utils/timezones'
+import { isGamePast, isTrackerOpen, parseGameDate } from '../utils/gameStatus'
 
 /**
  * Public Team Page at /t/:teamSlug
@@ -1723,7 +1724,6 @@ function GameCard({
   const isDiscreteEvent = eventDurationDays > 0 && eventDurationDays <= 30
   const eventName = isDiscreteEvent ? game.events?.event_name : null
   const isClosed = game.is_closed
-  const inEvent = !!eventSlug
   const hasVideo = videos.length > 0
 
   // Opponent enrichment from conference standings. Matched by exact
@@ -1732,24 +1732,12 @@ function GameCard({
   // through to plain "vs/at opponent" text.
   const opponentInfo = opponentLookup[game.opponent || ''] || null
 
-  // A game is no longer "Upcoming" once it has a result, has been closed,
-  // or its date is in the past. We deliberately do NOT use time-of-day here:
-  // AthleteOne games carry a blanket (often wrong) timezone, so a clock-based
-  // "kickoff has passed" check can't be trusted yet. Score presence is the
-  // reliable signal that a game has been played — and it's the same signal the
-  // result badge above uses, so the two can never disagree (no more the
-  // "W 1-0 · Upcoming" double-badge). Once the timezone source is fixed, a
-  // real kickoff-instant comparison can be added here for same-day games that
-  // have started but don't yet have a posted score.
-  const hasResult =
-    !!r.label || game.our_score != null || game.opponent_score != null
-  const isPast = (() => {
-    if (hasResult || isClosed) return true
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const gameDate = parseGameDate(game.game_date)
-    return gameDate < today
-  })()
+  // A game is no longer "Upcoming" once it has a result, has been closed, or
+  // its date is past. The rule lives in utils/gameStatus so this card and
+  // ClubDashboard's home card cannot disagree about the same game; the
+  // reasoning behind it — why it is date-only, and why score presence rather
+  // than a clock is the reliable signal — is documented there.
+  const isPast = isGamePast(game)
 
   // Action button — present only for UPCOMING/live games attached to an
   // event ("Open Tracker"). For past/closed games the whole-card click
@@ -1758,7 +1746,7 @@ function GameCard({
   // We stopPropagation on the button's click so the card-level
   // navigation below doesn't fight the button's own destination.
   let action = null
-  if (inEvent && !isPast && !isClosed) {
+  if (isTrackerOpen(game)) {
     action = (
       <Link
         to={`/e/${eventSlug}/${teamSlug}`}
@@ -2375,12 +2363,6 @@ function formatGameDateShort(s) {
     month: 'short',
     day: 'numeric',
   })
-}
-
-function parseGameDate(s) {
-  if (!s) return new Date()
-  const [y, m, d] = s.split('-')
-  return new Date(y, m - 1, d)
 }
 
 /**
