@@ -17,7 +17,7 @@ import { getGameTypes } from '../lib/lookups'
  *  4. Preview: each row shows matched team / event / game_type, parsed date,
  *     and issues flagged. Per-row include/exclude. Per-row overrides for
  *     ambiguous matches.
- *  5. Import: batch insert valid rows.
+ *  5. Import: skip games already stored, then batch insert the rest.
  *
  * Fuzzy matching is space-tolerant substring matching (same pattern used
  * for school search elsewhere in the app).
@@ -52,7 +52,7 @@ export default function ImportGames({ session }) {
 
   const [previewData, setPreviewData] = useState([]) // [{ row, team, event, gameType, parsedDate, ... include }]
   const [importing, setImporting] = useState(false)
-  const [results, setResults] = useState(null) // { inserted, skipped, errors }
+  const [results, setResults] = useState(null) // { inserted, alreadyPresent, excluded, failed, errors }
 
   useEffect(() => {
     loadLookups()
@@ -499,14 +499,91 @@ export default function ImportGames({ session }) {
       last_modified_by: session?.user?.id || null,
     }))
 
+    // --- Idempotency guard ---------------------------------------------
+    // Re-running the same spreadsheet used to insert every game a second time:
+    // this was a plain .insert() with no natural-key check, so a repeated
+    // import silently doubled the schedule. Games are keyed here on
+    // (team_id, game_date, opponent), the same triple GameDedup.jsx treats as
+    // identifying.
+    //
+    // Done in the app rather than as a UNIQUE constraint on purpose. A unique
+    // index is the airtight version, but it cannot be created while duplicate
+    // rows already exist -- and GameDedup.jsx exists because they do. The
+    // constraint is the follow-up once a dedup pass has run; this makes a
+    // re-import a no-op today.
+    const gameKey = (teamId, date, opponent) =>
+      [
+        teamId,
+        String(date || '').slice(0, 10),
+        String(opponent || '').trim().toLowerCase().replace(/\s+/g, ' '),
+      ].join('|')
+
+    const errors = []
+    const existingKeys = new Set()
+
+    const teamIds = [...new Set(payload.map((g) => g.team_id))]
+    const dates = payload.map((g) => String(g.game_date).slice(0, 10)).sort()
+    const minDate = dates[0]
+    const maxDate = dates[dates.length - 1]
+
+    try {
+      // Paginate: PostgREST caps a response at 1,000 rows, and a club with a
+      // full season across many teams exceeds that. Reading a short page and
+      // assuming it is the whole set would make every game past row 1,000 look
+      // new, which is the bug this guard exists to prevent.
+      const PAGE = 1000
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from('games')
+          .select('team_id, game_date, opponent')
+          .in('team_id', teamIds)
+          .gte('game_date', minDate)
+          .lte('game_date', maxDate)
+          .range(from, from + PAGE - 1)
+        if (error) throw error
+        for (const g of data || []) {
+          existingKeys.add(gameKey(g.team_id, g.game_date, g.opponent))
+        }
+        if (!data || data.length < PAGE) break
+      }
+    } catch (e) {
+      // Fail closed. If we cannot read what is already stored we cannot tell a
+      // new game from a repeat, and inserting blind is the behaviour being
+      // fixed. Stop and say so rather than risk doubling the schedule.
+      setResults({
+        inserted: 0,
+        alreadyPresent: 0,
+        excluded: previewData.length,
+        failed: 0,
+        errors: [
+          'Could not check for games already imported, so nothing was imported: ' +
+            (e?.message || String(e)),
+        ],
+      })
+      setImporting(false)
+      setStep('done')
+      return
+    }
+
+    const toInsert = []
+    let alreadyPresent = 0
+    for (const g of payload) {
+      if (existingKeys.has(gameKey(g.team_id, g.game_date, g.opponent))) {
+        alreadyPresent += 1
+      } else {
+        toInsert.push(g)
+      }
+    }
+
     // Insert in batches of 50
     let inserted = 0
-    const errors = []
-    for (let i = 0; i < payload.length; i += 50) {
-      const batch = payload.slice(i, i + 50)
+    let failed = 0
+    for (let i = 0; i < toInsert.length; i += 50) {
+      const batch = toInsert.slice(i, i + 50)
       const { error } = await supabase.from('games').insert(batch)
       if (error) {
         errors.push(error.message)
+        failed += batch.length
       } else {
         inserted += batch.length
       }
@@ -514,7 +591,12 @@ export default function ImportGames({ session }) {
 
     setResults({
       inserted,
-      skipped: previewData.length - inserted,
+      alreadyPresent,
+      // Rows the user unchecked or that failed validation. Counted separately
+      // from failed inserts, which the old single `skipped` number merged --
+      // a batch of 50 that errored was reported as 50 "skipped".
+      excluded: previewData.length - payload.length,
+      failed,
       errors,
     })
     setImporting(false)
@@ -883,7 +965,15 @@ export default function ImportGames({ session }) {
           <p className="text-sm">
             ✅ Inserted: <strong>{results.inserted}</strong>
             <br />
-            ⏭ Skipped: <strong>{results.skipped}</strong>
+            ♻️ Already in the database: <strong>{results.alreadyPresent ?? 0}</strong>
+            <br />
+            ⏭ Not selected or invalid: <strong>{results.excluded ?? 0}</strong>
+            {results.failed ? (
+              <>
+                <br />
+                ⚠️ Failed to insert: <strong>{results.failed}</strong>
+              </>
+            ) : null}
           </p>
           {results.errors.length > 0 && (
             <div className="mt-3 bg-rose-50 p-3 rounded text-xs text-rose-700">
