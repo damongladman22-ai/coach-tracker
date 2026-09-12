@@ -6,6 +6,7 @@ import AdminLayout from '../components/AdminLayout'
 import { getCurrentClubId } from '../lib/club'
 import { getActiveSeason } from '../lib/season'
 import { getGameTypes } from '../lib/lookups'
+import { TIMEZONES, DEFAULT_TIMEZONE } from '../utils/timezones'
 
 /**
  * Bulk game importer.
@@ -52,6 +53,9 @@ export default function ImportGames({ session }) {
 
   const [previewData, setPreviewData] = useState([]) // [{ row, team, event, gameType, parsedDate, ... include }]
   const [importing, setImporting] = useState(false)
+  // Applied to every row that carries a kick-off time. Was hardcoded to
+  // Eastern, which silently stamped the wrong zone on any club outside it.
+  const [importTimezone, setImportTimezone] = useState(DEFAULT_TIMEZONE)
   const [results, setResults] = useState(null) // { inserted, alreadyPresent, excluded, failed, errors }
 
   useEffect(() => {
@@ -489,7 +493,7 @@ export default function ImportGames({ session }) {
       event_id: r.eventId || null,
       game_date: r.date,
       game_time: r.time || null,
-      timezone: r.time ? 'America/New_York' : null,
+      timezone: r.time ? importTimezone : null,
       opponent: r.opponent || '',
       is_home: r.isHome,
       location: r.location || null,
@@ -938,7 +942,26 @@ export default function ImportGames({ session }) {
             </table>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">
+                Timezone for kick-off times
+              </label>
+              <select
+                value={importTimezone}
+                onChange={(e) => setImportTimezone(e.target.value)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+              >
+                {TIMEZONES.map((tz) => (
+                  <option key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500 mt-1">
+                Applied to rows that have a time. Rows without one store no timezone.
+              </p>
+            </div>
             <button
               onClick={() => setStep('map')}
               className="text-gray-600 px-4 py-2 hover:bg-gray-100 rounded-lg text-sm"

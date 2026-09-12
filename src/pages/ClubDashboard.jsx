@@ -10,6 +10,7 @@ import PullToRefresh from '../components/PullToRefresh'
 import { computeRecord, gameResult } from '../components/ScoreInput'
 import { useFavorite, useFavorites } from '../hooks/useFavorite'
 import { seasonParamForSeason, withSeason } from '../lib/team'
+import { getTimezoneAbbr } from '../utils/timezones'
 
 /**
  * Club Dashboard — team-first home page.
@@ -752,16 +753,7 @@ function formatTime(t, timezone) {
   const base = m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`
   // Append the venue zone abbreviation when known (the same 7 IANA strings the
   // app stores); an unknown/null zone renders the time with no label.
-  const tzAbbrevs = {
-    'America/New_York': 'ET',
-    'America/Chicago': 'CT',
-    'America/Denver': 'MT',
-    'America/Phoenix': 'MST',
-    'America/Los_Angeles': 'PT',
-    'America/Anchorage': 'AKT',
-    'Pacific/Honolulu': 'HT',
-  }
-  const tzAbbr = tzAbbrevs[timezone] || ''
+  const tzAbbr = getTimezoneAbbr(timezone)
   return tzAbbr ? `${base} ${tzAbbr}` : base
 }
 

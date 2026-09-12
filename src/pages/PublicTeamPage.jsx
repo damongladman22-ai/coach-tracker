@@ -12,6 +12,7 @@ import HamburgerMenu from '../components/HamburgerMenu'
 import PullToRefresh from '../components/PullToRefresh'
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos'
 import { useFavorite } from '../hooks/useFavorite'
+import { getTimezoneAbbr } from '../utils/timezones'
 
 /**
  * Public Team Page at /t/:teamSlug
@@ -397,16 +398,7 @@ export default function PublicTeamPage() {
     // Append the zone abbreviation only when the venue's timezone is known.
     // These are the exact IANA strings the app stores (see the venues cache and
     // the auto-unlock logic); an unknown/null zone shows the time with no label.
-    const tzAbbrevs = {
-      'America/New_York': 'ET',
-      'America/Chicago': 'CT',
-      'America/Denver': 'MT',
-      'America/Phoenix': 'MST',
-      'America/Los_Angeles': 'PT',
-      'America/Anchorage': 'AKT',
-      'Pacific/Honolulu': 'HT',
-    }
-    const tzAbbr = tzAbbrevs[timezone] || ''
+    const tzAbbr = getTimezoneAbbr(timezone)
     return tzAbbr ? `${base} ${tzAbbr}` : base
   }
 

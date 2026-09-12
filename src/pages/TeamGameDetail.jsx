@@ -9,6 +9,7 @@ import FeedbackButton from '../components/FeedbackButton'
 import PullToRefresh from '../components/PullToRefresh'
 import VideoThumbnail from '../components/VideoThumbnail'
 import GameVideosPanel from '../components/GameVideosPanel'
+import { getTimezoneAbbr } from '../utils/timezones'
 
 /**
  * Team Game Detail at /t/:teamSlug/game/:gameId
@@ -705,16 +706,7 @@ function formatTime(t, timezone) {
   const base = `${h12}:${String(m || 0).padStart(2, '0')} ${ampm}`
   // Append the venue zone abbreviation when known (the same 7 IANA strings the
   // app stores); an unknown/null zone renders the time with no label.
-  const tzAbbrevs = {
-    'America/New_York': 'ET',
-    'America/Chicago': 'CT',
-    'America/Denver': 'MT',
-    'America/Phoenix': 'MST',
-    'America/Los_Angeles': 'PT',
-    'America/Anchorage': 'AKT',
-    'Pacific/Honolulu': 'HT',
-  }
-  const tzAbbr = tzAbbrevs[timezone] || ''
+  const tzAbbr = getTimezoneAbbr(timezone)
   return tzAbbr ? `${base} ${tzAbbr}` : base
 }
 

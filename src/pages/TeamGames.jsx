@@ -17,6 +17,7 @@ import { gameResult } from '../components/ScoreInput';
 import VideoBadge from '../components/VideoBadge';
 import GameVideosPanel from '../components/GameVideosPanel';
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos';
+import { getTimezoneAbbr } from '../utils/timezones'
 
 /**
  * Live Tracker - Team Games List
@@ -203,16 +204,7 @@ export default function TeamGames() {
     const hour12 = unlockHours % 12 || 12;
     
     // Get timezone abbreviation
-    const tzAbbrevs = {
-      'America/New_York': 'ET',
-      'America/Chicago': 'CT',
-      'America/Denver': 'MT',
-      'America/Phoenix': 'MST',
-      'America/Los_Angeles': 'PT',
-      'America/Anchorage': 'AKT',
-      'Pacific/Honolulu': 'HT',
-    };
-    const tzAbbr = tzAbbrevs[game.timezone] || '';
+    const tzAbbr = getTimezoneAbbr(game.timezone);
     
     return `${hour12}:${unlockMinutesVal.toString().padStart(2, '0')} ${ampm} ${tzAbbr}`;
   };
@@ -223,16 +215,7 @@ export default function TeamGames() {
     const [hours, minutes] = game.game_time.split(':').map(Number);
     const ampm = hours >= 12 ? 'PM' : 'AM';
     const hour12 = hours % 12 || 12;
-    const tzAbbrevs = {
-      'America/New_York': 'ET',
-      'America/Chicago': 'CT',
-      'America/Denver': 'MT',
-      'America/Phoenix': 'MST',
-      'America/Los_Angeles': 'PT',
-      'America/Anchorage': 'AKT',
-      'Pacific/Honolulu': 'HT',
-    };
-    const tzAbbr = tzAbbrevs[game.timezone] || '';
+    const tzAbbr = getTimezoneAbbr(game.timezone);
     return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm} ${tzAbbr}`;
   };
 

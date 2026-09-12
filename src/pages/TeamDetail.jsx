@@ -8,16 +8,8 @@ import ScoreInput, { gameResult } from '../components/ScoreInput'
 import { getCurrentClubId } from '../lib/club'
 import { getGameTypes, getDefaultGameTypeId } from '../lib/lookups'
 import { getPublicBaseUrl } from '../lib/publicUrl'
+import { TIMEZONES, DEFAULT_TIMEZONE } from '../utils/timezones'
 
-const TIMEZONES = [
-  { value: 'America/New_York', label: 'Eastern (ET)' },
-  { value: 'America/Chicago', label: 'Central (CT)' },
-  { value: 'America/Denver', label: 'Mountain (MT)' },
-  { value: 'America/Phoenix', label: 'Arizona (MST)' },
-  { value: 'America/Los_Angeles', label: 'Pacific (PT)' },
-  { value: 'America/Anchorage', label: 'Alaska (AKT)' },
-  { value: 'Pacific/Honolulu', label: 'Hawaii (HT)' },
-]
 
 /**
  * TeamDetail: all games for a single team, grouped by event.
@@ -55,7 +47,7 @@ export default function TeamDetail({ session }) {
     game_date: '',
     opponent: '',
     game_time: '',
-    timezone: 'America/New_York',
+    timezone: DEFAULT_TIMEZONE,
     game_type_id: '',
     is_home: false,
     location: '',
@@ -154,7 +146,7 @@ export default function TeamDetail({ session }) {
       game_date: '',
       opponent: '',
       game_time: '',
-      timezone: 'America/New_York',
+      timezone: DEFAULT_TIMEZONE,
       game_type_id: '',
       is_home: false,
       location: '',
@@ -220,7 +212,7 @@ export default function TeamDetail({ session }) {
       game_date: game.game_date,
       opponent: game.opponent || '',
       game_time: game.game_time || '',
-      timezone: game.timezone || 'America/New_York',
+      timezone: game.timezone || DEFAULT_TIMEZONE,
       game_type_id: String(game.game_type_id || ''),
       is_home: !!game.is_home,
       location: game.location || '',
