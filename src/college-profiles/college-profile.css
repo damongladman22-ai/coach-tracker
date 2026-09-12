@@ -68,8 +68,19 @@
    jump, which is the lesser harm. */
 .cp-crest{transition:width .18s ease, border-radius .18s ease}
 @media (prefers-reduced-motion: reduce){ .cp-crest{transition:none} }
-.cp-crest--wide{width:auto; min-width:76px; max-width:156px; border-radius:10px}
-.cp-crest--wide .cp-crest-img{width:auto; height:100%; max-width:156px; padding:10px 12px}
+/* Derive the WIDTH FROM THE HEIGHT, not the other way round. The height is the
+   fixed dimension (64px); the width is whatever that height and the mark's real
+   ratio imply. Masthead supplies the ratio as --crest-ar.
+
+   The first attempt did the reverse -- width:auto on the image with height:100%
+   -- and broke: once max-width clamped the width, the browser recomputed the
+   height from the intrinsic ratio, giving an 86.95px-tall image inside a 64px
+   box that overflow:hidden then cropped. Measured on the live page, not
+   reasoned about. Fixing the box's aspect-ratio removes the circularity. */
+.cp-crest--wide{width:auto; aspect-ratio:var(--crest-ar, 1); min-width:76px; max-width:156px; border-radius:10px}
+/* max-width:none so the image never clamps independently of its box; a mark
+   past the 156px cap is letterboxed by object-fit rather than cropped. */
+.cp-crest--wide .cp-crest-img{width:100%; height:100%; max-width:none; padding:8px 10px}
 .cp-mast-body{min-width:0; flex:1}
 .cp-mast-eyebrow{font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--accent-deep); margin:0 0 2px}
 .cp-mast-title{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:32px; line-height:1.02; margin:0 0 4px; color:var(--ink)}

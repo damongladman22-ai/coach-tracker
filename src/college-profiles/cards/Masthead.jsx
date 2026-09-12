@@ -59,6 +59,7 @@ export default function Masthead({ school, currentRoster, seasons, logoUrl, rost
     <header className="cp-masthead">
       <div
         className={`cp-crest${showLogo ? ' cp-crest--logo' : ''}${wideMark ? ' cp-crest--wide' : ''}`}
+        style={wideMark ? { '--crest-ar': aspect } : undefined}
         aria-hidden={showLogo ? undefined : 'true'}
       >
         {showLogo
