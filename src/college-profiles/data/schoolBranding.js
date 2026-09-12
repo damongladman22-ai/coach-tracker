@@ -15,22 +15,28 @@
  * onError handler falls back to the monogram crest, so nothing breaks.
  * Adding a logo = uploading one file named {schools.id}.svg. No code change.
  *
- * THEMES (curated map): the four pilot schools, hand-curated. This map is now
- * the OVERRIDE tier, not the source: it is consulted first and wins, so a
- * hand-picked colorway is never displaced by a derived one.
- *
- * themeFromSchool(school) is the source for everyone else. It reads the
- * schools row the profile ALREADY fetches (useProgramProfile does select('*')),
- * so a colorway costs no extra request and nothing in the JS bundle:
+ * COLOURWAYS LIVE IN THE DATA, not here. themeFromSchool(school) reads the
+ * schools row the profile already fetches (useProgramProfile does select('*')),
+ * so a colourway costs no extra request and nothing in the JS bundle:
  *   brand_accent     the brand colour  (2,652 schools, Sept 2026)
  *   brand_accent_on  '#FFFFFF' or '#15191C' -- which text is legible ON it
  *   brand_accent_2   the secondary, where one was found
  *   brand_source     'site' | 'logo' | 'manual'
  * 'site' values are the school's own <meta name="theme-color">; 'logo' values
  * are the dominant colour of its ncaa.com mark by painted pixel area. Where
- * both existed they agreed on hue 86% of the time.
+ * both existed they agreed on hue 86% of the time. 'manual' rows are curated
+ * by hand via apply_manual_colorways.py and are never overwritten by a
+ * re-derive.
  *
- * accentDeep and accentTint are DERIVED here rather than stored, because they
+ * A four-school THEMES map used to live here as the override tier. It was
+ * REMOVED on 12 September 2026: curated values now live in brand_source=
+ * 'manual', and keeping a second mechanism meant the two could disagree --
+ * which they did. Ohio State's women's row held the DERIVED colour in the
+ * database while this map painted the curated scarlet at render time, so
+ * anything reading `schools` directly got the wrong colour. One source of
+ * truth, in the data.
+ *
+ * accentDeep and accentTint are DERIVED below rather than stored, because they
  * are pure functions of the accent and storing them would let them drift.
  *
  * Separation of concerns: this file is DATA only. The host decides whether to
@@ -53,35 +59,15 @@ const LOGO_BASE = 'https://pub-5a9a6178bdd845018e2dc75442615bde.r2.dev'
    doing its job in between. */
 const LOGO_VERSION = '20260912'
 
-const THEMES = {
-  // Ohio State University (W) — scarlet / gray
-  '9e2f6cff-becf-4f3d-a3bb-5f4e1aead383': {
-    accent: '#BB0000', accentDeep: '#8C0000', accentTint: '#FBE9E9',
-  },
-  // Bryant University (M) — black / gold (gold carried as the tint)
-  'ab409a88-5f60-4a57-8dce-f1b084048fb0': {
-    accent: '#111111', accentDeep: '#000000', accentTint: '#F4EEDE',
-  },
-  // Gardner-Webb University (M) — red / white
-  '869003e8-842c-4ea7-9fed-4894497e999b': {
-    accent: '#BB0000', accentDeep: '#8C0000', accentTint: '#FBE9E9',
-  },
-  // University of St. Thomas – Minnesota (M) — purple / gray
-  '2deadc71-3706-4319-89de-1ff146488dec': {
-    accent: '#510C76', accentDeep: '#3B0857', accentTint: '#EFE8F4',
-  },
-}
-
 /**
- * brandingFor(schoolId) → { theme, logoUrl } | null
- *   theme   → the curated colorway, or null (caller falls back to defaults)
- *   logoUrl → convention URL for every school; consumers' onError fallback
- *             covers ids with no uploaded file
+ * brandingFor(schoolId) -> { logoUrl } | null
+ *   logoUrl -> convention URL for every school; consumers' onError fallback
+ *              covers ids with no uploaded file. Colour does NOT come from
+ *              here any more -- see themeFromSchool.
  */
 export function brandingFor(schoolId) {
   if (!schoolId) return null
   return {
-    theme: THEMES[schoolId] || null,
     logoUrl: `${LOGO_BASE}/${schoolId}.svg?v=${LOGO_VERSION}`,
   }
 }

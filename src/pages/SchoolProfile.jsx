@@ -11,14 +11,19 @@ import { PageLoader } from '../components/LoadingStates'
  * SchoolProfile — PitchSide's thin host for the portable College Profiles module.
  *
  * Keeps PitchSide-specific concerns OUT of the module: reads :schoolId, runs the
- * access gate with the app's shared supabase client, resolves per-school branding
- * (colorway + logo), and injects the client + back-link target + theme + logo
- * into the module.
+ * access gate with the app's shared supabase client, resolves the logo, and
+ * injects the client + back-link target + logo into the module.
  *
- * Branding: brandingFor(schoolId) returns { theme, logoUrl } for pilot schools
- * (null otherwise → module defaults). The colorway (theme) always applies; the
- * logo is gated by the global kill switch (useCollegeProfileLogos) — off → the
- * module falls back to its monogram crest.
+ * Branding: brandingFor(schoolId) returns { logoUrl } only. The COLOURWAY is no
+ * longer passed from here — the module reads it off the schools row it already
+ * fetches (themeFromSchool). The four-school THEMES map that used to supply a
+ * `theme` prop was removed on 12 September 2026 because it duplicated data that
+ * now lives in schools.brand_*, and the two disagreed: Ohio State's women's row
+ * held the derived colour in the database while the map painted the curated one
+ * at render time.
+ *
+ * The logo is gated by the global kill switch (useCollegeProfileLogos) — off →
+ * the module falls back to its monogram crest.
  *
  * Gate outcomes:
  *   checking → loader
@@ -63,7 +68,6 @@ export default function SchoolProfile() {
       schoolId={schoolId}
       backTo="/schools"
       backLabel="Explore Colleges"
-      theme={brand?.theme}
       logoUrl={logoUrl}
     />
   )

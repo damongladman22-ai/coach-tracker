@@ -54,7 +54,11 @@ async function fetchAllIndex() {
 
 function Crest({ row, logosEnabled }) {
   const brand = brandingFor(row.id)
-  const accent = brand?.theme?.accent || '#334155'
+  // The index reads v_college_index, which carries no brand_accent column, so
+  // the monogram falls back to the module neutral. Profiles theme themselves
+  // from the schools row; adding brand_accent to the matview would theme these
+  // crests too (~2,650 schools instead of the 4 the old THEMES map covered).
+  const accent = '#334155'
   const logoUrl = logosEnabled && brand?.logoUrl ? brand.logoUrl : null
   const [ok, setOk] = useState(true)
   const show = logoUrl && ok
