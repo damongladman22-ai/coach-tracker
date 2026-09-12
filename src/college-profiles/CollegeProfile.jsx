@@ -19,11 +19,17 @@ import GeographyTrend from './cards/GeographyTrend'
 import CoachStaff from './cards/CoachStaff'
 import ProgramResults from './cards/ProgramResults'
 import { useProgramResults } from './data/useProgramResults'
+import { themeFromSchool, softOf } from './data/schoolBranding'
 
 /**
  * CollegeProfile — the portable module entry point.
  * Props (all injected; no PitchSide imports): client, schoolId, backTo, backLabel, theme, logoUrl
- *   theme   → { accent, accentDeep, accentTint } drives the .cp-root CSS vars
+ *   theme   → { accent, accentDeep, accentTint } — the OVERRIDE tier. When the
+ *             host supplies one it wins, so a hand-curated colourway is never
+ *             displaced by a derived one. When it does not, the colourway is
+ *             read off the schools row this component already fetched (see
+ *             themeFromSchool), which is why theming costs no extra request.
+ *             Either way it drives the .cp-root CSS vars.
  *   logoUrl → school mark for the masthead crest; falsy → monogram fallback
  */
 function fmtDate(iso) {
@@ -57,8 +63,19 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const activePeer = peer === 'conf' && hasConf ? 'conf' : 'div'
   const scope = activePeer === 'conf' ? benchmarks.conf : benchmarks.div
 
-  const styleVars = theme
-    ? { '--accent': theme.accent, '--accent-deep': theme.accentDeep, '--accent-tint': theme.accentTint }
+  // Host override first, then the row. Null leaves the module's neutral
+  // defaults in place, which is the honest state for a school we have no
+  // colourway for — it is not another school's scarlet.
+  const colorway = theme || themeFromSchool(school)
+  const styleVars = colorway
+    ? {
+        '--accent': colorway.accent,
+        '--accent-deep': colorway.accentDeep,
+        '--accent-tint': colorway.accentTint,
+        '--accent-on': colorway.accentOn || '#FFFFFF',
+        '--accent-soft': colorway.accentSoft || softOf(colorway.accent) || undefined,
+        ...(colorway.accent2 ? { '--accent-2': colorway.accent2 } : null),
+      }
     : undefined
 
   const ready = !loading && !error && school

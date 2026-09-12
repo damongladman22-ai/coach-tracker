@@ -15,10 +15,23 @@
  * onError handler falls back to the monogram crest, so nothing breaks.
  * Adding a logo = uploading one file named {schools.id}.svg. No code change.
  *
- * THEMES (curated map): brand colorways stay hand-curated per school, keyed by
- * schools.id, sourced from each school's own athletics site (authoritative).
- * A school not in the map gets the module's default colorway. To theme a new
- * school: add a row here.
+ * THEMES (curated map): the four pilot schools, hand-curated. This map is now
+ * the OVERRIDE tier, not the source: it is consulted first and wins, so a
+ * hand-picked colorway is never displaced by a derived one.
+ *
+ * themeFromSchool(school) is the source for everyone else. It reads the
+ * schools row the profile ALREADY fetches (useProgramProfile does select('*')),
+ * so a colorway costs no extra request and nothing in the JS bundle:
+ *   brand_accent     the brand colour  (2,652 schools, Sept 2026)
+ *   brand_accent_on  '#FFFFFF' or '#15191C' -- which text is legible ON it
+ *   brand_accent_2   the secondary, where one was found
+ *   brand_source     'site' | 'logo' | 'manual'
+ * 'site' values are the school's own <meta name="theme-color">; 'logo' values
+ * are the dominant colour of its ncaa.com mark by painted pixel area. Where
+ * both existed they agreed on hue 86% of the time.
+ *
+ * accentDeep and accentTint are DERIVED here rather than stored, because they
+ * are pure functions of the accent and storing them would let them drift.
  *
  * Separation of concerns: this file is DATA only. The host decides whether to
  * apply the logo (the logo kill switch); the colorway always applies.
@@ -56,5 +69,78 @@ export function brandingFor(schoolId) {
   return {
     theme: THEMES[schoolId] || null,
     logoUrl: `${LOGO_BASE}/${schoolId}.svg`,
+  }
+}
+
+
+/* ---- derived shades -------------------------------------------------- */
+
+function parseHex(hex) {
+  const m = /^#([0-9a-f]{6})$/i.exec(String(hex || '').trim())
+  if (!m) return null
+  const n = parseInt(m[1], 16)
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
+}
+
+const toHex = (rgb) =>
+  '#' + rgb.map((v) => Math.max(0, Math.min(255, Math.round(v)))
+    .toString(16).padStart(2, '0')).join('').toUpperCase()
+
+/* Relative luminance, WCAG 2.x. */
+function luminance(rgb) {
+  const [r, g, b] = rgb.map((v) => {
+    const c = v / 255
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)
+  })
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+const contrast = (a, b) => {
+  const la = luminance(a), lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+/* --accent-deep is used as TEXT ON WHITE (back link, eyebrow, meta links), so
+   it genuinely has to clear 4.5:1 there. Step the accent down until it does,
+   then a little further so it reads as a deeper shade and not the same colour. */
+function deepen(rgb) {
+  let cur = rgb
+  for (let i = 0; i < 40 && contrast(cur, [255, 255, 255]) < 4.5; i++) {
+    cur = cur.map((v) => v * 0.94)
+  }
+  return cur.map((v) => v * 0.88)
+}
+
+/* --accent-tint is a near-white wash of the accent, for chip and band fills. */
+const tintOf = (rgb) => rgb.map((v) => v + (255 - v) * 0.92)
+
+/**
+ * softOf(hex) -> 'rgba(r, g, b, 0.18)' for focus rings and chip halos.
+ * Exported so a caller holding only a curated { accent } can derive it too.
+ */
+export function softOf(hex) {
+  const rgb = parseHex(hex)
+  return rgb ? `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.18)` : null
+}
+
+/**
+ * themeFromSchool(schoolRow) -> { accent, accentOn, accentDeep, accentTint, accent2, accentSoft } | null
+ *
+ * Returns null when the row carries no brand_accent, which leaves the module's
+ * neutral CSS defaults in place. Never throws on a malformed value: a hex that
+ * does not parse is treated as absent.
+ */
+export function themeFromSchool(school) {
+  const rgb = parseHex(school?.brand_accent)
+  if (!rgb) return null
+  const on = parseHex(school?.brand_accent_on)
+  const two = parseHex(school?.brand_accent_2)
+  return {
+    accent: toHex(rgb),
+    accentOn: on ? toHex(on) : '#FFFFFF',
+    accentDeep: toHex(deepen(rgb)),
+    accentTint: toHex(tintOf(rgb)),
+    accent2: two ? toHex(two) : null,
+    accentSoft: softOf(toHex(rgb)),
   }
 }
