@@ -1,0 +1,27 @@
+# macOS Finder metadata. These are already TRACKED, so this file alone will not
+# remove them -- they need `git rm --cached` once (see the note in the backlog's
+# §2 CORRECTION entry). After that, this keeps them out.
+.DS_Store
+**/.DS_Store
+
+# Dependencies
+node_modules/
+
+# Local environment — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Back-up-before-replace convention
+*.bak
+
+# Editor / OS noise
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*

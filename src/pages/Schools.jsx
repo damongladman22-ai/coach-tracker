@@ -244,32 +244,6 @@ export default function Schools({ session }) {
     setSavingSchool(false)
   }
 
-  const deleteSchool = async (school, e) => {
-    e.stopPropagation()
-    if (!confirm(
-      `Delete "${school.school}"?\n\n` +
-      `This will also delete all coaches at this school AND their attendance history.\n\n` +
-      `Tip: If the women's soccer program was discontinued (cut, suspended, school closed), ` +
-      `click "Mark Inactive" instead — that hides the school from the public directory ` +
-      `but preserves coach and attendance history. Use Delete only for data errors ` +
-      `(duplicates the dedup missed, wrong-entity imports).`
-    )) return
-    
-    const { error } = await supabase
-      .from('schools')
-      .delete()
-      .eq('id', school.id)
-    
-    if (error) {
-      alert('Error deleting school: ' + error.message)
-    } else {
-      setSchools(prev => prev.filter(s => s.id !== school.id))
-      if (expandedSchool === school.id) {
-        setExpandedSchool(null)
-      }
-    }
-  }
-
   const addCoach = async (schoolId) => {
     // Admin add from the Schools page. source='manual' tags this row so the
     // Coach Refresh pipeline leaves it alone. See
@@ -289,25 +263,6 @@ export default function Schools({ session }) {
     if (!error) {
       setShowCoachForm(null)
       setCoachFormData({ first_name: '', last_name: '', email: '', phone: '', title: '' })
-      // Refresh coaches for this school
-      const { data } = await supabase
-        .from('coaches')
-        .select('*')
-        .eq('school_id', schoolId)
-        .order('last_name')
-      setCoaches(prev => ({ ...prev, [schoolId]: data || [] }))
-    }
-  }
-
-  const deleteCoach = async (coachId, schoolId) => {
-    if (!confirm('Delete this coach?\n\nThis will also delete any attendance records.\n\nTip: If the coach moved schools, click "Mark Inactive" instead — that preserves attendance history.')) return
-
-    const { error } = await supabase
-      .from('coaches')
-      .delete()
-      .eq('id', coachId)
-    
-    if (!error) {
       // Refresh coaches for this school
       const { data } = await supabase
         .from('coaches')

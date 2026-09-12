@@ -556,44 +556,6 @@ export default function CoachDirectory() {
     }
   };
 
-  const deleteCoach = async (coach) => {
-    const confirmMessage = `Delete ${coach.first_name} ${coach.last_name}?\n\nThis will also remove any attendance records for this coach.\n\nTip: If this coach moved schools, click "Mark Inactive" instead — that preserves their attendance history.`;
-    if (!confirm(confirmMessage)) return;
-
-    setDeleting(coach.id);
-
-    try {
-      // Delete attendance records first (foreign key constraint)
-      await supabase
-        .from('attendance')
-        .delete()
-        .eq('coach_id', coach.id);
-
-      // Delete the coach. Deletes remain admin-only by RLS design; the
-      // .select('id') + zero-row check makes a filtered delete surface as an
-      // error instead of a false success toast.
-      const { data: deleted, error } = await supabase
-        .from('coaches')
-        .delete()
-        .eq('id', coach.id)
-        .select('id');
-
-      if (error) throw error;
-      if (!deleted || deleted.length === 0) {
-        throw new Error('Delete not permitted — admin sign-in required. Use "Mark Inactive" instead.');
-      }
-
-      // Update local state
-      setCoaches(prev => prev.filter(c => c.id !== coach.id));
-      setToast({ show: true, message: 'Coach deleted', type: 'success' });
-    } catch (err) {
-      console.error('Error deleting coach:', err);
-      setToast({ show: true, message: 'Error deleting: ' + err.message, type: 'error' });
-    } finally {
-      setDeleting(null);
-    }
-  };
-
   // Toggle a coach's active status (anyone can do this in the directory)
   const toggleCoachActive = async (coach) => {
     const isCurrentlyActive = coach.is_active !== false;
