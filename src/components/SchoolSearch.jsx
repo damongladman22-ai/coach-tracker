@@ -81,7 +81,11 @@ export function SchoolSearch({ selectedSchool, onSelect, programGender = null })
   // This picker searches name, city, state and conference — the module's
   // default field set — because it is an admin lookup where a conference or
   // state hit is a useful way in.
-  const getMatchScore = useCallback((school, terms) => scoreSchool(school, terms), []);
+  // debouncedQuery is passed so a multi-word nickname ("Golden Stallions")
+  // can be looked up as a whole phrase; the per-term path cannot see it.
+  const getMatchScore = useCallback(
+    (school, terms) => scoreSchool(school, terms, { query: debouncedQuery }),
+    [debouncedQuery]);
 
   // Filter and sort schools based on query
   const filteredSchools = useMemo(() => {

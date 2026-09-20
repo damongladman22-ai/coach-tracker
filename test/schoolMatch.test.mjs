@@ -38,6 +38,9 @@ const SCHOOLS = [
   // "State" with a query like "ohio state", and alphabetical order put them
   // ABOVE the school the user meant.
   'Adams State University', 'Angelo State University', 'Alabama A&M University',
+  // Schools whose nicknames are phrases — the multi-word alias cases below.
+  // (Abraham Baldwin is already in the list above.)
+  'Albany State University', 'Agnes Scott College',
   // Guards the strict-expansion path, which psu still exercises: this school
   // CONTAINS "penn state" but is not the school PSU means.
   'Eastern Penn State College',
@@ -58,6 +61,11 @@ setAliasIndex(new Map([
   ['unc', new Set(['University of North Carolina'])],
   ['msu', new Set(['Michigan State University', 'Mississippi State University',
                    'Missouri State University', 'Montana State University'])],
+  // Multi-word nicknames. 14% of the harvested aliases look like this, and the
+  // per-term lookup can never reach them.
+  ['golden stallions', new Set(['Abraham Baldwin Agricultural College'])],
+  ['great danes', new Set(['Albany State University'])],
+  ['scotties', new Set(['Agnes Scott College'])],
 ]));
 
 let pass = 0, fail = 0;
@@ -99,7 +107,7 @@ t('osu returns all three', ranked('osu').sort(),
 t('usc returns both', ranked('usc').sort(),
   ['University of South Carolina', 'University of Southern California']);
 t('msu returns all four', ranked('msu').length, 4);
-t('alias index is loaded for these tests', aliasIndexSize(), 4);
+t('alias index is loaded for these tests', aliasIndexSize(), 7);
 t('unc returns North Carolina', ranked('unc'), ['University of North Carolina']);
 t('ucla is gone from the map', ABBREVIATIONS.ucla, undefined);
 // These four moved to school_aliases and must NOT also live in the map: two
@@ -132,6 +140,33 @@ t('usc still finds South Carolina',
 t('unc still finds North Carolina', ranked('unc'),
   ['University of North Carolina']);
 t('expandTerms keeps the literal term', expandTerms('osu')[0][0], 'osu');
+// The phrase rides on the array so no caller can forget to pass it.
+t('expandTerms carries the whole query', expandTerms('Great  Danes').query,
+  'great danes');
+t('the carried query is not enumerable',
+  JSON.stringify(expandTerms('great danes')), '[["great"],["danes"]]');
+
+// ── multi-word aliases must be reachable ────────────────────────────────────
+// Found by inspection before shipping, not by a failing search: 190 of the
+// 1,373 harvested nicknames are phrases, and scoreSchool only ever looked the
+// alias index up one TERM at a time. "golden stallions" splits into "golden"
+// and "stallions", neither of which is a key, so those 190 would have been
+// written to the table and then been unfindable.
+t('a multi-word nickname finds its school',
+  ranked('golden stallions'), ['Abraham Baldwin Agricultural College']);
+t('another one', ranked('great danes'), ['Albany State University']);
+t('a single-word nickname still works', ranked('scotties'), ['Agnes Scott College']);
+// The phrase must belong to THAT school, not merely be in the index.
+t('a nickname does not match an unrelated school',
+  ranked('golden stallions').includes('Albany State University'), false);
+// Scored above a name prefix: typing a school's full nickname names it as
+// precisely as typing its name.
+t('a whole-phrase alias outranks a prefix match',
+  (() => { const terms = expandTerms('great danes');
+           return scoreSchool({ id: 'Albany State University',
+                                school: 'Albany State University' },
+                              terms, { fields: ['name'], query: 'great danes' }); })(),
+  60);
 
 // ── short terms do not match inside a longer word ───────────────────────────
 // Found in production. "acu" returned nine schools: the three real ACUs from

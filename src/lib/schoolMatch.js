@@ -165,12 +165,19 @@ export const ABBREVIATIONS = {
  * literally contains it still matches.
  */
 export function expandTerms(query) {
-  return String(query || '')
-    .toLowerCase()
-    .trim()
-    .split(/\s+/)
+  const whole = String(query || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const out = whole
+    .split(' ')
     .filter(Boolean)
     .map(t => (ABBREVIATIONS[t] ? [t, ...ABBREVIATIONS[t]] : [t]));
+  // The unsplit query rides along on the array.
+  //
+  // scoreSchool needs it to look up multi-word aliases, and passing it as a
+  // separate option meant any caller who forgot silently lost all 190 phrase
+  // nicknames — with no error, just no results. The terms and the phrase they
+  // came from are one piece of information, so they travel together.
+  Object.defineProperty(out, 'query', { value: whole, enumerable: false });
+  return out;
 }
 
 // ── school scoring ───────────────────────────────────────────────────────────
@@ -247,6 +254,26 @@ function scoreOne(fields, term, strict) {
 export function scoreSchool(school, terms, opts = {}) {
   const use = opts.fields || ['name', 'city', 'state', 'conference'];
   const id = school.id;
+
+  // WHOLE-PHRASE alias check, before anything is split into terms.
+  //
+  // 14% of the nicknames in school_aliases are multi-word — Golden Stallions,
+  // Red Devils, Great Danes, Yellow Jackets, Fighting Owls. The per-term
+  // lookup below can never find them: "golden stallions" becomes the terms
+  // "golden" and "stallions", and neither is a key. 190 aliases would have
+  // been stored and then been unreachable.
+  //
+  // Scored 60, above a name prefix (50): someone who types a school's full
+  // nickname has named that school as precisely as typing its name, and more
+  // precisely than a query that merely prefixes it.
+  const rawQuery = opts.query || terms.query;
+  if (id && rawQuery) {
+    const whole = String(rawQuery).toLowerCase().trim().replace(/\s+/g, ' ');
+    if (whole.includes(' ')) {
+      const hits = ALIAS_INDEX.get(whole);
+      if (hits && hits.has(id)) return 60;
+    }
+  }
   const name = String(school.school || '').toLowerCase();
   const fields = {
     name,
@@ -288,5 +315,5 @@ export function scoreSchool(school, terms, opts = {}) {
 export function matchesSchool(school, query, opts = {}) {
   const terms = expandTerms(query);
   if (!terms.length) return true;
-  return scoreSchool(school, terms, opts) > 0;
+  return scoreSchool(school, terms, { ...opts, query }) > 0;
 }
