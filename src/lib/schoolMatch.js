@@ -212,8 +212,20 @@ function scoreOne(fields, term, strict) {
   if (strict) return beginsWithPhrase(name, term) ? 50 : 0;
   if (name.startsWith(term)) return 50;
   if (name.split(' ').some(w => w.startsWith(term))) return 30;
-  if (name.includes(term)) return 20;
-  if (nameNoSpaces.includes(termNoSpaces)) return 18;
+  // INTERIOR substring matching is for terms of 4+ characters only. A three
+  // letter fragment landing inside a longer word is a coincidence, not a
+  // match: measured over 1,564 real names, "usc" interior-matched Ursinus,
+  // Tusculum, Mount Aloysius, Albertus Magnus and Gustavus Adolphus, "acu"
+  // matched Syracuse, Immaculata and Quinnipiac, and "msu" matched Roger
+  // Williams University -- every interior hit was noise and not one was
+  // legitimate. Short queries are almost always abbreviations, which the alias
+  // table and the prefix rules already answer properly.
+  if (term.length >= 4) {
+    if (name.includes(term)) return 20;
+    if (nameNoSpaces.includes(termNoSpaces)) return 18;
+  }
+  // Reachable for short terms now that the two rules above are length-gated:
+  // a 3-character term that PREFIXES the space-collapsed name is a real hit.
   if (nameNoSpaces.startsWith(termNoSpaces)) return 16;
   if (state && (state === term || state.startsWith(term))) return 12;
   if (city && city.includes(term)) return 10;

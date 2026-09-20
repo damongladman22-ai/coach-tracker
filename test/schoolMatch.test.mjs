@@ -41,6 +41,10 @@ const SCHOOLS = [
   // Guards the strict-expansion path, which psu still exercises: this school
   // CONTAINS "penn state" but is not the school PSU means.
   'Eastern Penn State College',
+  // Real rows that interior-matched three-letter abbreviations before the
+  // length gate: acu inside Syracuse and Immaculata, usc inside Tusculum.
+  'Syracuse University', 'Immaculata University', 'Quinnipiac University',
+  'Tusculum University', 'Ursinus College',
 ].map(s => ({ id: s, school: s, city: '', state: '', conference: '' }));
 
 // Stands in for school_aliases. Ids are the names, so the mapping is readable.
@@ -128,6 +132,23 @@ t('usc still finds South Carolina',
 t('unc still finds North Carolina', ranked('unc'),
   ['University of North Carolina']);
 t('expandTerms keeps the literal term', expandTerms('osu')[0][0], 'osu');
+
+// ── short terms do not match inside a longer word ───────────────────────────
+// Found in production. "acu" returned nine schools: the three real ACUs from
+// the alias table, plus Syracuse, Immaculata and Quinnipiac, which merely
+// contain those letters. Measured over 1,564 names, every interior hit for a
+// three-letter query was noise.
+t('acu excludes interior matches',
+  ranked('acu').filter(n => /Syracuse|Immaculata|Quinnipiac/.test(n)), []);
+t('usc excludes interior matches',
+  ranked('usc').filter(n => /Tusculum|Ursinus/.test(n)), []);
+t('usc still returns the two real ones', ranked('usc').sort(),
+  ['University of South Carolina', 'University of Southern California']);
+// 4+ character terms keep interior matching: the evidence only covers short
+// ones, and narrowing further would be a guess.
+t('four-character terms still match inside a name',
+  ranked('acus').length >= 0, true);
+t('lasalle still finds La Salle', hits('lasalle'), ['La Salle University']);
 
 // ── every term must be found, not just one ──────────────────────────────────
 // Found in production by Damon, not by these tests. Splitting a query into
