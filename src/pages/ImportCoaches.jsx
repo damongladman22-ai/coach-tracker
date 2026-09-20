@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import OwnerLayout from '../components/OwnerLayout';
 import GenderBadge from '../components/GenderBadge';
 import { programGenderLabel } from '../lib/lookups';
+import { resolveSchool } from '../lib/resolveSchool';
 import * as XLSX from 'xlsx';
 
 /**
@@ -147,65 +148,23 @@ export default function ImportCoaches({ session }) {
     loadExistingCoaches();
   }, [importMode, importGender]);
 
-  // Fuzzy match school name to database
-  const findSchoolMatch = useCallback((searchName) => {
-    if (!searchName || typeof searchName !== 'string') return null;
-    
-    const searchLower = searchName.toLowerCase().trim();
-    
-    // Common aliases
-    const aliases = {
-      'mizzou': 'university of missouri',
-      'pitt': 'university of pittsburgh',
-      'penn state': 'pennsylvania state university',
-      'osu': 'ohio state university',
-      'usc': 'university of southern california',
-      'ucla': 'university of california, los angeles',
-      'unc': 'university of north carolina',
-      'lsu': 'louisiana state university',
-      'ole miss': 'university of mississippi',
-      'umass': 'university of massachusetts',
-    };
-    
-    const searchTerm = aliases[searchLower] || searchLower;
-    
-    // Try exact match first
-    let match = schools.find(s => s.school.toLowerCase() === searchTerm);
-    if (match) return { school: match, confidence: 'exact' };
-    
-    // Try contains match
-    match = schools.find(s => 
-      s.school.toLowerCase().includes(searchTerm) || 
-      searchTerm.includes(s.school.toLowerCase())
-    );
-    if (match) return { school: match, confidence: 'high' };
-    
-    // Try word matching
-    const searchWords = searchTerm
-      .replace(/university|college|of|the|-|–/gi, ' ')
-      .split(/\s+/)
-      .filter(w => w.length > 2);
-    
-    for (const school of schools) {
-      const schoolLower = school.school.toLowerCase();
-      const matchCount = searchWords.filter(word => schoolLower.includes(word)).length;
-      if (matchCount >= Math.max(1, searchWords.length - 1)) {
-        return { school, confidence: 'medium' };
-      }
-    }
-    
-    // Try fuzzy partial match
-    for (const school of schools) {
-      const schoolLower = school.school.toLowerCase();
-      for (const word of searchWords) {
-        if (word.length > 3 && schoolLower.includes(word)) {
-          return { school, confidence: 'low' };
-        }
-      }
-    }
-    
-    return null;
-  }, [schools]);
+  /**
+   * Resolve an imported school name to one school, or to nothing.
+   *
+   * This used to be fifty lines of private matching rules with their own
+   * ten-entry alias map -- the sixth school matcher in the app, and the only
+   * one that writes. It is now the shared resolver, which reads the same
+   * school_aliases table the search boxes read and, unlike what it replaces,
+   * REFUSES TO GUESS. See src/lib/resolveSchool.js for the measurement.
+   *
+   * Returns { school, confidence: 'exact' | 'high' } or null. There is no
+   * 'medium' or 'low' any more: a row that does not resolve is a row for a
+   * human, not a row for the first school sharing a four-letter word.
+   */
+  const findSchoolMatch = useCallback(
+    (searchName) => resolveSchool(searchName, schools),
+    [schools]
+  );
 
   // Parse uploaded file
   const handleFileUpload = async (e) => {
@@ -435,7 +394,10 @@ export default function ImportCoaches({ session }) {
               canUpdate,
               willUpdate,
               updateCount,
-              confidence: 'exact',
+              // The REAL tier, not a hardcoded 'exact'. This row previously
+              // claimed 'exact' whatever the resolver actually returned, which
+              // made a weak school match indistinguishable from a certain one.
+              confidence: schoolMatch.confidence,
               include: updateCount > 0
             });
           } else {
@@ -490,6 +452,10 @@ export default function ImportCoaches({ session }) {
           title,
           matchedSchool: match?.school || null,
           confidence: match?.confidence || 'none',
+          // Safe to pre-select now, and only now. The resolver returns a
+          // school only when exactly one school answers the name; everything
+          // ambiguous comes back null and stays unchecked for a human. Under
+          // the previous resolver this line pre-selected a guess.
           include: match !== null
         });
       }
@@ -1401,12 +1367,10 @@ export default function ImportCoaches({ session }) {
                               <span className={`text-xs px-2 py-1 rounded-full ${
                                 row.confidence === 'exact' ? 'bg-green-100 text-green-800' :
                                 row.confidence === 'high' ? 'bg-green-100 text-green-700' :
-                                row.confidence === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                                row.confidence === 'low' ? 'bg-orange-100 text-orange-800' :
                                 row.confidence === 'manual' ? 'bg-blue-100 text-blue-800' :
                                 'bg-red-100 text-red-800'
                               }`}>
-                                {row.confidence === 'none' ? 'No match' : row.confidence}
+                                {row.confidence === 'none' ? 'Pick a school' : row.confidence}
                               </span>
                             </td>
                           </tr>

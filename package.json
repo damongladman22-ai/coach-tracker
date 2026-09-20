@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node test/schoolMatch.test.mjs",
+    "test": "node test/schoolMatch.test.mjs && node test/resolveSchool.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
