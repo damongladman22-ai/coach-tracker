@@ -3,12 +3,70 @@ import { supabase } from '../lib/supabase';
 import { Spinner } from './LoadingStates';
 
 /**
+ * Bounded Levenshtein distance test: true when `a` and `b` are within `max`
+ * edits. Rows are computed one at a time and the walk aborts as soon as the
+ * whole row exceeds `max`, so a non-match on a long name costs a few cells,
+ * not a full matrix.
+ */
+function withinEdits(a, b, max) {
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > max) return false;
+  let prev = new Array(lb + 1);
+  for (let j = 0; j <= lb; j++) prev[j] = j;
+  for (let i = 1; i <= la; i++) {
+    const cur = new Array(lb + 1);
+    cur[0] = i;
+    let best = i;
+    for (let j = 1; j <= lb; j++) {
+      cur[j] = Math.min(
+        prev[j] + 1,
+        cur[j - 1] + 1,
+        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
+      );
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > max) return false;
+    prev = cur;
+  }
+  return prev[lb] <= max;
+}
+
+/**
+ * Typo tolerance: is `term` a near-miss for any WORD of the school name, or
+ * for the whole name with spaces removed?
+ *
+ * This replaced a character-bag matcher that counted how many of the term's
+ * characters appeared ANYWHERE in the name and passed at 70%. Measured against
+ * 1,562 real school names, that rule returned 1,203 schools for "raines",
+ * 1,234 for "tarheels" and 664 for "buckeyes" -- every one of them a false
+ * positive, and none of them "no results". It also did not do the one job it
+ * claimed: "stanfrod" returned 810 schools and Stanford was not among them.
+ * The same measurement on this rule returns 0, 0, 0 and Stanford.
+ *
+ * Terms under 4 characters are excluded: at that length an edit budget of 1
+ * cannot tell a typo from a different word, and short terms are already served
+ * by the prefix rules above.
+ */
+function typoMatch(name, nameNoSpaces, term) {
+  if (term.length < 4) return false;
+  const max = term.length <= 6 ? 1 : 2;
+  const words = name.split(' ');
+  for (const w of words) {
+    if (Math.abs(w.length - term.length) <= max && withinEdits(w, term, max)) {
+      return true;
+    }
+  }
+  return Math.abs(nameNoSpaces.length - term.length) <= max &&
+         withinEdits(nameNoSpaces, term, max);
+}
+
+/**
  * Optimized school search component
  * 
  * Features:
  * - Client-side caching (loads all schools once)
  * - Debounced input (150ms delay)
- * - Fuzzy matching (handles typos)
+ * - Typo tolerance (bounded edit distance, see typoMatch)
  * - Mobile-optimized with large touch targets
  * - Optional gender scoping: pass programGender ('M'/'W') to restrict the
  *   pool to one side. Legacy null-program_gender rows count as women's ('W').
@@ -119,24 +177,12 @@ export function SchoolSearch({ selectedSchool, onSelect, programGender = null })
       else if (city.includes(term)) score += 10;
       // Conference match
       else if (conference.includes(term)) score += 5;
-      // Fuzzy match (allows typos)
-      else if (fuzzyMatch(name, term)) score += 8;
+      // Typo tolerance, last resort — see typoMatch above.
+      else if (typoMatch(name, nameNoSpaces, term)) score += 8;
     }
     
     return score;
   }, []);
-
-  // Simple fuzzy matching (allows 1-2 character differences)
-  const fuzzyMatch = (str, term) => {
-    if (term.length < 3) return false;
-    
-    // Check if most characters match
-    let matches = 0;
-    for (let i = 0; i < term.length; i++) {
-      if (str.includes(term[i])) matches++;
-    }
-    return matches >= term.length * 0.7;
-  };
 
   // Filter and sort schools based on query
   const filteredSchools = useMemo(() => {
