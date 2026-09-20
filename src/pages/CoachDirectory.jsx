@@ -6,6 +6,7 @@ import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
 import HamburgerMenu from '../components/HamburgerMenu';
 import GenderBadge from '../components/GenderBadge';
+import { matchesText, matchesSchool } from '../lib/schoolMatch';
 
 // US States for filter dropdown
 const US_STATES = [
@@ -204,23 +205,19 @@ export default function CoachDirectory() {
     loadData();
   }, []);
 
-  // Space-tolerant matching for school names
-  // Handles "LaSalle" or "lasalle" matching "La Salle"
-  const matchesSearch = useCallback((text, searchTerm) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase().trim();
-    const str = text.toLowerCase();
-    
-    // Direct substring match
-    if (str.includes(term)) return true;
-    
-    // Space-collapsed match
-    const strNoSpaces = str.replace(/\s+/g, '');
-    const termNoSpaces = term.replace(/\s+/g, '');
-    if (strNoSpaces.includes(termNoSpaces)) return true;
-    
-    return false;
-  }, []);
+  // Shared matcher (src/lib/schoolMatch.js). This page had its own copy of a
+  // substring + space-collapsed rule, identical to ParentSummary's.
+  //
+  // It is applied to COACH NAMES as well as school names, which is why the
+  // module exports matchesText separately: abbreviation expansion and school
+  // typo tolerance are meaningless against a person's name, and typo matching
+  // on surnames would be actively wrong -- plenty of real coaches are one edit
+  // apart. Coach names keep the plain text rule; school names get the full one.
+  const matchesCoachName = useCallback(
+    (text, searchTerm) => matchesText(text, searchTerm), []);
+  const matchesSchoolName = useCallback(
+    (name, searchTerm) =>
+      matchesSchool({ school: name }, searchTerm, { fields: ['name'] }), []);
 
   // Filter coaches based on search and filters
   const filteredCoaches = useMemo(() => {
@@ -244,7 +241,8 @@ export default function CoachDirectory() {
         const coachName = `${coach.first_name} ${coach.last_name}`;
         const schoolName = school.school;
         
-        if (!matchesSearch(coachName, searchQuery) && !matchesSearch(schoolName, searchQuery)) {
+        if (!matchesCoachName(coachName, searchQuery) &&
+            !matchesSchoolName(schoolName, searchQuery)) {
           return false;
         }
       }
@@ -278,7 +276,7 @@ export default function CoachDirectory() {
       
       return true;
     });
-  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, schoolIdFilter, matchesSearch]);
+  }, [coaches, searchQuery, stateFilter, divisionFilter, conferenceFilter, showOnlyWithEmail, showInactive, genderFilter, schoolIdFilter, matchesCoachName, matchesSchoolName]);
 
   // Group by school for display
   const groupedBySchool = useMemo(() => {

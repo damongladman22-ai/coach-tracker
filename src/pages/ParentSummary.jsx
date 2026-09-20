@@ -14,6 +14,7 @@ import { gameResult } from '../components/ScoreInput';
 import VideoBadge from '../components/VideoBadge';
 import GameVideosPanel from '../components/GameVideosPanel';
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos';
+import { matchesSchool } from '../lib/schoolMatch'
 
 /**
  * SchoolCoachEmailCard - Displays coaches from a school with email functionality
@@ -460,24 +461,15 @@ export default function ParentSummary() {
     });
   };
 
-  // Space-tolerant school name matching
-  // Handles "LaSalle" or "lasalle" matching "La Salle"
-  const matchesSchoolSearch = useCallback((schoolName, searchTerm) => {
-    if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase().trim();
-    const name = schoolName.toLowerCase();
-    
-    // Direct substring match
-    if (name.includes(term)) return true;
-    
-    // Space-collapsed match: remove spaces from both and check
-    // This handles "lasalle" matching "la salle" or "LaSalle" matching "La Salle"
-    const nameNoSpaces = name.replace(/\s+/g, '');
-    const termNoSpaces = term.replace(/\s+/g, '');
-    if (nameNoSpaces.includes(termNoSpaces)) return true;
-    
-    return false;
-  }, []);
+  // School-name matching comes from the shared matcher now
+  // (src/lib/schoolMatch.js). This page used to carry its own copy of a
+  // substring + space-collapsed rule, byte-identical to CoachDirectory's.
+  // Moving it here also gains abbreviations and typo tolerance, which this
+  // page never had.
+  const matchesSchoolSearch = useCallback(
+    (schoolName, searchTerm) =>
+      matchesSchool({ school: schoolName }, searchTerm, { fields: ['name'] }),
+    []);
 
   // Get attendance for a specific game
   const getGameAttendance = useCallback((gameId) => {

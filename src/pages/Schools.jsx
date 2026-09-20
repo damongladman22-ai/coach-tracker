@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import OwnerLayout from '../components/OwnerLayout'
+import { matchesSchool } from '../lib/schoolMatch'
 
 // US States list with full names
 const US_STATES = [
@@ -370,8 +371,13 @@ export default function Schools({ session }) {
     // Typing a gender word ("men"/"women") filters by gender (whole-term match,
     // so "men" doesn't accidentally hit "women's")
     if (genderSynonym) return school.program_gender === genderSynonym
+    // Name matching comes from the shared matcher, so this page gains
+    // abbreviations and typo tolerance. State and conference stay as plain
+    // substring tests on purpose: the shared scorer treats state as a prefix
+    // match, which would NARROW this page -- "carolina" currently finds North
+    // Carolina schools and must keep doing so.
     return (
-      school.school.toLowerCase().includes(term) ||
+      matchesSchool(school, term, { fields: ['name'] }) ||
       school.state?.toLowerCase().includes(term) ||
       school.conference?.toLowerCase().includes(term)
     )
