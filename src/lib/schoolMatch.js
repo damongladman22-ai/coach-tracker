@@ -223,6 +223,13 @@ export function scoreSchool(school, terms, opts = {}) {
       const s = scoreOne(fields, alternatives[i], i > 0);
       if (s > best) best = s;
     }
+    // EVERY term must be found. Summing alone means a school matching just one
+    // word of a multi-word query still scores above zero, so "ohio state"
+    // returned Adams State, Arizona State and Angelo State on the strength of
+    // "state" — and alphabetical order put them above Ohio State. The rule
+    // being replaced here treated the whole phrase as one substring, so it
+    // never had this failure; the split into terms is what introduced it.
+    if (best === 0) return 0;
     total += best;
   }
   return total;

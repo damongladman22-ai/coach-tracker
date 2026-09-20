@@ -33,6 +33,10 @@ const SCHOOLS = [
   // the school OSU means. The first version of the matcher returned all three.
   'Eastern Oklahoma State College', 'Northwestern Oklahoma State University',
   'Southwestern Oklahoma State University',
+  // Real rows behind the multi-word regression: they share only the word
+  // "State" with a query like "ohio state", and alphabetical order put them
+  // ABOVE the school the user meant.
+  'Adams State University', 'Angelo State University', 'Alabama A&M University',
 ].map(s => ({ school: s, city: '', state: '', conference: '' }));
 
 let pass = 0, fail = 0;
@@ -94,6 +98,23 @@ t('usc still finds South Carolina',
 t('unc still finds North Carolina', ranked('unc'),
   ['University of North Carolina']);
 t('expandTerms keeps the literal term', expandTerms('osu')[0][0], 'osu');
+
+// ── every term must be found, not just one ──────────────────────────────────
+// Found in production by Damon, not by these tests. Splitting a query into
+// terms and summing meant a school matching ONE word of a multi-word query
+// still scored above zero, so "ohio state" returned Adams State, Angelo State
+// and Arizona State. The rule this replaced treated the phrase as a single
+// substring and never had the failure; the split is what introduced it.
+t('ohio state returns only Ohio State', ranked('ohio state'),
+  ['Ohio State University']);
+t('ohio state excludes other State schools',
+  ranked('ohio state').filter(n => /Adams|Angelo|Arizona/.test(n)), []);
+t('a term that matches nothing kills the whole query',
+  ranked('ohio zzzz'), []);
+t('multi-word still works when both terms hit', ranked('boston college'),
+  ['Boston College']);
+t('partial phrase does not match', ranked('state university').includes('Duke University'),
+  false);
 
 // ── fields option must not silently widen a page's behaviour ────────────────
 const withConf = [{ school: 'Somewhere College', city: 'Nowhere',
