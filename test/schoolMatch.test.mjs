@@ -66,6 +66,7 @@ setAliasIndex(new Map([
   ['golden stallions', new Set(['Abraham Baldwin Agricultural College'])],
   ['great danes', new Set(['Albany State University'])],
   ['scotties', new Set(['Agnes Scott College'])],
+  ['tar heels', new Set(['University of North Carolina'])],
 ]));
 
 let pass = 0, fail = 0;
@@ -86,7 +87,15 @@ const ranked = q => {
 
 // ── the false positives that motivated all of this ──────────────────────────
 t('raines returns nothing', hits('raines'), []);
-t('tarheels returns nothing', hits('tarheels'), []);
+// WAS 'tarheels returns nothing'. That assertion was written when the
+// character-bag matcher returned 1,234 schools for it and the fix was to
+// return none — but it encoded the ABSENCE of nickname data as correct
+// behaviour, and school_aliases has since filled that absence. The query now
+// returns the right school, which is a strictly stronger claim than returning
+// nothing. The false-positive guard it was protecting lives on in 'raines' and
+// 'xyzzy', which have no alias and must still return nothing.
+t('tarheels now finds the school, not 1,234 of them',
+  hits('tarheels'), ['University of North Carolina']);
 t('buckeyes returns nothing', hits('buckeyes'), []);
 t('xyzzy returns nothing', hits('xyzzy'), []);
 
@@ -107,7 +116,8 @@ t('osu returns all three', ranked('osu').sort(),
 t('usc returns both', ranked('usc').sort(),
   ['University of South Carolina', 'University of Southern California']);
 t('msu returns all four', ranked('msu').length, 4);
-t('alias index is loaded for these tests', aliasIndexSize(), 7);
+// 8 aliases, plus a space-collapsed key for each of the 3 multi-word ones.
+t('alias index is loaded, with collapsed keys', aliasIndexSize(), 11);
 t('unc returns North Carolina', ranked('unc'), ['University of North Carolina']);
 t('ucla is gone from the map', ABBREVIATIONS.ucla, undefined);
 // These four moved to school_aliases and must NOT also live in the map: two
@@ -156,6 +166,17 @@ t('a multi-word nickname finds its school',
   ranked('golden stallions'), ['Abraham Baldwin Agricultural College']);
 t('another one', ranked('great danes'), ['Albany State University']);
 t('a single-word nickname still works', ranked('scotties'), ['Agnes Scott College']);
+// Closed-up spelling. People type "tarheels" at least as often as "tar heels",
+// and the NAME rules have handled this since before aliases existed --
+// nameNoSpaces is why "lasalle" finds La Salle. Aliases never got it.
+t('tarheels finds the school stored as "tar heels"',
+  ranked('tarheels'), ['University of North Carolina']);
+t('tar heels still works spaced',
+  ranked('tar heels'), ['University of North Carolina']);
+t('goldenstallions closed up',
+  ranked('goldenstallions'), ['Abraham Baldwin Agricultural College']);
+t('a closed-up alias does not match an unrelated school',
+  ranked('tarheels').includes('Agnes Scott College'), false);
 // The phrase must belong to THAT school, not merely be in the index.
 t('a nickname does not match an unrelated school',
   ranked('golden stallions').includes('Albany State University'), false);

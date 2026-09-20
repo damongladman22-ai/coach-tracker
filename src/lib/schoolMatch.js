@@ -114,7 +114,33 @@ export function typoMatch(name, nameNoSpaces, term) {
 let ALIAS_INDEX = new Map();
 
 export function setAliasIndex(index) {
-  ALIAS_INDEX = index instanceof Map ? index : new Map();
+  if (!(index instanceof Map)) {
+    ALIAS_INDEX = new Map();
+    return;
+  }
+  // Every alias is ALSO indexed with its spaces removed, so "tarheels" finds
+  // the school stored as "tar heels".
+  //
+  // The name rules have had this since before the alias table existed --
+  // nameNoSpaces is why "lasalle" finds La Salle -- and aliases simply never
+  // got the equivalent. 190 of the 1,373 harvested nicknames are phrases, and
+  // people type them closed up at least as often as spaced: tarheels,
+  // bluedevils, reddevils, yellowjackets.
+  //
+  // Sets are UNIONED rather than overwritten: two different aliases can
+  // collapse to the same string, and dropping one would lose a school.
+  const augmented = new Map(index);
+  for (const [alias, ids] of index) {
+    const closed = alias.replace(/\s+/g, '');
+    if (closed === alias) continue;
+    const existing = augmented.get(closed);
+    if (existing) {
+      for (const id of ids) existing.add(id);
+    } else {
+      augmented.set(closed, new Set(ids));
+    }
+  }
+  ALIAS_INDEX = augmented;
 }
 
 export function aliasIndexSize() {
@@ -272,6 +298,8 @@ export function scoreSchool(school, terms, opts = {}) {
     if (whole.includes(' ')) {
       const hits = ALIAS_INDEX.get(whole);
       if (hits && hits.has(id)) return 60;
+      const closed = ALIAS_INDEX.get(whole.replace(/\s+/g, ''));
+      if (closed && closed.has(id)) return 60;
     }
   }
   const name = String(school.school || '').toLowerCase();
