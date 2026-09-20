@@ -7,7 +7,7 @@ import { useCollegeProfilesAccess } from '../college-profiles/access/useCollegeP
 import { useCollegeProfileLogos } from '../college-profiles/access/useCollegeProfileLogos'
 import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import { brandingFor } from '../college-profiles/data/schoolBranding'
-import { matchesSchool } from '../lib/schoolMatch'
+import { matchesSchool, scoreSchool, expandTerms } from '../lib/schoolMatch'
 
 /**
  * CollegeExplore — the public "Explore Colleges" index (CSIP front door).
@@ -89,7 +89,7 @@ export default function CollegeExplore() {
   const [division, setDivision] = useState('All')
   const [conference, setConference] = useState('All')
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState('name')           // 'name' | 'depth'
+  const [sort, setSort] = useState('best')           // 'best' | 'name' | 'depth'
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -129,13 +129,39 @@ export default function CollegeExplore() {
       (!query || matchesSchool(r, query, { fields: ['name'] }))
     )
     out = [...out]
+    const byName = (a, b) => (a.school || '').localeCompare(b.school || '')
+    const byDepth = (a, b) =>
+      (b.seasons - a.seasons) ||
+      (b.current_active - a.current_active) ||
+      byName(a, b)
+
     if (sort === 'name') {
-      out.sort((a, b) => (a.school || '').localeCompare(b.school || ''))
+      out.sort(byName)
+    } else if (sort === 'depth') {
+      out.sort(byDepth)
+    } else if (!query) {
+      // "Best match" with nothing typed has nothing to rank, so it is plain
+      // A–Z. The page therefore looks exactly as it did before this option
+      // existed until someone actually searches.
+      out.sort(byName)
     } else {
-      out.sort((a, b) =>
-        (b.seasons - a.seasons) ||
-        (b.current_active - a.current_active) ||
-        (a.school || '').localeCompare(b.school || ''))
+      // Match quality first, then programme depth, then name.
+      //
+      // Depth is the part that does the work, and the reason is worth stating:
+      // ranking on score ALONE changes nothing for the queries that need help.
+      // "csu" is an alias hit for 22 California State campuses, so all 22 score
+      // identically and fall back to whatever the tiebreak is. Alphabetical put
+      // Cal State Bakersfield first. Seasons and current_active are already on
+      // every row and already power the "Most data" sort — the search simply
+      // never consulted them.
+      //
+      // Scored once per row rather than inside the comparator: sort calls the
+      // comparator O(n log n) times over ~2,900 rows, and scoreSchool walks the
+      // alias index and every name rule.
+      const terms = expandTerms(query)
+      const score = new Map()
+      for (const r of out) score.set(r, scoreSchool(r, terms, { fields: ['name'] }))
+      out.sort((a, b) => (score.get(b) - score.get(a)) || byDepth(a, b))
     }
     return out
   }, [rows, q, gender, division, conference, sort])
@@ -191,6 +217,7 @@ export default function CollegeExplore() {
             <div className="ml-auto flex items-center gap-2">
               <span className="text-xs text-gray-500">Sort</span>
               <select className={selectCls} value={sort} onChange={e => setSort(e.target.value)}>
+                <option value="best">Best match</option>
                 <option value="depth">Most data</option>
                 <option value="name">Name</option>
               </select>
