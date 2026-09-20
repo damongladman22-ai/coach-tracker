@@ -1,77 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase';
 import { Spinner } from './LoadingStates';
+import { expandTerms, scoreSchool } from '../lib/schoolMatch';
 
-/**
- * Bounded Levenshtein distance test: true when `a` and `b` are within `max`
- * edits. Rows are computed one at a time and the walk aborts as soon as the
- * whole row exceeds `max`, so a non-match on a long name costs a few cells,
- * not a full matrix.
- */
-function withinEdits(a, b, max) {
-  const la = a.length, lb = b.length;
-  if (Math.abs(la - lb) > max) return false;
-  let prev = new Array(lb + 1);
-  for (let j = 0; j <= lb; j++) prev[j] = j;
-  for (let i = 1; i <= la; i++) {
-    const cur = new Array(lb + 1);
-    cur[0] = i;
-    let best = i;
-    for (let j = 1; j <= lb; j++) {
-      cur[j] = Math.min(
-        prev[j] + 1,
-        cur[j - 1] + 1,
-        prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)
-      );
-      if (cur[j] < best) best = cur[j];
-    }
-    if (best > max) return false;
-    prev = cur;
-  }
-  return prev[lb] <= max;
-}
-
-/**
- * Typo tolerance: is `term` a near-miss for any WORD of the school name, or
- * for the whole name with spaces removed?
- *
- * This replaced a character-bag matcher that counted how many of the term's
- * characters appeared ANYWHERE in the name and passed at 70%. Measured against
- * 1,562 real school names, that rule returned 1,203 schools for "raines",
- * 1,234 for "tarheels" and 664 for "buckeyes" -- every one of them a false
- * positive, and none of them "no results". It also did not do the one job it
- * claimed: "stanfrod" returned 810 schools and Stanford was not among them.
- * The same measurement on this rule returns 0, 0, 0 and Stanford.
- *
- * Terms under 4 characters are excluded: at that length an edit budget of 1
- * cannot tell a typo from a different word, and short terms are already served
- * by the prefix rules above.
- */
-function typoMatch(name, nameNoSpaces, term) {
-  if (term.length < 4) return false;
-  const max = term.length <= 6 ? 1 : 2;
-  const words = name.split(' ');
-  for (const w of words) {
-    if (Math.abs(w.length - term.length) <= max && withinEdits(w, term, max)) {
-      return true;
-    }
-  }
-  return Math.abs(nameNoSpaces.length - term.length) <= max &&
-         withinEdits(nameNoSpaces, term, max);
-}
-
-/**
- * Optimized school search component
- * 
- * Features:
- * - Client-side caching (loads all schools once)
- * - Debounced input (150ms delay)
- * - Typo tolerance (bounded edit distance, see typoMatch)
- * - Mobile-optimized with large touch targets
- * - Optional gender scoping: pass programGender ('M'/'W') to restrict the
- *   pool to one side. Legacy null-program_gender rows count as women's ('W').
- *   Omit (or null) to search all active schools.
- */
 export function SchoolSearch({ selectedSchool, onSelect, programGender = null }) {
   const [query, setQuery] = useState('');
   const [schools, setSchools] = useState([]);
@@ -146,65 +77,19 @@ export function SchoolSearch({ selectedSchool, onSelect, programGender = null })
     return () => clearTimeout(timer);
   }, [query]);
 
-  // Fuzzy match scoring
-  const getMatchScore = useCallback((school, searchTerms) => {
-    const name = school.school.toLowerCase();
-    const nameNoSpaces = name.replace(/\s+/g, '');
-    const city = (school.city || '').toLowerCase();
-    const state = (school.state || '').toLowerCase();
-    const conference = (school.conference || '').toLowerCase();
-    
-    let score = 0;
-    
-    for (const term of searchTerms) {
-      const termNoSpaces = term.replace(/\s+/g, '');
-      
-      // Exact match in name gets highest score
-      if (name === term) score += 100;
-      // Starts with term
-      else if (name.startsWith(term)) score += 50;
-      // Word in name starts with term
-      else if (name.split(' ').some(word => word.startsWith(term))) score += 30;
-      // Contains term
-      else if (name.includes(term)) score += 20;
-      // Space-collapsed match (handles "LaSalle" or "lasalle" matching "La Salle")
-      else if (nameNoSpaces.includes(termNoSpaces)) score += 18;
-      // Space-collapsed starts with (handles "las" matching "lasalle" from "La Salle")  
-      else if (nameNoSpaces.startsWith(termNoSpaces)) score += 16;
-      // State match
-      else if (state === term || state.startsWith(term)) score += 12;
-      // City match
-      else if (city.includes(term)) score += 10;
-      // Conference match
-      else if (conference.includes(term)) score += 5;
-      // Typo tolerance, last resort — see typoMatch above.
-      else if (typoMatch(name, nameNoSpaces, term)) score += 8;
-    }
-    
-    return score;
-  }, []);
+  // Scoring lives in src/lib/schoolMatch.js so every search surface shares it.
+  // This picker searches name, city, state and conference — the module's
+  // default field set — because it is an admin lookup where a conference or
+  // state hit is a useful way in.
+  const getMatchScore = useCallback((school, terms) => scoreSchool(school, terms), []);
 
   // Filter and sort schools based on query
   const filteredSchools = useMemo(() => {
     if (!debouncedQuery.trim()) return [];
     
-    const searchTerms = debouncedQuery.toLowerCase().trim().split(/\s+/);
-    
-    // Handle common abbreviations
-    const expandedTerms = searchTerms.map(term => {
-      const abbrevs = {
-        'osu': 'ohio state',
-        'psu': 'penn state',
-        'msu': 'michigan state',
-        'usc': 'southern california',
-        'ucla': 'ucla',
-        'unc': 'north carolina',
-        'ut': 'texas',
-        'um': 'michigan',
-        'iu': 'indiana',
-      };
-      return abbrevs[term] || term;
-    });
+    // One-to-many: "osu" now expands to Ohio State, Oregon State AND Oklahoma
+    // State rather than silently picking one. See ABBREVIATIONS in schoolMatch.
+    const expandedTerms = expandTerms(debouncedQuery);
     
     return schools
       .map(school => ({

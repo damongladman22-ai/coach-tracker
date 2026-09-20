@@ -7,6 +7,7 @@ import { useCollegeProfilesAccess } from '../college-profiles/access/useCollegeP
 import { useCollegeProfileLogos } from '../college-profiles/access/useCollegeProfileLogos'
 import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import { brandingFor } from '../college-profiles/data/schoolBranding'
+import { matchesSchool } from '../lib/schoolMatch'
 
 /**
  * CollegeExplore — the public "Explore Colleges" index (CSIP front door).
@@ -115,11 +116,17 @@ export default function CollegeExplore() {
   const filtered = useMemo(() => {
     if (!rows) return []
     const query = q.trim().toLowerCase()
+    // Search moved to the shared matcher (src/lib/schoolMatch.js), which this
+    // page previously had none of: it was a plain substring on the name, so a
+    // typo or an abbreviation returned nothing on the page a parent lands on
+    // first. Scoped to the NAME field on purpose — conference and state are
+    // already dropdown filters here, and letting the text box match them too
+    // would quietly change what this page means by a search.
     let out = rows.filter(r =>
       (gender === 'All' || r.program_gender === gender) &&
       (division === 'All' || r.division === division) &&
       (conference === 'All' || r.conference === conference) &&
-      (!query || (r.school || '').toLowerCase().includes(query))
+      (!query || matchesSchool(r, query, { fields: ['name'] }))
     )
     out = [...out]
     if (sort === 'name') {
