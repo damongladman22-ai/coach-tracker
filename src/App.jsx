@@ -3,6 +3,7 @@ import { useState, useEffect, lazy, Suspense } from 'react'
 import { supabase } from './lib/supabase'
 import ErrorBoundary from './components/ErrorBoundary'
 import { PageLoader } from './components/LoadingStates'
+import { useSchoolAliases } from './lib/useSchoolAliases'
 
 // Parent Pages - loaded immediately (primary use case)
 import TeamGames from './pages/TeamGames'
@@ -64,6 +65,12 @@ const Landscape = lazy(() => import('./pages/Landscape'))
 function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
+
+  // Loads school_aliases once and hands it to the shared matcher, so every
+  // search surface gets abbreviations without threading a prop through five
+  // call sites — and so a sixth search box gets them for free. Non-fatal by
+  // design: if it fails, search behaves as it did before the table existed.
+  useSchoolAliases()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

@@ -98,6 +98,29 @@ export function typoMatch(name, nameNoSpaces, term) {
          withinEdits(nameNoSpaces, term, max);
 }
 
+// ── alias index (school_aliases) ─────────────────────────────────────────────
+
+/**
+ * alias_norm -> Set of school_id. Loaded once by useSchoolAliases and read
+ * synchronously here during scoring.
+ *
+ * This is STRICTLY BETTER than the string expansion below, and for a reason
+ * worth stating: the table maps an alias to school IDENTITIES, so "usc" hits
+ * the two universities by id. The string map has to guess from the name --
+ * "does this name begin with 'southern california', allowing noise words in
+ * front" -- which is a heuristic that happens to work. Where the table has an
+ * answer, the heuristic is not consulted at all.
+ */
+let ALIAS_INDEX = new Map();
+
+export function setAliasIndex(index) {
+  ALIAS_INDEX = index instanceof Map ? index : new Map();
+}
+
+export function aliasIndexSize() {
+  return ALIAS_INDEX.size;
+}
+
 // ── abbreviations ────────────────────────────────────────────────────────────
 
 /**
@@ -119,11 +142,17 @@ export function typoMatch(name, nameNoSpaces, term) {
  * would just be a different no-op.
  */
 export const ABBREVIATIONS = {
-  osu: ['ohio state', 'oregon state', 'oklahoma state'],
+  // Only what school_aliases cannot derive. The table takes a school's
+  // initials and drops anything under three characters, because a two-letter
+  // abbreviation is claimed by too many schools to carry signal. That leaves
+  // these four, which are real despite being short or not matching the
+  // initials convention: "Penn State" reduces to PS, not PSU.
+  //
+  // osu, msu, usc and unc have been REMOVED: the table now holds them, and it
+  // holds them completely. The hand-written map said osu meant Ohio State; a
+  // correction earlier today said four schools; the table says CCC is claimed
+  // by 11 and MSU by 10. Hand curation does not survive 1,621 names.
   psu: ['penn state'],
-  msu: ['michigan state', 'mississippi state', 'missouri state', 'montana state'],
-  usc: ['southern california', 'south carolina'],
-  unc: ['north carolina'],
   ut: ['texas', 'tennessee', 'toledo', 'utah'],
   um: ['michigan', 'miami', 'maine', 'massachusetts', 'montana'],
   iu: ['indiana'],
@@ -205,6 +234,7 @@ function scoreOne(fields, term, strict) {
  */
 export function scoreSchool(school, terms, opts = {}) {
   const use = opts.fields || ['name', 'city', 'state', 'conference'];
+  const id = school.id;
   const name = String(school.school || '').toLowerCase();
   const fields = {
     name,
@@ -217,6 +247,13 @@ export function scoreSchool(school, terms, opts = {}) {
   let total = 0;
   for (const alternatives of terms) {
     let best = 0;
+    // The alias table first: an id match is knowledge, not inference. Scored
+    // at 45 -- below a name match (100 exact, 50 prefix) and above a substring
+    // hit (20), which is where an alias belongs: "osu" should put Ohio State
+    // above a school with "osu" buried in its name, without outranking someone
+    // who typed the name itself.
+    const hits = id && ALIAS_INDEX.get(alternatives[0]);
+    if (hits && hits.has(id)) best = 45;
     // Index 0 is what the user actually typed; everything after it is an
     // expansion we inferred, and is scored strictly. See scoreOne.
     for (let i = 0; i < alternatives.length; i++) {

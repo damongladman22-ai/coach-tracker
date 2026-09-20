@@ -14,6 +14,7 @@
 import {
   matchesText, withinEdits, typoMatch, expandTerms,
   scoreSchool, matchesSchool, ABBREVIATIONS,
+  setAliasIndex, aliasIndexSize,
 } from '../src/lib/schoolMatch.js';
 
 const SCHOOLS = [
@@ -37,7 +38,23 @@ const SCHOOLS = [
   // "State" with a query like "ohio state", and alphabetical order put them
   // ABOVE the school the user meant.
   'Adams State University', 'Angelo State University', 'Alabama A&M University',
-].map(s => ({ school: s, city: '', state: '', conference: '' }));
+  // Guards the strict-expansion path, which psu still exercises: this school
+  // CONTAINS "penn state" but is not the school PSU means.
+  'Eastern Penn State College',
+].map(s => ({ id: s, school: s, city: '', state: '', conference: '' }));
+
+// Stands in for school_aliases. Ids are the names, so the mapping is readable.
+// Every entry here is one the real table holds: the four that were removed from
+// ABBREVIATIONS when the table took them over.
+setAliasIndex(new Map([
+  ['osu', new Set(['Ohio State University', 'Oregon State University',
+                   'Oklahoma State University'])],
+  ['usc', new Set(['University of Southern California',
+                   'University of South Carolina'])],
+  ['unc', new Set(['University of North Carolina'])],
+  ['msu', new Set(['Michigan State University', 'Mississippi State University',
+                   'Missouri State University', 'Montana State University'])],
+]));
 
 let pass = 0, fail = 0;
 const t = (label, got, want) => {
@@ -78,8 +95,21 @@ t('osu returns all three', ranked('osu').sort(),
 t('usc returns both', ranked('usc').sort(),
   ['University of South Carolina', 'University of Southern California']);
 t('msu returns all four', ranked('msu').length, 4);
+t('alias index is loaded for these tests', aliasIndexSize(), 4);
 t('unc returns North Carolina', ranked('unc'), ['University of North Carolina']);
 t('ucla is gone from the map', ABBREVIATIONS.ucla, undefined);
+// These four moved to school_aliases and must NOT also live in the map: two
+// sources of truth for one abbreviation is what the table exists to end.
+t('osu is no longer in the map', ABBREVIATIONS.osu, undefined);
+t('usc is no longer in the map', ABBREVIATIONS.usc, undefined);
+t('msu is no longer in the map', ABBREVIATIONS.msu, undefined);
+t('unc is no longer in the map', ABBREVIATIONS.unc, undefined);
+// What the table cannot derive stays in the map: "Penn State" reduces to PS,
+// and the table drops anything under three characters.
+t('psu is still in the map', ABBREVIATIONS.psu, ['penn state']);
+t('psu finds Penn State', ranked('psu').includes('Penn State'), true);
+t('psu excludes a school merely containing the phrase',
+  ranked('psu').includes('Eastern Penn State College'), false);
 
 // ── expansions are an inference and are scored strictly ─────────────────────
 // Found in production, not by these tests. "osu" expanded to "oklahoma state"
@@ -143,6 +173,25 @@ t('short terms never typo-match', typoMatch('penn state', 'pennstate', 'pen'), f
 // present in a long school name will start matching again.
 t('character-bag regression guard',
   hits('aibcnrsiu'), []);   // every letter appears in "Abilene Christian University"
+
+// ── an empty index must degrade, never break ────────────────────────────────
+// If school_aliases fails to load, search must behave as it did before the
+// table existed. A search box that breaks because a lookup table did not
+// arrive is worse than one without abbreviations.
+setAliasIndex(new Map());
+t('no alias table: name search still works', hits('duke'), ['Duke University']);
+t('no alias table: typo tolerance still works', hits('stanfrod'),
+  ['Stanford University']);
+t('no alias table: osu simply finds nothing', hits('osu'), []);
+t('no alias table: the residual map still works',
+  ranked('psu').includes('Penn State'), true);
+// A truthy non-Map is the real hazard: a mis-shaped fetch result would be
+// assigned and then throw on .get during the next keystroke. null is NOT a
+// sufficient test — it lands on an empty Map under a sloppy implementation too.
+t('setAliasIndex rejects an array', (setAliasIndex([1, 2]), aliasIndexSize()), 0);
+t('setAliasIndex rejects an object', (setAliasIndex({ osu: 1 }), aliasIndexSize()), 0);
+t('search survives a mis-shaped index', hits('duke'), ['Duke University']);
+t('setAliasIndex rejects null', (setAliasIndex(null), aliasIndexSize()), 0);
 
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
