@@ -146,11 +146,41 @@ export function expandTerms(query) {
 
 // ── school scoring ───────────────────────────────────────────────────────────
 
-/** Score one alternative against one school. Highest-value rule wins. */
-function scoreOne(fields, term) {
+/**
+ * Words that can sit in front of a school's distinguishing name without
+ * changing which school it is. "University of Southern California" IS the
+ * school USC expands to; "Eastern Oklahoma State College" is NOT the school
+ * OSU expands to, because "Eastern" distinguishes it.
+ */
+const PREFIX_NOISE = new Set(['university', 'college', 'the', 'of', 'at']);
+
+/** Does `name` begin with `phrase`, ignoring any leading noise words? */
+function beginsWithPhrase(name, phrase) {
+  if (name.startsWith(phrase)) return true;
+  const words = name.split(' ');
+  let i = 0;
+  while (i < words.length && PREFIX_NOISE.has(words[i])) i++;
+  return i > 0 && words.slice(i).join(' ').startsWith(phrase);
+}
+
+/**
+ * Score one alternative against one school. Highest-value rule wins.
+ *
+ * `strict` marks an ABBREVIATION EXPANSION rather than text the user typed.
+ * Expansions are an inference on our part, so they are held to a higher bar:
+ * the school's name must BEGIN with the expansion, allowing only noise words
+ * in front of it. Scored loosely, "osu" expanding to "oklahoma state" returned
+ * Eastern Oklahoma State College, Northwestern Oklahoma State University and
+ * Southwestern Oklahoma State University alongside the three real answers --
+ * three separate institutions that merely contain the phrase. A plain
+ * startsWith would have been too strict the other way and lost "University of
+ * Southern California" for "usc", which is why the noise-word skip exists.
+ */
+function scoreOne(fields, term, strict) {
   const { name, nameNoSpaces, city, state, conference } = fields;
   const termNoSpaces = term.replace(/\s+/g, '');
   if (name === term) return 100;
+  if (strict) return beginsWithPhrase(name, term) ? 50 : 0;
   if (name.startsWith(term)) return 50;
   if (name.split(' ').some(w => w.startsWith(term))) return 30;
   if (name.includes(term)) return 20;
@@ -187,8 +217,10 @@ export function scoreSchool(school, terms, opts = {}) {
   let total = 0;
   for (const alternatives of terms) {
     let best = 0;
-    for (const alt of alternatives) {
-      const s = scoreOne(fields, alt);
+    // Index 0 is what the user actually typed; everything after it is an
+    // expansion we inferred, and is scored strictly. See scoreOne.
+    for (let i = 0; i < alternatives.length; i++) {
+      const s = scoreOne(fields, alternatives[i], i > 0);
       if (s > best) best = s;
     }
     total += best;

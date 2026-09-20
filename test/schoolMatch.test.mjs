@@ -29,6 +29,10 @@ const SCHOOLS = [
   'Allegheny College', 'Arizona State University', 'Azusa Pacific University',
   'Boston College', 'Boston University', 'Johnson University',
   'Johnson County Community College',
+  // Real rows that prod surfaced: they CONTAIN "oklahoma state" but are not
+  // the school OSU means. The first version of the matcher returned all three.
+  'Eastern Oklahoma State College', 'Northwestern Oklahoma State University',
+  'Southwestern Oklahoma State University',
 ].map(s => ({ school: s, city: '', state: '', conference: '' }));
 
 let pass = 0, fail = 0;
@@ -72,6 +76,23 @@ t('usc returns both', ranked('usc').sort(),
 t('msu returns all four', ranked('msu').length, 4);
 t('unc returns North Carolina', ranked('unc'), ['University of North Carolina']);
 t('ucla is gone from the map', ABBREVIATIONS.ucla, undefined);
+
+// ── expansions are an inference and are scored strictly ─────────────────────
+// Found in production, not by these tests. "osu" expanded to "oklahoma state"
+// and was matched with the same loose `includes` rule as typed text, so three
+// unrelated institutions came back alongside the three real answers.
+t('osu excludes schools that merely contain the phrase',
+  ranked('osu').filter(n => /Eastern|Northwestern|Southwestern/.test(n)), []);
+t('osu returns exactly the three', ranked('osu').sort(),
+  ['Ohio State University', 'Oklahoma State University', 'Oregon State University']);
+// The guard against over-correcting: a plain startsWith would lose this one,
+// because "University of" sits in front of the phrase.
+t('usc still finds Southern California',
+  ranked('usc').includes('University of Southern California'), true);
+t('usc still finds South Carolina',
+  ranked('usc').includes('University of South Carolina'), true);
+t('unc still finds North Carolina', ranked('unc'),
+  ['University of North Carolina']);
 t('expandTerms keeps the literal term', expandTerms('osu')[0][0], 'osu');
 
 // ── fields option must not silently widen a page's behaviour ────────────────
