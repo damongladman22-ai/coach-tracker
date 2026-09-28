@@ -5,6 +5,7 @@ import { useProgramBenchmarks } from './data/useProgramBenchmarks'
 import {
   rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
   projectedOpeningsByYear, newcomers, geographyOverTime, compositionOverTime, sizeProfile,
+  newcomerMix,
 } from './data/metrics'
 import Masthead from './cards/Masthead'
 import KpiStrip from './cards/KpiStrip'
@@ -18,7 +19,9 @@ import SectionNav from './cards/SectionNav'
 import GeographyTrend from './cards/GeographyTrend'
 import CoachStaff from './cards/CoachStaff'
 import ProgramResults from './cards/ProgramResults'
+import RosterBuild from './cards/RosterBuild'
 import { useProgramResults } from './data/useProgramResults'
+import { useProgramTransfers } from './data/useProgramTransfers'
 import { themeFromSchool, softOf } from './data/schoolBranding'
 
 /**
@@ -47,6 +50,7 @@ function seasonRange(seasons) {
 const NAV = [
   { id: 'sec-squad', label: 'Squad' },
   { id: 'sec-openings', label: 'Openings' },
+  { id: 'sec-arrivals', label: 'Arrivals' },
   { id: 'sec-roster', label: 'Roster' },
   { id: 'sec-trends', label: 'Trends' },
   { id: 'sec-geography', label: 'Geography' },
@@ -58,6 +62,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
     useProgramProfile(client, schoolId)
   const benchmarks = useProgramBenchmarks(client, school, currentSeason)
   const results = useProgramResults(client, schoolId)
+  const transfers = useProgramTransfers(client, schoolId)
   const [peer, setPeer] = useState('div')
   const hasConf = !!benchmarks.conf
   const activePeer = peer === 'conf' && hasConf ? 'conf' : 'div'
@@ -84,6 +89,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const geoTime = ready ? geographyOverTime(rosters, seasons) : null
   const compData = ready ? compositionOverTime(rosters, seasons) : null
   const sizeData = ready ? sizeProfile(currentRoster) : null
+  const mixData = ready ? newcomerMix(rosters, seasons) : null
 
   return (
     <div className="cp-root" style={styleVars}>
@@ -150,6 +156,9 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             <div id="sec-openings" className="cp-anchor cp-two">
               <ProjectedOpenings buckets={openingBuckets} />
               <RosterStability stats={returnStats} benchmark={scope} />
+            </div>
+            <div id="sec-arrivals" className="cp-anchor">
+              <RosterBuild mix={mixData} transfers={transfers.rows} span={transfers.span} benchmark={scope} />
             </div>
             <div id="sec-roster" className="cp-anchor">
               <RosterTable roster={currentRoster} />

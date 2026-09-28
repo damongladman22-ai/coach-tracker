@@ -497,3 +497,41 @@
   .cp-kpis{grid-template-columns:1fr}
 }
 @media (prefers-reduced-motion:reduce){ .cp-chip{opacity:1; animation:none; transition:none} }
+
+/* ─── How the roster is built (RosterBuild, 2026-09-28) ─────────────────────
+   Two fills only: FR (--fr) against experienced (--sr). SR and GR fail the
+   normal-vision separation floor side by side, so they are never adjacent
+   fills. The pale FR fill is under 3:1 against the card, so the bar carries a
+   border and both segments are labelled inside. 2px surface gap between fills. */
+.cp-build-viz{margin:4px 0 2px}
+.cp-build-peer{position:relative; height:12px; margin:0 0 4px}
+.cp-build-peer-band{position:absolute; top:3px; bottom:3px; min-width:2px; background:rgba(92,107,115,.26); border-radius:3px}
+.cp-build-peer-tick{position:absolute; top:0; bottom:0; width:2px; margin-left:-1px; background:var(--slate); border-radius:2px}
+.cp-build-bar{display:flex; gap:2px; height:36px; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:var(--card)}
+.cp-build-seg{display:flex; align-items:center; min-width:0; padding:0 12px; font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; cursor:default}
+.cp-build-seg b{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:17px; margin-left:6px; font-variant-numeric:tabular-nums}
+.cp-build-seg--exp{background:var(--sr); color:var(--sr-ink)}
+.cp-build-seg--fr{background:var(--fr); color:var(--fr-ink); justify-content:flex-end}
+.cp-build-seg:hover{filter:brightness(1.05)}
+.cp-build-key{display:flex; flex-wrap:wrap; gap:6px 18px; margin-top:9px; font-size:11.5px; color:var(--slate)}
+.cp-build-key i{display:inline-block; vertical-align:middle; margin-right:7px}
+.cp-build-key .k-tick{width:2px; height:12px; background:var(--slate); border-radius:2px}
+.cp-build-key .k-band{width:20px; height:8px; background:rgba(92,107,115,.26); border-radius:3px}
+.cp-build-read{margin:14px 0 0; font-size:13px; color:var(--slate)}
+.cp-build-read b{color:var(--ink); font-weight:600}
+.cp-build-classes{margin:10px 0 0; font-size:12.5px; color:var(--slate)}
+.cp-build-classes b{color:var(--ink); font-weight:700}
+.cp-build-gr{color:var(--slate-2)}
+.cp-build-cls{white-space:nowrap}
+.cp-build-thin{margin:10px 0 0; font-size:12.5px; font-style:italic; color:var(--slate-2)}
+.cp-build-grid{display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:18px; padding-top:16px; border-top:1px solid var(--line)}
+.cp-build-orow{display:flex; align-items:center; gap:10px; margin:9px 0}
+.cp-build-olab{width:124px; flex:none; font-size:12px; color:var(--ink); font-weight:500}
+.cp-build-otrack{flex:1; height:9px; background:var(--paper); border-radius:999px; overflow:hidden}
+.cp-build-ofill{height:100%; background:var(--jr); border-radius:999px}
+.cp-build-on{width:30px; flex:none; text-align:right; font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:16px; color:var(--ink)}
+.cp-build-note{margin:12px 0 0; font-size:12px; line-height:1.45; color:var(--slate)}
+@media (max-width:680px){
+  .cp-build-grid{grid-template-columns:1fr; gap:18px}
+  .cp-build-olab{width:108px}
+}

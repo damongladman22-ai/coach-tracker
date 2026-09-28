@@ -243,3 +243,60 @@ export function sizeProfile(currentRoster) {
   if (!isFinite(dMin)) { dMin = 60; dMax = 76 } else { dMin -= 1; dMax += 1 }
   return { domainMin: dMin, domainMax: dMax, groups: out }
 }
+
+/**
+ * How each season's newcomers arrived — as freshmen, or with college experience.
+ * Feeds the "How the roster is built" card (transfer-display plan, 2026-09-28).
+ *
+ * NEWCOMER here = on season N+1's roster and NOT on season N's, per consecutive
+ * transition. That deliberately matches the `experienced_newcomer_rate` and
+ * `newcomer_rate` benchmarks, so the program's number and its peer median are
+ * computed the same way. (`newcomers()` above means "first seen ever"; the two
+ * differ only for a player who leaves and later returns.) A gap in coverage —
+ * 2023 then 2025 — is skipped rather than read as a recruiting class.
+ *
+ * CLASS YEAR CARRIES THE MEASURE. A newcomer listed SO/JR/SR/GR almost always
+ * arrived from another program: measured 2026-09-28, only 3.0% of confirmed
+ * transfers are listed FR. It covers every program, where confirmed transfer
+ * records cover about one in five experienced newcomers.
+ *
+ * POOLED across transitions (counts summed, then divided) rather than averaged:
+ * a small program's per-season newcomer count is too noisy to average.
+ *
+ * Returns {
+ *   transitions: [{ from, to, fr, so, jr, sr, gr, unk, known, experienced, share }],
+ *   pooled:      { fr, so, jr, sr, gr, unk, known, experienced, share },
+ * }   share = experienced / known, or null when nothing is known.
+ */
+export function newcomerMix(rosters, seasons) {
+  const CLASSES = ['FR', 'SO', 'JR', 'SR', 'GR']
+  const blank = () => ({ fr: 0, so: 0, jr: 0, sr: 0, gr: 0, unk: 0 })
+  const finish = o => {
+    const known = o.fr + o.so + o.jr + o.sr + o.gr
+    const experienced = o.so + o.jr + o.sr + o.gr
+    return { ...o, known, experienced, share: known ? experienced / known : null }
+  }
+  const transitions = []
+  const pooled = blank()
+  const list = seasons || []
+  for (let i = 0; i < list.length - 1; i++) {
+    const a = list[i], b = list[i + 1]
+    if (b !== a + 1) continue
+    const prev = idsInSeason(rosters || [], a)
+    if (!prev.size) continue
+    const t = blank()
+    const seen = new Set()
+    for (const r of rosters || []) {
+      if (r.roster_season !== b || !r.player_id) continue
+      if (seen.has(r.player_id)) continue
+      seen.add(r.player_id)
+      if (prev.has(r.player_id)) continue
+      const cy = String(r.class_year || '').toUpperCase().trim()
+      const k = CLASSES.includes(cy) ? cy.toLowerCase() : 'unk'
+      t[k]++
+      pooled[k]++
+    }
+    transitions.push({ from: a, to: b, ...finish(t) })
+  }
+  return { transitions, pooled: finish(pooled) }
+}
