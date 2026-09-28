@@ -153,7 +153,7 @@ export default function RosterBuild({ mix, transfers, span, benchmark }) {
 
         {p.experienced > 0 && (
           <p className="cp-build-classes">
-            Of the {p.experienced} experienced newcomers:{' '}
+            Of the {p.experienced} experienced newcomer{p.experienced === 1 ? '' : 's'}:{' '}
             {[['SO', p.so], ['JR', p.jr], ['SR', p.sr], ['GR', p.gr]].map(([k, v], i) => (
               <span className="cp-build-cls" key={k}>{i > 0 && ' · '}<b>{k}</b> {v}</span>
             ))}
@@ -194,8 +194,10 @@ export default function RosterBuild({ mix, transfers, span, benchmark }) {
                 ))}
                 <p className="cp-build-note">
                   {confirmed} confirmed transfer{confirmed === 1 ? '' : 's'}
-                  {expInWindow > 0 && <> against {expInWindow} experienced newcomers in those seasons</>}. The rest came from
-                  programs or countries we do not track, or through moves we have not verified.
+                  {confirmed < expInWindow
+                    ? <> against {expInWindow} experienced newcomer{expInWindow === 1 ? '' : 's'} in those seasons. The rest came from
+                      programs or countries we do not track, or through moves we have not verified.</>
+                    : <> in those seasons.</>}
                 </p>
               </>
             ) : (
