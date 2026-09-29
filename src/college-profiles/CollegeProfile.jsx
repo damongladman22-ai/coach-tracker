@@ -93,11 +93,10 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const compData = ready ? compositionOverTime(rosters, seasons) : null
   const sizeData = ready ? sizeProfile(currentRoster) : null
   const mixData = ready ? newcomerMix(rosters, seasons) : null
-  // Held back for two-year programs until their stored grad_year is corrected:
-  // the pipeline inferred it with four-year offsets (a JC sophomore "graduates"
-  // two years late), so the estimate's "graduating" count would be wrong there.
-  // Remove the !twoYear guard once the two-year grad_year backfill has landed.
-  const openingsEstimate = ready && !twoYear
+  // Two-year programs are included again: their stored grad_year was corrected
+  // to two-year offsets on 2026-09-29 (pipeline out_sql/13_two_year_grad_year.sql),
+  // so the "graduating" count matches the NEXT bar for them too.
+  const openingsEstimate = ready
     ? nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix: mixData, twoYear })
     : null
 
