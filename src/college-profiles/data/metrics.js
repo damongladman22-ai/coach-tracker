@@ -7,6 +7,24 @@ const TERMINAL = new Set(['SR', 'GR']) // exhausted / near-exhausted eligibility
 // eligibility there. Shared with program_early_departures (pipeline
 // out_sql/12_program_early_departures.sql) -- change both or neither.
 const JC_TERMINAL = new Set(['SO', 'JR', 'SR', 'GR'])
+
+// "JC" is not enough to know a program is two-year: 29 of 598 JC programs list
+// juniors and seniors, and 9 of them are four-year rosters outright (Abraham
+// Baldwin, East Central, Union County, ...; measure_jc_class_labels.py,
+// 2026-09-29). A JC counts as two-year unless at least this share of its active
+// roster rows, across every tracked season, are JR / SR / GR (Damon,
+// 2026-09-29). The SQL uses the same test on the same rows.
+export const TWO_YEAR_MAX_UPPER_SHARE = 0.25
+const UPPER = new Set(['JR', 'SR', 'GR'])
+
+/** True when a JC program's own rosters look two-year. Pass every loaded roster row. */
+export function isTwoYearProgram(rosters, division) {
+  if (division !== 'JC') return false
+  const rows = rosters || []
+  let upper = 0
+  for (const r of rows) if (UPPER.has(r.class_year)) upper++
+  return upper < TWO_YEAR_MAX_UPPER_SHARE * rows.length || rows.length === 0
+}
 export const POS_ORDER = ['GK', 'D', 'M', 'F']
 const US_NAMES = new Set(['United States', 'USA', 'US', 'U.S.', 'U.S.A.'])
 
@@ -34,12 +52,12 @@ function idsInSeason(rosters, season) {
  * Non-senior return rate, averaged across every consecutive season transition.
  * Denominator = players with remaining eligibility in season N (not SR/GR; at a
  * JC, first-years only); numerator = those still present in N+1.
- * Pass { division } so a JC is judged on JC eligibility: a JC sophomore who
- * finishes is not an early departure.
+ * Pass { twoYear } (isTwoYearProgram) so a two-year program is judged on
+ * two-year eligibility: a sophomore there who finishes is not an early departure.
  * Returns { rate, earlyDeparture, transitions:[{from,to,eligible,returned,rate}] }
  */
-export function nonSeniorReturnRate(rosters, seasons, { division } = {}) {
-  const terminal = division === 'JC' ? JC_TERMINAL : TERMINAL
+export function nonSeniorReturnRate(rosters, seasons, { twoYear = false } = {}) {
+  const terminal = twoYear ? JC_TERMINAL : TERMINAL
   const transitions = []
   for (let i = 0; i < seasons.length - 1; i++) {
     const a = seasons[i], b = seasons[i + 1]
@@ -63,10 +81,10 @@ export function nonSeniorReturnRate(rosters, seasons, { division } = {}) {
 
 /**
  * Deterministic spots opening after the current season = players with no
- * eligibility left: SR + GR, and at a JC also SO + JR (see JC_TERMINAL).
+ * eligibility left: SR + GR, and at a two-year program also SO + JR.
  */
-export function projectedOpeningsAfterCurrent(currentRoster, { division } = {}) {
-  const terminal = division === 'JC' ? JC_TERMINAL : TERMINAL
+export function projectedOpeningsAfterCurrent(currentRoster, { twoYear = false } = {}) {
+  const terminal = twoYear ? JC_TERMINAL : TERMINAL
   return (currentRoster || []).filter(r => terminal.has(r.class_year)).length
 }
 
@@ -77,16 +95,16 @@ export function projectedOpeningsAfterCurrent(currentRoster, { division } = {}) 
  *   graduating   = current-roster rows whose grad_year is next season -- the
  *                  card's own "next" bar, counted the same way, so they agree
  *   eligible     = the rest of the roster that still has eligibility, by the
- *                  same rule as nonSeniorReturnRate (JC: first-years only)
+ *                  same rule as nonSeniorReturnRate (two-year: first-years only)
  *   earlyLeavers = eligible x this program's own early-departure rate
  *   spots        = graduating + earlyLeavers
  *   freshmen     = spots x (1 - this program's experienced share of newcomers),
  *                  only when at least `minKnown` newcomers are tracked
  * Returns null when there is no early-departure rate to project from.
  */
-export function nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix, division, minKnown = 10 }) {
+export function nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix, twoYear = false, minKnown = 10 }) {
   if (currentSeason == null || !returnStats || returnStats.earlyDeparture == null) return null
-  const terminal = division === 'JC' ? JC_TERMINAL : TERMINAL
+  const terminal = twoYear ? JC_TERMINAL : TERMINAL
   const season = currentSeason + 1
   let graduating = 0, eligible = 0
   for (const r of currentRoster || []) {

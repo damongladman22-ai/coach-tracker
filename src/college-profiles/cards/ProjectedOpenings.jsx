@@ -56,7 +56,7 @@ function Estimate({ est, isJC }) {
   )
 }
 
-export default function ProjectedOpenings({ buckets, estimate, division }) {
+export default function ProjectedOpenings({ buckets, estimate, twoYear = false }) {
   const [selYear, setSelYear] = useState(null)
   const [isoPos, setIsoPos] = useState(null)
   const [tip, setTip] = useState(null)
@@ -132,7 +132,7 @@ export default function ProjectedOpenings({ buckets, estimate, division }) {
         ))}
       </div>
 
-      {estimate && <Estimate est={estimate} isJC={division === 'JC'} />}
+      {estimate && <Estimate est={estimate} isJC={twoYear} />}
 
       {selected && (
         <div className="cp-hz-detail">

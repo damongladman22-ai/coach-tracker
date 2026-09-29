@@ -52,7 +52,7 @@ const mix = { pooled: { known: 40, share: 0.25 } }
 // 3. JC: only first-years are eligible to leave early.
 {
   const jc = [p('a', 'SO', 2027), p('b', 'SO', 2027), p('c', 'FR', 2028), p('d', 'FR', 2028), p('e', 'SO', 2028)]
-  const e = nextSeasonOpeningsEstimate({ currentRoster: jc, currentSeason: 2026, returnStats: { earlyDeparture: 0.5 }, mix, division: 'JC' })
+  const e = nextSeasonOpeningsEstimate({ currentRoster: jc, currentSeason: 2026, returnStats: { earlyDeparture: 0.5 }, mix, twoYear: true })
   check('JC eligible = first-years only', e.eligible === 2, JSON.stringify(e))
   check('JC early leavers use first-years', close(e.earlyLeavers, 1))
 }
@@ -71,7 +71,7 @@ console.log('\nprojectedOpeningsAfterCurrent')
 {
   check('four-year: SR + GR', projectedOpeningsAfterCurrent(roster) === 4)
   const jc = [p('a', 'SO', 2027), p('b', 'FR', 2028), p('c', 'FR', 2028)]
-  check('JC: sophomores count as openings', projectedOpeningsAfterCurrent(jc, { division: 'JC' }) === 1)
+  check('JC: sophomores count as openings', projectedOpeningsAfterCurrent(jc, { twoYear: true }) === 1)
   check('JC roster read as four-year misses them', projectedOpeningsAfterCurrent(jc) === 0)
 }
 

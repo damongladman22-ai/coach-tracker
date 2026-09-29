@@ -17,9 +17,10 @@ import { clampTip } from '../data/format'
  * wording says "at least". Both counts come from program_early_departures, so
  * they always describe the same players.
  *
- * JC. At a two-year college only first-years still have eligibility, so the
- * wording follows `division`, and the numbers do too (nonSeniorReturnRate and
- * the table share that definition).
+ * TWO-YEAR PROGRAMS. At a two-year college only first-years still have
+ * eligibility, so the wording follows `twoYear` (isTwoYearProgram: a JC whose
+ * own rosters look two-year), and the numbers do too (nonSeniorReturnRate and
+ * program_early_departures share that definition).
  */
 const PEER_MIN = 5       // the benchmark only counts program-seasons with >= 5 leavers
 const LABEL_MIN = 0.2    // a segment narrower than this carries no inside label
@@ -33,12 +34,12 @@ function seasonsLabel(ss) {
   return `the ${ss.slice(0, -1).join(', ')} and ${ss[ss.length - 1]} seasons`
 }
 
-export default function RosterStability({ stats, benchmark, departures, division }) {
+export default function RosterStability({ stats, benchmark, departures, twoYear = false }) {
   const [tip, setTip] = useState(null)
   const rate = stats?.rate
   const transitions = stats?.transitions || []
   const early = stats?.earlyDeparture
-  const isJC = division === 'JC'
+  const isJC = twoYear
   const who = isJC ? 'first-year players' : 'underclassmen'
 
   const b = benchmark ? benchmark.cell('return_rate', 'overall', 'ALL', { pooled: true }) : null

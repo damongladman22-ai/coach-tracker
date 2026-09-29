@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useProgramProfile } from './data/useProgramProfile'
 import { useProgramBenchmarks } from './data/useProgramBenchmarks'
 import {
-  rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent, nextSeasonOpeningsEstimate,
+  rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent, nextSeasonOpeningsEstimate, isTwoYearProgram,
   projectedOpeningsByYear, newcomers, geographyOverTime, compositionOverTime, sizeProfile,
   newcomerMix,
 } from './data/metrics'
@@ -86,14 +86,15 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
     : undefined
 
   const ready = !loading && !error && school
-  const returnStats = ready ? nonSeniorReturnRate(rosters, seasons, { division: school.division }) : null
+  const twoYear = ready ? isTwoYearProgram(rosters, school.division) : false
+  const returnStats = ready ? nonSeniorReturnRate(rosters, seasons, { twoYear }) : null
   const openingBuckets = ready ? projectedOpeningsByYear(currentRoster, currentSeason) : []
   const geoTime = ready ? geographyOverTime(rosters, seasons) : null
   const compData = ready ? compositionOverTime(rosters, seasons) : null
   const sizeData = ready ? sizeProfile(currentRoster) : null
   const mixData = ready ? newcomerMix(rosters, seasons) : null
   const openingsEstimate = ready
-    ? nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix: mixData, division: school.division })
+    ? nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix: mixData, twoYear })
     : null
 
   return (
@@ -149,7 +150,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             <KpiStrip
               rosterSize={rosterSize(currentRoster)}
               returnRate={returnStats?.rate}
-              projectedOpenings={projectedOpeningsAfterCurrent(currentRoster, { division: school.division })}
+              projectedOpenings={projectedOpeningsAfterCurrent(currentRoster, { twoYear })}
               newcomers={newcomers(rosters, currentRoster, currentSeason)}
               currentSeason={currentSeason}
               benchmark={scope}
@@ -159,9 +160,9 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <SquadMap roster={currentRoster} season={currentSeason} />
             </div>
             <div id="sec-openings" className="cp-anchor cp-two">
-              <ProjectedOpenings buckets={openingBuckets} estimate={openingsEstimate} division={school.division} />
+              <ProjectedOpenings buckets={openingBuckets} estimate={openingsEstimate} twoYear={twoYear} />
               <RosterStability stats={returnStats} benchmark={scope}
-                departures={departures.rows} division={school.division} />
+                departures={departures.rows} twoYear={twoYear} />
             </div>
             <div id="sec-arrivals" className="cp-anchor">
               <RosterBuild mix={mixData} transfers={transfers.rows} span={transfers.span} benchmark={scope} />
