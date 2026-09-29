@@ -4,6 +4,7 @@ import {
 } from './data/landscapeFormat'
 import GeographyMap from './GeographyMap'
 import InfoTip from './InfoTip'
+import TransferFlows from './TransferFlows'
 import PinControl from './PinControl'
 import { useLandscapePins, PIN_COLORS } from './data/useLandscapePins'
 import { PROFILE_INFO } from './data/landscapeInfo'
@@ -326,7 +327,7 @@ function PinLegend({ pins }) {
   )
 }
 
-export default function ProfileLens({ client, bench, geo, selection }) {
+export default function ProfileLens({ client, bench, geo, transfers, selection }) {
   const { loading, error, get } = bench
   const { division, gender, season } = selection
 
@@ -476,6 +477,12 @@ export default function ProfileLens({ client, bench, geo, selection }) {
       <Section id="csl-sec-retention" title="Retention" hint="Season-over-season" row={retRow} info={PROFILE_INFO.retention}>
         <Retention get={get} season={season} />
       </Section>
+
+      {transfers && (
+        <Section id="csl-sec-transfers" title="Transfers" hint="Confirmed moves between programs" info={PROFILE_INFO.transfers}>
+          <TransferFlows transfers={transfers} division={division} gender={gender} season={season} />
+        </Section>
+      )}
 
       <footer className="csl-foot">
         <p><b>About these numbers.</b> Each figure is the <b>median program</b> in the segment (the honest

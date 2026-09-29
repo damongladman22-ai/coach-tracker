@@ -8,6 +8,7 @@ import { useLandscapeBenchmarks } from './data/useLandscapeBenchmarks'
 import { useLandscapeGeo } from './data/useLandscapeGeo'
 import { useLandscapeTrend } from './data/useLandscapeTrend'
 import { useLandscapeCompare } from './data/useLandscapeCompare'
+import { useLandscapeTransfers } from './data/useLandscapeTransfers'
 import { FAMILIES, LATEST_SEASON } from './data/landscapeFormat'
 
 /**
@@ -52,6 +53,8 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
     conference: 'ALL',
   })
 
+  const transfers = useLandscapeTransfers(client, { gender: selection.gender })
+
   const trend = useLandscapeTrend(client, {
     division: selection.division,
     gender: selection.gender,
@@ -90,7 +93,7 @@ export default function CSIPLandscape({ client, theme, backTo = '/', backLabel =
         <ControlBar selection={selection} set={set} onFamily={onFamily} />
 
         {selection.lens === 'profile' && (
-          <ProfileLens client={client} bench={bench} geo={geo} selection={selection} />
+          <ProfileLens client={client} bench={bench} geo={geo} transfers={transfers} selection={selection} />
         )}
 
         {selection.lens === 'compare' && (

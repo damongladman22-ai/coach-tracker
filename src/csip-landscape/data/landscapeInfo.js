@@ -40,6 +40,12 @@ export const PROFILE_INFO = {
     read: 'Return rate is the share of last season’s players still on the roster; newcomer rate is the share who are new.',
     source: 'Needs a prior season, so 2021 has none. JC is excluded — it’s always a stop, not a destination.',
   },
+  transfers: {
+    title: 'Transfers',
+    what: 'Where confirmed transfers into this division came from, where players who left it went, and the busiest conference-to-conference routes.',
+    read: 'Bars count players by the division at the other end; "Other D1" (etc.) is a move between two programs in the same division. Up and down follow JC → four-year → D1.',
+    source: 'Confirmed player transfers only (about one in five experienced newcomers). Flows under 3 players are withheld. Tracked only for recent arrival seasons (the transfer census window).',
+  },
 }
 
 export const TREND_INFO = {

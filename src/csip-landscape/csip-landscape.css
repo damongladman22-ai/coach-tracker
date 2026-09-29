@@ -507,3 +507,22 @@
 .csl-rl-pmed{position:absolute; top:1.5px; width:11px; height:11px; border-radius:50%; transform:translateX(-50%); box-shadow:0 0 0 2px var(--surface,#fff)}
 .csl-geocmp-pins{margin-top:20px}
 .csl-geocmp-pins .csl-gcard-glab{margin-bottom:10px}
+
+/* Transfers section (item 4 of the transfer-display plan, 2026-09-29). */
+.csl-xfer-lede{font-size:13px; color:var(--slate); margin:0 0 16px; line-height:1.5}
+.csl-xfer-grid{display:grid; grid-template-columns:1fr 1fr; gap:28px}
+.csl-xfer-h{font-size:13px; font-weight:700; color:var(--ink); margin:0 0 12px; display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px}
+.csl-xfer-n{font-size:12px; font-weight:500; color:var(--slate-2); font-variant-numeric:tabular-nums}
+.csl-xfer-row{grid-template-columns:92px 1fr 84px}
+.csl-xfer-sum{font-size:12.5px; color:var(--slate); margin:12px 0 0}
+.csl-xfer-corr{margin-top:22px; padding-top:16px; border-top:1px solid var(--line)}
+.csl-corr{list-style:none; margin:0; padding:0; display:grid; grid-template-columns:1fr 1fr; gap:6px 28px}
+.csl-corr li{display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-size:13px; color:var(--ink); padding:5px 0; border-bottom:1px dashed var(--line)}
+.csl-corr-path{min-width:0}
+.csl-corr-path em{font-style:normal; font-size:11px; color:var(--slate-2); margin-left:3px}
+.csl-corr-arrow{color:var(--slate-2)}
+.csl-corr-n{font-family:"Barlow Condensed",sans-serif; font-size:16px; font-variant-numeric:tabular-nums}
+@media (max-width:760px){
+  .csl-xfer-grid{grid-template-columns:1fr; gap:22px}
+  .csl-corr{grid-template-columns:1fr}
+}
