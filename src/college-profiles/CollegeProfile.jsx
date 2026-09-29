@@ -22,6 +22,7 @@ import ProgramResults from './cards/ProgramResults'
 import RosterBuild from './cards/RosterBuild'
 import { useProgramResults } from './data/useProgramResults'
 import { useProgramTransfers } from './data/useProgramTransfers'
+import { useEarlyDepartures } from './data/useEarlyDepartures'
 import { themeFromSchool, softOf } from './data/schoolBranding'
 
 /**
@@ -63,6 +64,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const benchmarks = useProgramBenchmarks(client, school, currentSeason)
   const results = useProgramResults(client, schoolId)
   const transfers = useProgramTransfers(client, schoolId)
+  const departures = useEarlyDepartures(client, schoolId)
   const [peer, setPeer] = useState('div')
   const hasConf = !!benchmarks.conf
   const activePeer = peer === 'conf' && hasConf ? 'conf' : 'div'
@@ -84,7 +86,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
     : undefined
 
   const ready = !loading && !error && school
-  const returnStats = ready ? nonSeniorReturnRate(rosters, seasons) : null
+  const returnStats = ready ? nonSeniorReturnRate(rosters, seasons, { division: school.division }) : null
   const openingBuckets = ready ? projectedOpeningsByYear(currentRoster, currentSeason) : []
   const geoTime = ready ? geographyOverTime(rosters, seasons) : null
   const compData = ready ? compositionOverTime(rosters, seasons) : null
@@ -155,7 +157,8 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             </div>
             <div id="sec-openings" className="cp-anchor cp-two">
               <ProjectedOpenings buckets={openingBuckets} />
-              <RosterStability stats={returnStats} benchmark={scope} />
+              <RosterStability stats={returnStats} benchmark={scope}
+                departures={departures.rows} division={school.division} />
             </div>
             <div id="sec-arrivals" className="cp-anchor">
               <RosterBuild mix={mixData} transfers={transfers.rows} span={transfers.span} benchmark={scope} />

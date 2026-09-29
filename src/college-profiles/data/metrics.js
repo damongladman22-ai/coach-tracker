@@ -3,6 +3,10 @@
 // derived season list; nothing here touches the network or PitchSide.
 
 const TERMINAL = new Set(['SR', 'GR']) // exhausted / near-exhausted eligibility
+// At a two-year college a sophomore has finished, so only first-years still have
+// eligibility there. Shared with program_early_departures (pipeline
+// out_sql/12_program_early_departures.sql) -- change both or neither.
+const JC_TERMINAL = new Set(['SO', 'JR', 'SR', 'GR'])
 export const POS_ORDER = ['GK', 'D', 'M', 'F']
 const US_NAMES = new Set(['United States', 'USA', 'US', 'U.S.', 'U.S.A.'])
 
@@ -28,11 +32,14 @@ function idsInSeason(rosters, season) {
 
 /**
  * Non-senior return rate, averaged across every consecutive season transition.
- * Denominator = players with remaining eligibility (not SR/GR) in season N;
- * numerator = those still present in N+1.
+ * Denominator = players with remaining eligibility in season N (not SR/GR; at a
+ * JC, first-years only); numerator = those still present in N+1.
+ * Pass { division } so a JC is judged on JC eligibility: a JC sophomore who
+ * finishes is not an early departure.
  * Returns { rate, earlyDeparture, transitions:[{from,to,eligible,returned,rate}] }
  */
-export function nonSeniorReturnRate(rosters, seasons) {
+export function nonSeniorReturnRate(rosters, seasons, { division } = {}) {
+  const terminal = division === 'JC' ? JC_TERMINAL : TERMINAL
   const transitions = []
   for (let i = 0; i < seasons.length - 1; i++) {
     const a = seasons[i], b = seasons[i + 1]
@@ -41,7 +48,7 @@ export function nonSeniorReturnRate(rosters, seasons) {
     const seen = new Set()
     for (const r of rosters) {
       if (r.roster_season !== a || !r.player_id) continue
-      if (TERMINAL.has(r.class_year)) continue
+      if (terminal.has(r.class_year)) continue
       if (seen.has(r.player_id)) continue
       seen.add(r.player_id)
       eligible++

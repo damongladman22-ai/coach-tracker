@@ -535,3 +535,12 @@
   .cp-build-grid{grid-template-columns:1fr; gap:18px}
   .cp-build-olab{width:108px}
 }
+
+/* Roster stability — where early leavers went (item 3, 2026-09-29).
+   Reuses the .cp-build-bar / .cp-build-seg segments, whose two fills were
+   validated for separation on the roster-build card. */
+.cp-went{margin-top:16px; padding-top:14px; border-top:1px solid var(--line)}
+.cp-went-bar{height:30px}
+.cp-went .cp-build-note b{color:var(--ink); font-weight:600}
+.cp-went-peer{margin:8px 0 0; font-size:12px; line-height:1.45; color:var(--slate)}
+.cp-went-peer b{color:var(--ink); font-weight:600}
