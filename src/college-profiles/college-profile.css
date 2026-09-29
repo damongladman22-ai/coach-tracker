@@ -544,3 +544,17 @@
 .cp-went .cp-build-note b{color:var(--ink); font-weight:600}
 .cp-went-peer{margin:8px 0 0; font-size:12px; line-height:1.45; color:var(--slate)}
 .cp-went-peer b{color:var(--ink); font-weight:600}
+
+/* Projected openings — next-season estimate (item 1, 2026-09-29). */
+.cp-est{margin-top:16px; padding-top:14px; border-top:1px solid var(--line)}
+.cp-est-row{display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px}
+.cp-est-cell{display:flex; flex-direction:column; align-items:flex-start; min-width:0}
+.cp-est-cell b{font-family:"Barlow Condensed",sans-serif; font-weight:700; font-size:26px; line-height:1; color:var(--ink)}
+.cp-est-cell span{font-size:11.5px; color:var(--slate); margin-top:3px; white-space:nowrap}
+.cp-est-cell--fr{padding:4px 10px 5px; border-radius:8px; background:var(--fr); color:var(--fr-ink)}
+.cp-est-cell--fr b, .cp-est-cell--fr span{color:var(--fr-ink)}
+.cp-est-grp{display:flex; align-items:center; gap:10px}
+.cp-est-grp .cp-est-op{padding-bottom:0}
+.cp-est-op{font-family:"Barlow Condensed",sans-serif; font-size:22px; color:var(--slate); line-height:1; padding-bottom:14px}
+.cp-est-note{margin:12px 0 0; font-size:12px; line-height:1.45; color:var(--slate)}
+.cp-est-note b{color:var(--ink); font-weight:600}

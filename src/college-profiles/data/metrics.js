@@ -61,9 +61,45 @@ export function nonSeniorReturnRate(rosters, seasons, { division } = {}) {
   return { rate, earlyDeparture: 1 - rate, transitions }
 }
 
-/** Deterministic spots opening after the current season = graduating SR + GR. */
-export function projectedOpeningsAfterCurrent(currentRoster) {
-  return (currentRoster || []).filter(r => TERMINAL.has(r.class_year)).length
+/**
+ * Deterministic spots opening after the current season = players with no
+ * eligibility left: SR + GR, and at a JC also SO + JR (see JC_TERMINAL).
+ */
+export function projectedOpeningsAfterCurrent(currentRoster, { division } = {}) {
+  const terminal = division === 'JC' ? JC_TERMINAL : TERMINAL
+  return (currentRoster || []).filter(r => terminal.has(r.class_year)).length
+}
+
+/**
+ * Next-season estimate for Projected openings (item 1 of the transfer-display
+ * plan, Damon 2026-09-29). An ESTIMATE, for next season only; the graduation
+ * bars stay facts.
+ *   graduating   = current-roster rows whose grad_year is next season -- the
+ *                  card's own "next" bar, counted the same way, so they agree
+ *   eligible     = the rest of the roster that still has eligibility, by the
+ *                  same rule as nonSeniorReturnRate (JC: first-years only)
+ *   earlyLeavers = eligible x this program's own early-departure rate
+ *   spots        = graduating + earlyLeavers
+ *   freshmen     = spots x (1 - this program's experienced share of newcomers),
+ *                  only when at least `minKnown` newcomers are tracked
+ * Returns null when there is no early-departure rate to project from.
+ */
+export function nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix, division, minKnown = 10 }) {
+  if (currentSeason == null || !returnStats || returnStats.earlyDeparture == null) return null
+  const terminal = division === 'JC' ? JC_TERMINAL : TERMINAL
+  const season = currentSeason + 1
+  let graduating = 0, eligible = 0
+  for (const r of currentRoster || []) {
+    if (r.grad_year === season) { graduating++; continue }
+    if (!terminal.has(r.class_year)) eligible++
+  }
+  const earlyRate = returnStats.earlyDeparture
+  const earlyLeavers = eligible * earlyRate
+  const spots = graduating + earlyLeavers
+  const p = mix?.pooled
+  const frShare = p && p.known >= minKnown && p.share != null ? 1 - p.share : null
+  const freshmen = frShare == null ? null : spots * frShare
+  return { season, graduating, eligible, earlyRate, earlyLeavers, spots, frShare, freshmen }
 }
 
 /**

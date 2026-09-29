@@ -8,11 +8,55 @@ import { clampTip } from '../data/format'
  *
  * Clicking a year expands a breakdown (changes height), so we pin the clicked
  * control before the state change to keep the viewport steady (no page jump).
+ *
+ * NEXT-SEASON ESTIMATE (item 1 of the transfer-display plan, 2026-09-29).
+ * Under the bars, one estimate for next season only: graduating players (the
+ * "next" bar) plus expected early leavers, from this program's own
+ * early-departure rate, gives the expected new spots; the program's own
+ * experienced share of newcomers says how many of those usually go to
+ * freshmen. It is labelled as an estimate and kept off the bars, which stay
+ * facts. See nextSeasonOpeningsEstimate() in data/metrics.js.
  */
 const POS = ['GK', 'D', 'M', 'F']
 const POSFULL = { GK: 'Goalkeeper', D: 'Defense', M: 'Midfield', F: 'Attack' }
 
-export default function ProjectedOpenings({ buckets }) {
+function pct0(x) { return x == null ? '—' : Math.round(x * 100) }
+
+function Estimate({ est, isJC }) {
+  const g = est.graduating
+  const e = Math.round(est.earlyLeavers)
+  const total = Math.round(est.spots)
+  const fr = est.freshmen == null ? null : Math.round(est.freshmen)
+  const who = isJC ? 'first-year players' : 'non-seniors'
+  return (
+    <div className="cp-est">
+      <p className="cp-eyebrow" style={{ marginBottom: 10 }}>Next season ({est.season}), estimated</p>
+      <div className="cp-est-row" role="img"
+        aria-label={`${g} graduating plus about ${e} early leavers makes about ${total} new spots${fr != null ? `, about ${fr} of them for freshmen` : ''}`}>
+        <div className="cp-est-cell"><b className="cp-num">{g}</b><span>graduating</span></div>
+        <span className="cp-est-op" aria-hidden="true">+</span>
+        <div className="cp-est-cell"><b className="cp-num">≈{e}</b><span>early leavers</span></div>
+        <span className="cp-est-op" aria-hidden="true">=</span>
+        <div className="cp-est-cell cp-est-cell--tot"><b className="cp-num">≈{total}</b><span>new spots</span></div>
+        {fr != null && (
+          <div className="cp-est-grp">
+            <span className="cp-est-op" aria-hidden="true">→</span>
+            <div className="cp-est-cell cp-est-cell--fr"><b className="cp-num">≈{fr}</b><span>for freshmen</span></div>
+          </div>
+        )}
+      </div>
+      <p className="cp-est-note">
+        From this program’s own history: about <b>{pct0(est.earlyRate)}%</b> of its {who} leave before the next season
+        {fr != null
+          ? <>, and <b>{pct0(est.frShare)}%</b> of its newcomers arrive as freshmen.</>
+          : <>. Too few newcomers are tracked to say how the spots usually fill.</>}
+        {' '}An estimate, not a count: roster size, redshirts and late transfers all move it.
+      </p>
+    </div>
+  )
+}
+
+export default function ProjectedOpenings({ buckets, estimate, division }) {
   const [selYear, setSelYear] = useState(null)
   const [isoPos, setIsoPos] = useState(null)
   const [tip, setTip] = useState(null)
@@ -87,6 +131,8 @@ export default function ProjectedOpenings({ buckets }) {
           </button>
         ))}
       </div>
+
+      {estimate && <Estimate est={estimate} isJC={division === 'JC'} />}
 
       {selected && (
         <div className="cp-hz-detail">

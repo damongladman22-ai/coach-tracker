@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useProgramProfile } from './data/useProgramProfile'
 import { useProgramBenchmarks } from './data/useProgramBenchmarks'
 import {
-  rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent,
+  rosterSize, nonSeniorReturnRate, projectedOpeningsAfterCurrent, nextSeasonOpeningsEstimate,
   projectedOpeningsByYear, newcomers, geographyOverTime, compositionOverTime, sizeProfile,
   newcomerMix,
 } from './data/metrics'
@@ -92,6 +92,9 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const compData = ready ? compositionOverTime(rosters, seasons) : null
   const sizeData = ready ? sizeProfile(currentRoster) : null
   const mixData = ready ? newcomerMix(rosters, seasons) : null
+  const openingsEstimate = ready
+    ? nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix: mixData, division: school.division })
+    : null
 
   return (
     <div className="cp-root" style={styleVars}>
@@ -146,7 +149,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             <KpiStrip
               rosterSize={rosterSize(currentRoster)}
               returnRate={returnStats?.rate}
-              projectedOpenings={projectedOpeningsAfterCurrent(currentRoster)}
+              projectedOpenings={projectedOpeningsAfterCurrent(currentRoster, { division: school.division })}
               newcomers={newcomers(rosters, currentRoster, currentSeason)}
               currentSeason={currentSeason}
               benchmark={scope}
@@ -156,7 +159,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <SquadMap roster={currentRoster} season={currentSeason} />
             </div>
             <div id="sec-openings" className="cp-anchor cp-two">
-              <ProjectedOpenings buckets={openingBuckets} />
+              <ProjectedOpenings buckets={openingBuckets} estimate={openingsEstimate} division={school.division} />
               <RosterStability stats={returnStats} benchmark={scope}
                 departures={departures.rows} division={school.division} />
             </div>
@@ -183,7 +186,9 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
                 possible.</p>
               <p>Metrics reflect the seasons currently tracked for this program ({seasonRange(seasons)}).
                 Position analysis is at the group level (GK / Defense / Midfield / Attack); geography is at
-                the state/country level. Projected openings are a forward signal, not a guarantee —
+                the state/country level. Projected openings count players reaching their graduation year;
+                the next-season estimate adds expected early departures and the program’s usual freshman
+                share, both from its own history. Both are a forward signal, not a guarantee —
                 transfers, redshirts, and recruiting all shift the picture.</p>
             </footer>
           </>
