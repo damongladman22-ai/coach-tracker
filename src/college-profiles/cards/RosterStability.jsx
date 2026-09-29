@@ -46,10 +46,16 @@ export default function RosterStability({ stats, benchmark, departures, division
 
   let depLine = null
   if (early != null && early > 0) {
-    const ratio = Math.max(2, Math.round(1 / early))
+    // "1 in N" only reads true up to half. Past that it would say "1 in 2"
+    // for a program losing 5 in 6, so the count switches to tenths.
+    const tenths = Math.round(early * 10)
+    const lead = early <= 0.5 ? 'Roughly' : tenths >= 10 ? 'Nearly' : 'About'
+    const count = early <= 0.5
+      ? `1 in ${Math.max(2, Math.round(1 / early))}`
+      : tenths >= 10 ? 'all' : `${tenths} in 10`
     depLine = isJC
-      ? <>Roughly <b>1 in {ratio} first-year players</b> are not back for their second season, counted from cross-season roster tracking.</>
-      : <>Roughly <b>1 in {ratio} underclassmen</b> leave before their senior year — transfers or other departures, counted from cross-season roster tracking.</>
+      ? <>{lead} <b>{count} first-year players</b> are not back for their second season, counted from cross-season roster tracking.</>
+      : <>{lead} <b>{count} underclassmen</b> leave before their senior year — transfers or other departures, counted from cross-season roster tracking.</>
   } else if (early === 0) {
     depLine = <>Virtually no {who} left early across the tracked seasons.</>
   }
