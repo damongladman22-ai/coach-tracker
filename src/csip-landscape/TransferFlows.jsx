@@ -3,15 +3,15 @@ import { divShort, genderLabel } from './data/landscapeFormat'
 
 /**
  * TransferFlows — item 4 of the transfer-display plan (Damon, 2026-09-29): where
- * confirmed transfers INTO the selected division came from, where players who
+ * traced transfers INTO the selected division came from, where players who
  * LEFT it went, and its strongest conference-to-conference corridors.
  *
  * Division to division is the primary view: conference-level flows keep only
  * about a quarter of the movement once flows under 3 are suppressed, so they are
  * shown as "strongest corridors", never as a complete map.
  *
- * CONFIRMED ONLY. These are player_transfers moves, which cover roughly one in
- * five experienced newcomers (measured 2026-09-28). The copy says so; the bars
+ * TRACED ONLY. These are player_transfers moves, which cover a little over one
+ * in three experienced newcomers (36%, measured 2026-09-30). The copy says so; the bars
  * are the known part of the movement, not all of it.
  */
 function commas(n) { return Math.round(n).toLocaleString('en-US') }
@@ -53,7 +53,7 @@ export default function TransferFlows({ transfers, division, gender, season }) {
     : ''
 
   if (!inTotal && !outTotal) {
-    return <p className="csl-empty">No confirmed transfers are recorded for {seg}{span ? ` (${span})` : ''}.</p>
+    return <p className="csl-empty">No traced transfers are recorded for {seg}{span ? ` (${span})` : ''}.</p>
   }
 
   const { up, lateral, down } = s.moves
@@ -66,7 +66,7 @@ export default function TransferFlows({ transfers, division, gender, season }) {
   return (
     <div className="csl-xfer">
       <p className="csl-xfer-lede">
-        Confirmed moves between college programs, {span}
+        Traced moves between college programs, {span}
         {s.pooled && transfers.seasons.length > 0 && season !== 0 && !transfers.seasons.includes(season)
           ? ` — transfers are tracked for ${transfers.seasons.join(' and ')} only, so both are shown`
           : ''}.
@@ -105,8 +105,8 @@ export default function TransferFlows({ transfers, division, gender, season }) {
       )}
 
       <p className="csl-note">
-        Only confirmed transfers are counted — about one in five players who arrive with college
-        experience can be traced to a previous program — so these show the known part of the movement,
+        Only traced transfers are counted. A little over one in three players who arrive with college
+        experience can be matched to a previous program, so these show the known part of the movement,
         not all of it. Flows of fewer than 3 players are not shown.
       </p>
     </div>

@@ -9,9 +9,9 @@ import { clampTip } from '../data/format'
  *   1. Freshmen against experienced, from class year on the roster rows the
  *      page already loads (`newcomerMix`). Covers every program. This is the
  *      headline, compared against the `experienced_newcomer_rate` peer median.
- *   2. Of the experienced, the origins we can CONFIRM, from
- *      program_transfer_summary. Confirmed origins cover roughly one in five
- *      experienced newcomers (measured 2026-09-28), so they are shown as a
+ *   2. Of the experienced, the origins we can TRACE, from
+ *      program_transfer_summary. Traced origins cover a little over one in
+ *      three experienced newcomers (36%, measured 2026-09-30), so they are shown as a
  *      breakdown of what is known — never as the whole picture.
  * A flat three-way split would make "origin unconfirmed" the largest slice on
  * nearly every program and bury the finding.
@@ -80,7 +80,7 @@ export default function RosterBuild({ mix, transfers, span, benchmark }) {
     else read = <>In the <b>typical range</b> for {scopeLabel} programs.</>
   }
 
-  // Level 2 — confirmed origins of arrivals, within the census window.
+  // Level 2 — traced origins of arrivals, within the census window.
   const inRows = (transfers || []).filter(r => r.direction === 'in')
   const byDiv = {}
   for (const r of inRows) byDiv[r.counterpart_division] = (byDiv[r.counterpart_division] || 0) + r.n
@@ -179,13 +179,13 @@ export default function RosterBuild({ mix, transfers, span, benchmark }) {
 
           <div>
             <p className="cp-eyebrow" style={{ marginBottom: 8 }}>
-              Confirmed origins{span ? `, ${spanLabel(span)}` : ''}
+              Traced origins{span ? `, ${spanLabel(span)}` : ''}
             </p>
             {origins.length > 0 ? (
               <>
                 {origins.map(o => (
                   <div className="cp-build-orow" key={o.d}
-                    onMouseMove={e => showTip(e, `From ${o.label}`, `${o.n} confirmed transfer${o.n === 1 ? '' : 's'}`)}
+                    onMouseMove={e => showTip(e, `From ${o.label}`, `${o.n} traced transfer${o.n === 1 ? '' : 's'}`)}
                     onMouseLeave={hideTip}>
                     <span className="cp-build-olab">{o.label}</span>
                     <div className="cp-build-otrack"><div className="cp-build-ofill" style={{ width: `${100 * o.n / maxO}%` }} /></div>
@@ -193,15 +193,15 @@ export default function RosterBuild({ mix, transfers, span, benchmark }) {
                   </div>
                 ))}
                 <p className="cp-build-note">
-                  {confirmed} confirmed transfer{confirmed === 1 ? '' : 's'}
+                  {confirmed} traced transfer{confirmed === 1 ? '' : 's'}
                   {confirmed < expInWindow
                     ? <> against {expInWindow} experienced newcomer{expInWindow === 1 ? '' : 's'} in those seasons. The rest came from
-                      programs or countries we do not track, or through moves we have not verified.</>
+                      programs or countries we do not track, or through moves we have not traced.</>
                     : <> in those seasons.</>}
                 </p>
               </>
             ) : (
-              <p className="cp-build-note">No confirmed transfer origins for this program yet. The experienced share above still holds — it comes from class year, not from transfer records.</p>
+              <p className="cp-build-note">No traced transfer origins for this program yet. The experienced share above still holds — it comes from class year, not from transfer records.</p>
             )}
           </div>
         </div>

@@ -479,7 +479,7 @@ export default function ProfileLens({ client, bench, geo, transfers, selection }
       </Section>
 
       {transfers && (
-        <Section id="csl-sec-transfers" title="Transfers" hint="Confirmed moves between programs" info={PROFILE_INFO.transfers}>
+        <Section id="csl-sec-transfers" title="Transfers" hint="Traced moves between programs" info={PROFILE_INFO.transfers}>
           <TransferFlows transfers={transfers} division={division} gender={gender} season={season} />
         </Section>
       )}

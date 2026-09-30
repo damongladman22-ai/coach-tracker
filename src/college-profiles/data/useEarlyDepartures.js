@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 
 /**
  * useEarlyDepartures — this program's early leavers and how many of them are
- * CONFIRMED at another college program the next season, from
+ * TRACED to another college program the next season, from
  * program_early_departures (rebuilt by public.rebuild_early_departure_metrics()).
  *
  * COUNTS ONLY. One row per from_season: eligible, leavers, moved_on. The
@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react'
  * count computed in the browser with one computed in the database.
  *
  * Only seasons inside the transfer census window exist in the table: outside
- * it no transfer could have been confirmed, and a zero there would be false.
+ * it no transfer could have been traced, and a zero there would be false.
  *
  * NON-CRITICAL. A failure returns no rows and the card simply omits the split.
  *

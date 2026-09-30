@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 
 /**
- * useProgramTransfers — this program's CONFIRMED transfer counts, from
+ * useProgramTransfers — this program's TRACED transfer counts, from
  * program_transfer_summary (rebuilt by public.rebuild_transfer_metrics()).
  *
  * COUNTS ONLY, BY DESIGN. The underlying player_transfers rows are not readable
  * by the app: every one is an unreviewed assertion about a real person. This
- * table holds, per program and season, how many confirmed transfers arrived
+ * table holds, per program and season, how many traced transfers arrived
  * ('in') or left ('out'), by the other program's division and by the direction
  * of the move (up / down / lateral).
  *

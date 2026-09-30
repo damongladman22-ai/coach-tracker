@@ -10,10 +10,11 @@ import { clampTip } from '../data/format'
  *
  * WHERE EARLY LEAVERS WENT (item 3 of the transfer-display plan, 2026-09-29).
  * Of the players who left early inside the transfer census window, how many
- * are CONFIRMED at another college program the next season. Everyone else is
- * "not on any roster we track" — never "left". Only about 1 in 11 early
- * leavers can be confirmed (measured 2026-09-29, claude/Early_Departures_
- * Mostly_Untraced_20260929.md), so the confirmed count is a floor, and the
+ * are TRACED to another college program the next season. Everyone else is
+ * "not on any roster we track" — never "left". Only about 1 in 6 early
+ * leavers can be traced (measured 2026-09-30, after the name-only transfers
+ * were written; it was 1 in 11 on 2026-09-29, claude/Early_Departures_
+ * Mostly_Untraced_20260929.md), so the traced count is a floor, and the
  * wording says "at least". Both counts come from program_early_departures, so
  * they always describe the same players.
  *
@@ -121,10 +122,10 @@ export default function RosterStability({ stats, benchmark, departures, twoYear 
           ) : (
             <>
               <div className="cp-build-bar cp-went-bar" role="img"
-                aria-label={`${leavers} ${who} left: at least ${moved} confirmed at another program, ${untraced} not on any roster we track`}>
+                aria-label={`${leavers} ${who} left: at least ${moved} traced to another program, ${untraced} not on any roster we track`}>
                 {moved > 0 && (
                   <span className="cp-build-seg cp-build-seg--exp" style={{ flexGrow: moved }}
-                    onMouseMove={e => showTip(e, 'Confirmed at another program', `${moved} of ${leavers}`)}
+                    onMouseMove={e => showTip(e, 'Traced to another program', `${moved} of ${leavers}`)}
                     onMouseLeave={hideTip}>
                     {movedShare >= LABEL_MIN && <>Moved on <b>{moved}</b></>}
                   </span>
@@ -140,17 +141,17 @@ export default function RosterStability({ stats, benchmark, departures, twoYear 
               <p className="cp-build-note">
                 <b>{leavers}</b> {leavers === 1 ? (isJC ? 'first-year player' : 'underclassman') : who} left after {seasonsLabel(seasons)}.{' '}
                 {moved > 0
-                  ? <>At least <b>{moved}</b> {moved === 1 ? 'is' : 'are'} confirmed at another college program the next season.</>
-                  : <>None is confirmed at another college program yet.</>}
+                  ? <>At least <b>{moved}</b> {moved === 1 ? 'is' : 'are'} traced to another college program the next season.</>
+                  : <>None is traced to another college program yet.</>}
                 {untraced > 0 && <>{' '}{moved > 0 ? `The other ${untraced}` : (untraced === 1 ? 'That player' : `All ${untraced}`)} {untraced === 1 ? 'is' : 'are'} not on any roster we track — they may have stopped playing, gone abroad, or moved to a program we do not cover.</>}
               </p>
               {pb && (
                 <p className="cp-went-peer">
                   {pb.median > 0
-                    ? <>The median <b>{scopeLabel}</b> program has <b className="cp-num">{pct0(pb.median)}%</b> of its early leavers confirmed elsewhere; this program has <b className="cp-num">{pct0(movedShare)}%</b>.</>
+                    ? <>The median <b>{scopeLabel}</b> program has <b className="cp-num">{pct0(pb.median)}%</b> of its early leavers traced elsewhere; this program has <b className="cp-num">{pct0(movedShare)}%</b>.</>
                     : moved === 0
-                      ? <>That is common: at least half of <b>{scopeLabel}</b> programs have none of their early leavers confirmed elsewhere either.</>
-                      : <>At least half of <b>{scopeLabel}</b> programs have none of their early leavers confirmed elsewhere; this program has <b className="cp-num">{pct0(movedShare)}%</b>.</>}
+                      ? <>That is common: at least half of <b>{scopeLabel}</b> programs have none of their early leavers traced elsewhere either.</>
+                      : <>At least half of <b>{scopeLabel}</b> programs have none of their early leavers traced elsewhere; this program has <b className="cp-num">{pct0(movedShare)}%</b>.</>}
                 </p>
               )}
             </>

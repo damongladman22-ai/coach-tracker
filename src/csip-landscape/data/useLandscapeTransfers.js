@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 /**
- * useLandscapeTransfers — confirmed transfer flows for one gender, from
+ * useLandscapeTransfers — traced transfer flows for one gender, from
  * program_transfer_flows (rebuilt by public.rebuild_transfer_metrics()).
  *
  * COUNTS ONLY, and only flows of 3 or more: smaller flows are not stored,
