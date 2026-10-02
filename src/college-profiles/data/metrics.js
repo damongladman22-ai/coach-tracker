@@ -319,7 +319,7 @@ export function sizeProfile(currentRoster) {
  * CLASS YEAR CARRIES THE MEASURE. A newcomer listed SO/JR/SR/GR almost always
  * arrived from another program: measured 2026-09-28, only 3.0% of the transfers
  * recorded then are listed FR. It covers every program, where traced transfer
- * records cover a little over one in three experienced newcomers (36%, 2026-09-30).
+ * records cover about two in five experienced newcomers (41.6%, 2026-10-02).
  *
  * POOLED across transitions (counts summed, then divided) rather than averaged:
  * a small program's per-season newcomer count is too noisy to average.

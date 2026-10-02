@@ -10,8 +10,8 @@ import { divShort, genderLabel } from './data/landscapeFormat'
  * about a quarter of the movement once flows under 3 are suppressed, so they are
  * shown as "strongest corridors", never as a complete map.
  *
- * TRACED ONLY. These are player_transfers moves, which cover a little over one
- * in three experienced newcomers (36%, measured 2026-09-30). The copy says so; the bars
+ * TRACED ONLY. These are player_transfers moves, which cover about two in five
+ * experienced newcomers (41.6%, measured 2026-10-02). The copy says so; the bars
  * are the known part of the movement, not all of it.
  */
 function commas(n) { return Math.round(n).toLocaleString('en-US') }
@@ -105,7 +105,7 @@ export default function TransferFlows({ transfers, division, gender, season }) {
       )}
 
       <p className="csl-note">
-        Only traced transfers are counted. A little over one in three players who arrive with college
+        Only traced transfers are counted. About two in five players who arrive with college
         experience can be matched to a previous program, so these show the known part of the movement,
         not all of it. Flows of fewer than 3 players are not shown.
       </p>

@@ -10,8 +10,8 @@ import { clampTip } from '../data/format'
  *      page already loads (`newcomerMix`). Covers every program. This is the
  *      headline, compared against the `experienced_newcomer_rate` peer median.
  *   2. Of the experienced, the origins we can TRACE, from
- *      program_transfer_summary. Traced origins cover a little over one in
- *      three experienced newcomers (36%, measured 2026-09-30), so they are shown as a
+ *      program_transfer_summary. Traced origins cover about two in five
+ *      experienced newcomers (41.6%, measured 2026-10-02), so they are shown as a
  *      breakdown of what is known — never as the whole picture.
  * A flat three-way split would make "origin unconfirmed" the largest slice on
  * nearly every program and bury the finding.

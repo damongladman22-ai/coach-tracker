@@ -44,7 +44,7 @@ export const PROFILE_INFO = {
     title: 'Transfers',
     what: 'Where traced transfers into this division came from, where players who left it went, and the busiest conference-to-conference routes.',
     read: 'Bars count players by the division at the other end; "Other D1" (etc.) is a move between two programs in the same division. Up and down follow JC → four-year → D1.',
-    source: 'Traced player transfers only: the same player on a different program\'s roster the season before (a little over one in three experienced newcomers). Flows under 3 players are withheld. Tracked only for recent arrival seasons (the transfer census window).',
+    source: 'Traced player transfers only: the same player on a different program\'s roster the season before, or a previous college the new school names itself (about two in five experienced newcomers). Flows under 3 players are withheld. Tracked only for recent arrival seasons (the transfer census window).',
   },
 }
 
