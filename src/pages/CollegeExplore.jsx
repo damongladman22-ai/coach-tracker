@@ -8,6 +8,9 @@ import { useCollegeProfileLogos } from '../college-profiles/access/useCollegePro
 import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { matchesSchool, scoreSchool, expandTerms } from '../lib/schoolMatch'
+import {
+  indexResults, seasonsOffered, seasonLabel, sortByRecord, sortByRank, recordText, pctText,
+} from '../lib/exploreRecords'
 
 /**
  * CollegeExplore — the public "Explore Colleges" index (CSIP front door).
@@ -20,6 +23,13 @@ import { matchesSchool, scoreSchool, expandTerms } from '../lib/schoolMatch'
  * WITHIN the active filters (set filters to "All" to search everything).
  * Sorted by name (A–Z) by default; "Most data" sort available. Rows deep-link
  * to /school/:id.
+ *
+ * Records (backlog G1, 2026-10-07): program_results for the latest season and
+ * the one before it are loaded alongside the index. A Season switch picks which
+ * one each row shows, and two sorts use it: "Best record" and "RPI / NPI rank".
+ * Ordering rules live in src/lib/exploreRecords.js (tested). Records are
+ * non-critical: if they fail to load, the list works exactly as before and the
+ * record sorts and the switch are simply absent.
  *
  * Sits under CsipGate (passcode) in the router; this component still runs the
  * College Profiles kill-switch gate, mirroring SchoolProfile.
@@ -44,6 +54,33 @@ async function fetchAllIndex() {
       .from('v_college_index')
       .select('id,school,program_gender,division,conference,city,state,seasons,current_active')
       .order('id', { ascending: true })
+      .range(from, from + PAGE - 1)
+    if (error) throw error
+    all = all.concat(data || [])
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
+// program_results for the latest season and the one before it. Two small
+// requests rather than every season: the list only ever shows these two.
+async function fetchRecentResults() {
+  const top = await supabase.from('program_results').select('season')
+    .order('season', { ascending: false }).limit(1)
+  if (top.error) throw top.error
+  const latest = top.data?.[0]?.season
+  if (latest == null) return []
+  const seasons = [Number(latest), Number(latest) - 1]
+  let from = 0
+  let all = []
+  for (;;) {
+    const { data, error } = await supabase
+      .from('program_results')
+      .select('school_id,season,division,wins,losses,ties,win_pct,rpi_rank')
+      .in('season', seasons)
+      .order('school_id', { ascending: true })
+      .order('season', { ascending: true })
       .range(from, from + PAGE - 1)
     if (error) throw error
     all = all.concat(data || [])
@@ -89,7 +126,9 @@ export default function CollegeExplore() {
   const [division, setDivision] = useState('All')
   const [conference, setConference] = useState('All')
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState('best')           // 'best' | 'name' | 'depth'
+  const [sort, setSort] = useState('best')           // 'best' | 'name' | 'depth' | 'record' | 'rank'
+  const [results, setResults] = useState(null)       // Map(season -> Map(school_id -> record)) | null
+  const [season, setSeason] = useState(null)
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -100,6 +139,27 @@ export default function CollegeExplore() {
       .catch(e => { if (!cancelled) setErr(e.message || 'Could not load colleges.') })
     return () => { cancelled = true }
   }, [status])
+
+  useEffect(() => {
+    if (status !== 'allowed') return
+    let cancelled = false
+    fetchRecentResults()
+      .then(data => {
+        if (cancelled) return
+        const idx = indexResults(data)
+        setResults(idx)
+        setSeason(seasonsOffered(idx)[0] ?? null)
+      })
+      // Non-critical: on failure the record sorts and the switch stay hidden.
+      .catch(() => { if (!cancelled) setResults(null) })
+    return () => { cancelled = true }
+  }, [status])
+
+  const offered = useMemo(() => (results ? seasonsOffered(results) : []), [results])
+  const recs = useMemo(
+    () => (results && season != null ? results.get(season) || new Map() : null),
+    [results, season])
+  const hasRecords = !!recs && offered.length > 0
 
   const divisions = useMemo(() => {
     if (!rows) return []
@@ -135,7 +195,11 @@ export default function CollegeExplore() {
       (b.current_active - a.current_active) ||
       byName(a, b)
 
-    if (sort === 'name') {
+    if ((sort === 'record' || sort === 'rank') && recs) {
+      // An explicit record sort wins over match quality: the search only
+      // narrows the list, as the division and conference filters do.
+      out = sort === 'record' ? sortByRecord(out, recs) : sortByRank(out, recs)
+    } else if (sort === 'name') {
       out.sort(byName)
     } else if (sort === 'depth') {
       out.sort(byDepth)
@@ -164,7 +228,7 @@ export default function CollegeExplore() {
       out.sort((a, b) => (score.get(b) - score.get(a)) || byDepth(a, b))
     }
     return out
-  }, [rows, q, gender, division, conference, sort])
+  }, [rows, q, gender, division, conference, sort, recs])
 
   if (status === 'checking') return <PageLoader message="Loading…" />
   if (status === 'locked') return <ProfileLocked backTo="/home" backLabel="Back to Home" />
@@ -214,12 +278,23 @@ export default function CollegeExplore() {
               <option value="All">{division === 'All' ? 'All conferences' : 'All conferences'}</option>
               {conferences.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              {hasRecords && (
+                <>
+                  <span className="text-xs text-gray-500">Season</span>
+                  <select className={selectCls} value={season ?? ''} aria-label="Season"
+                    onChange={e => setSeason(Number(e.target.value))}>
+                    {offered.map(y => <option key={y} value={y}>{seasonLabel(y, offered[0])}</option>)}
+                  </select>
+                </>
+              )}
               <span className="text-xs text-gray-500">Sort</span>
               <select className={selectCls} value={sort} onChange={e => setSort(e.target.value)}>
                 <option value="best">Best match</option>
                 <option value="depth">Most data</option>
                 <option value="name">Name</option>
+                {hasRecords && <option value="record">Best record</option>}
+                {hasRecords && <option value="rank">RPI / NPI rank</option>}
               </select>
             </div>
           </div>
@@ -232,10 +307,20 @@ export default function CollegeExplore() {
         {/* List */}
         {!err && rows !== null && (
           <>
-            <div className="flex items-center justify-between mb-2 px-1">
-              <p className="text-sm text-gray-600">
+            <div className="flex items-center justify-between gap-3 mb-2 px-1">
+              <p className="text-sm text-gray-600 whitespace-nowrap flex-shrink-0">
                 {filtered.length.toLocaleString()} {filtered.length === 1 ? 'program' : 'programs'}
               </p>
+              {hasRecords && sort === 'record' && (
+                <p className="text-xs text-gray-500 text-right">
+                  Best win % first. Programs with fewer than 5 games come after, then programs with no record.
+                </p>
+              )}
+              {hasRecords && sort === 'rank' && (
+                <p className="text-xs text-gray-500 text-right">
+                  RPI ranks Division I and NPI ranks Division II. Divisions III and below are not ranked.
+                </p>
+              )}
             </div>
             <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
               {shown.map(row => (
@@ -255,6 +340,21 @@ export default function CollegeExplore() {
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
+                    {(() => {
+                      const rec = recs ? recs.get(row.id) : null
+                      if (!rec || rec.games === 0) return null
+                      return (
+                        <>
+                          <div className="text-sm font-semibold text-gray-900 tabular-nums">
+                            {recordText(rec)}
+                            <span className="ml-1.5 text-xs font-medium text-gray-500">{pctText(rec.winPct)}</span>
+                          </div>
+                          {rec.rank != null && rec.system && (
+                            <div className="text-[11px] font-medium text-gray-600">{rec.system} #{rec.rank}</div>
+                          )}
+                        </>
+                      )
+                    })()}
                     <div className="text-xs font-medium text-gray-700">{row.seasons} {row.seasons === 1 ? 'season' : 'seasons'}</div>
                     {row.current_active > 0 && (
                       <div className="text-[11px] text-gray-400">{row.current_active} players</div>
