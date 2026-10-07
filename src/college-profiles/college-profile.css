@@ -558,3 +558,55 @@
 .cp-est-op{font-family:"Barlow Condensed",sans-serif; font-size:22px; color:var(--slate); line-height:1; padding-bottom:14px}
 .cp-est-note{margin:12px 0 0; font-size:12px; line-height:1.45; color:var(--slate)}
 .cp-est-note b{color:var(--ink); font-weight:600}
+
+/* ---------- campus and cost (College Scorecard, F8) ---------- */
+.cp-cc .cp-panel-desc b{color:var(--ink); font-weight:600}
+.cp-cc-links{display:inline-flex; gap:6px; margin-left:8px; white-space:nowrap}
+.cp-cc-links a{color:var(--accent-deep); font-weight:600; text-decoration:none}
+.cp-cc-links a:hover{text-decoration:underline}
+.cp-cc-tiles{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px}
+.cp-cc-tile{background:var(--paper); border:1px solid var(--line); border-radius:12px; padding:14px 16px; display:flex; flex-direction:column; min-width:0}
+.cp-cc-tv{font-weight:700; font-size:32px; line-height:1; color:var(--ink)}
+.cp-cc-tl{font-size:12.5px; color:var(--slate); font-weight:600; margin-top:5px}
+.cp-cc-ts{font-size:11.5px; color:var(--slate-2); margin-top:2px}
+.cp-cc-cols{display:grid; grid-template-columns:repeat(3,1fr); gap:22px; margin-bottom:22px}
+.cp-cc-col{margin:0}
+.cp-cc-col .cp-eyebrow{margin-bottom:6px}
+.cp-cc-row{display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:7px 0; border-bottom:1px solid var(--line)}
+.cp-cc-row:last-child{border-bottom:none}
+.cp-cc-row dt{font-size:12.5px; color:var(--slate)}
+.cp-cc-row dd{margin:0; text-align:right; display:flex; flex-direction:column; align-items:flex-end}
+.cp-cc-row dd .cp-num{font-size:17px; font-weight:700; color:var(--ink)}
+.cp-cc-rowsub{font-size:11px; color:var(--slate-2)}
+.cp-cc-majors{border-top:1px solid var(--line); padding-top:16px}
+.cp-cc-mhead{display:flex; align-items:center; flex-wrap:wrap; gap:10px 12px; margin-bottom:8px}
+.cp-cc-search{margin-left:auto; font:inherit; font-size:13px; padding:7px 12px; border:1px solid var(--line); border-radius:999px;
+  background:var(--card); color:var(--ink); min-width:200px}
+.cp-cc-search:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft)}
+.cp-cc-msum{font-size:12.5px; color:var(--slate); margin:0 0 10px}
+.cp-cc-msum b{color:var(--ink)}
+.cp-cc-fams{list-style:none; margin:0; padding:0}
+.cp-cc-fam{border-bottom:1px solid var(--line)}
+.cp-cc-fam:last-child{border-bottom:none}
+.cp-cc-famrow{width:100%; display:grid; grid-template-columns:minmax(0,1.6fr) 1fr 34px 18px; align-items:center; gap:12px;
+  background:none; border:none; padding:9px 2px; cursor:pointer; font:inherit; text-align:left; color:var(--ink)}
+.cp-cc-famrow:hover .cp-cc-famnm{color:var(--accent-deep)}
+.cp-cc-famrow:focus-visible{outline:none; box-shadow:0 0 0 3px var(--accent-soft); border-radius:8px}
+.cp-cc-famnm{font-size:13.5px; font-weight:600}
+.cp-cc-famtrack{height:7px; background:var(--paper); border-radius:999px; overflow:hidden}
+.cp-cc-famfill{display:block; height:100%; background:var(--accent); border-radius:999px; opacity:.75}
+.cp-cc-famn{font-size:16px; font-weight:700; text-align:right}
+.cp-cc-chev{font-size:16px; color:var(--slate); text-align:center}
+.cp-cc-progs{list-style:none; margin:0 0 10px; padding:0 0 0 2px; display:flex; flex-wrap:wrap; gap:6px}
+.cp-cc-progs li{font-size:12.5px; background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:4px 10px; color:var(--ink)}
+.cp-cc-note{margin:16px 0 0; padding-top:12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--slate-2); line-height:1.5}
+@media (max-width:900px){
+  .cp-cc-tiles{grid-template-columns:repeat(2,1fr)}
+  .cp-cc-cols{grid-template-columns:1fr; gap:14px}
+}
+@media (max-width:680px){
+  .cp-cc-tv{font-size:26px}
+  .cp-cc-search{margin-left:0; width:100%; min-width:0}
+  .cp-cc-famrow{grid-template-columns:minmax(0,1fr) 60px 30px 16px; gap:8px}
+  .cp-cc-links{display:flex; margin:6px 0 0}
+}

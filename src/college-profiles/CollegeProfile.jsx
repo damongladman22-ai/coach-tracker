@@ -1,5 +1,5 @@
 import './college-profile.css'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useProgramProfile } from './data/useProgramProfile'
 import { useProgramBenchmarks } from './data/useProgramBenchmarks'
 import {
@@ -20,9 +20,11 @@ import GeographyTrend from './cards/GeographyTrend'
 import CoachStaff from './cards/CoachStaff'
 import ProgramResults from './cards/ProgramResults'
 import RosterBuild from './cards/RosterBuild'
+import CampusAndCost from './cards/CampusAndCost'
 import { useProgramResults } from './data/useProgramResults'
 import { useProgramTransfers } from './data/useProgramTransfers'
 import { useEarlyDepartures } from './data/useEarlyDepartures'
+import { useCollegeFacts } from './data/useCollegeFacts'
 import { themeFromSchool, softOf } from './data/schoolBranding'
 
 /**
@@ -55,6 +57,7 @@ const NAV = [
   { id: 'sec-roster', label: 'Roster' },
   { id: 'sec-trends', label: 'Trends' },
   { id: 'sec-geography', label: 'Geography' },
+  { id: 'sec-campus', label: 'Campus' },
   { id: 'sec-staff', label: 'Staff' },
 ]
 
@@ -65,6 +68,11 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const results = useProgramResults(client, schoolId)
   const transfers = useProgramTransfers(client, schoolId)
   const departures = useEarlyDepartures(client, schoolId)
+  const college = useCollegeFacts(client, schoolId)
+  // The Campus chip only appears when the program has a federal college to show.
+  // Memoised: SectionNav rebuilds its scroll observer whenever `items` changes.
+  const hasCampus = !!college.facts
+  const navItems = useMemo(() => (hasCampus ? NAV : NAV.filter(i => i.id !== 'sec-campus')), [hasCampus])
   const [peer, setPeer] = useState('div')
   const hasConf = !!benchmarks.conf
   const activePeer = peer === 'conf' && hasConf ? 'conf' : 'div'
@@ -158,7 +166,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               currentSeason={currentSeason}
               benchmark={scope}
             />
-            <SectionNav items={NAV} />
+            <SectionNav items={navItems} />
             <div id="sec-squad" className="cp-anchor">
               <SquadMap roster={currentRoster} season={currentSeason} />
             </div>
@@ -180,6 +188,11 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             <div id="sec-geography" className="cp-anchor">
               <GeographyTrend data={geoTime} benchmark={scope} />
             </div>
+            {college.facts && (
+              <div id="sec-campus" className="cp-anchor cp-sec">
+                <CampusAndCost facts={college.facts} majors={college.majors} />
+              </div>
+            )}
             <div id="sec-staff" className="cp-anchor cp-sec">
               <CoachStaff coaches={coaches} />
             </div>
@@ -194,6 +207,10 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
                 the next-season estimate adds expected early departures and the program’s usual freshman
                 share, both from its own history. Both are a forward signal, not a guarantee —
                 transfers, redshirts, and recruiting all shift the picture.</p>
+              {college.facts && (
+                <p>Campus, cost, admissions, outcomes, and majors are the U.S. Department of Education&rsquo;s
+                  College Scorecard figures for the college this program belongs to.</p>
+              )}
             </footer>
           </>
         )}
