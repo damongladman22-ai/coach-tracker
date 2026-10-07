@@ -10,22 +10,30 @@
  *    season is most of the list. So a program needs MIN_GAMES games before it
  *    is ranked by record; programs below that sort after it, by win % and then
  *    games, so nothing disappears.
- *  - RPI (NCAA Division I) and NPI (Division II) are separate national lists.
- *    #1 in each are not comparable, so with no division filter the rank sort
- *    groups by list (RPI first, then NPI) instead of interleaving them.
+ *  - NCAA ranks Division I by RPI and Divisions II and III by the NCAA Power
+ *    Index (NPI). Each division is its own list, and #1 in one is not
+ *    comparable with #1 in another, so with no division filter the rank sort
+ *    groups by list (D-I, then D-II, then D-III) instead of interleaving them.
+ *    As of 2026-10-07 only D-I RPI is stored: NPI is published only on
+ *    stats.ncaa.org, which blocks the home network, and is planned for the
+ *    trip update. Rows without a rank simply sort last.
  *  - Programs with no record or no ranking for the chosen season always sort
  *    last, alphabetically, never as zeros.
  */
 
 export const MIN_GAMES = 5
 
-// program_results.division: D-I uses RPI, D-II uses NPI, D-III and below are
-// unranked. Exact match: 'D-II' would prefix-match 'D-I'.
+// program_results.division: D-I uses RPI, D-II and D-III use NPI; NAIA and
+// junior colleges are not ranked here. Exact match: 'D-II' would prefix-match
+// 'D-I'.
 export function rankSystem(division) {
   if (division === 'D-I') return 'RPI'
-  if (division === 'D-II') return 'NPI'
+  if (division === 'D-II' || division === 'D-III') return 'NPI'
   return null
 }
+
+// Order of the separate national lists in the rank sort.
+const LIST_ORDER = { 'D-I': 0, 'D-II': 1, 'D-III': 2 }
 
 const num = v => (v == null ? null : Number(v))
 
@@ -41,6 +49,7 @@ export function indexResults(rows) {
       winPct: num(r.win_pct),
       rank: num(r.rpi_rank),
       system: rankSystem(r.division),
+      division: r.division || null,
     })
   }
   return out
@@ -91,15 +100,21 @@ export function sortByRecord(rows, recs) {
   })
 }
 
-/** Sort rows by RPI / NPI rank, best first; unranked last. */
+/** Sort rows by RPI / NPI rank, best first, one division's list at a time; unranked last. */
 export function sortByRank(rows, recs) {
-  const sysOrder = s => (s === 'RPI' ? 0 : s === 'NPI' ? 1 : 2)
+  const listOf = rec => (rec && rec.rank != null && rec.system && rec.division in LIST_ORDER
+    ? LIST_ORDER[rec.division] : 9)
   return [...rows].sort((a, b) => {
     const ra = recs.get(a.id), rb = recs.get(b.id)
-    const ka = ra && ra.rank != null && ra.system ? sysOrder(ra.system) : 3
-    const kb = rb && rb.rank != null && rb.system ? sysOrder(rb.system) : 3
+    const ka = listOf(ra), kb = listOf(rb)
     if (ka !== kb) return ka - kb
-    if (ka === 3) return byName(a, b)
+    if (ka === 9) return byName(a, b)
     return (ra.rank - rb.rank) || byName(a, b)
   })
+}
+
+/** True when at least one record in this season carries an NPI rank. */
+export function hasNpi(recs) {
+  for (const rec of recs.values()) if (rec.system === 'NPI' && rec.rank != null) return true
+  return false
 }

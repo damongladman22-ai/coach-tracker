@@ -14,11 +14,13 @@ function recordStr(r) { return `${r.wins}\u2013${r.losses}\u2013${r.ties}` }
 function confStr(r) { return `${r.confWins}\u2013${r.confLosses}\u2013${r.confTies}` }
 function pct3(x) { return x == null ? '\u2014' : x.toFixed(3).replace(/^0(?=\.)/, '') }
 
-// NCAA national ranking system by division: D-I uses RPI, D-II uses NPI,
-// D-III is unranked. Exact match (not prefix — 'D-II' would prefix-match 'D-I').
+// NCAA national ranking system by division: D-I uses RPI, D-II and D-III use
+// the NCAA Power Index (NPI). Exact match (not prefix — 'D-II' would
+// prefix-match 'D-I'). Only D-I RPI is stored as of 2026-10-07; an NPI rank
+// shows here as soon as one is loaded.
 function rankSystem(division) {
   if (division === 'D-I') return 'RPI'
-  if (division === 'D-II') return 'NPI'
+  if (division === 'D-II' || division === 'D-III') return 'NPI'
   return null
 }
 

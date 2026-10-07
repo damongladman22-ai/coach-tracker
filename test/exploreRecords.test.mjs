@@ -4,7 +4,7 @@
  *
  *     npm test          (or: node test/exploreRecords.test.mjs)
  */
-import { indexResults, seasonsOffered, seasonLabel, sortByRecord, sortByRank, recordText, MIN_GAMES } from '../src/lib/exploreRecords.js'
+import { indexResults, seasonsOffered, seasonLabel, sortByRecord, sortByRank, recordText, hasNpi, MIN_GAMES } from '../src/lib/exploreRecords.js'
 
 let failed = 0
 function check(name, cond, detail) {
@@ -27,7 +27,7 @@ const cur = idx.get(2026)
 
 console.log('index and seasons')
 check('coerces strings', cur.get('a').wins === 1 && cur.get('a').winPct === 1)
-check('rank system from division', cur.get('b').system === 'RPI' && cur.get('c').system === 'NPI' && cur.get('a').system === null)
+check('rank system from division', cur.get('b').system === 'RPI' && cur.get('c').system === 'NPI' && cur.get('a').system === 'NPI')
 check('offers the latest two seasons', JSON.stringify(seasonsOffered(idx)) === '[2026,2025]')
 check('latest season reads "so far" in October', seasonLabel(2026, 2026, new Date(2026, 9, 7)) === '2026 so far')
 check('latest season reads "final" after mid-December', seasonLabel(2026, 2026, new Date(2026, 11, 20)) === '2026 final')
@@ -48,6 +48,12 @@ const byRank = sortByRank(rows, cur).map(r => r.id).join('')
 check('RPI then NPI then unranked', byRank === 'dbcae', byRank)
 const last = sortByRank(rows, idx.get(2025)).map(r => r.id).join('')
 check('other season uses its own ranks', last === 'bacde', last)
+// A D-III NPI #1 must not jump ahead of the D-II list.
+const d3 = indexResults([...res, { school_id: 'e', season: 2026, wins: 9, losses: 0, ties: 0, win_pct: 1, rpi_rank: 1, division: 'D-III' }]).get(2026)
+const lists = sortByRank(rows, d3).map(r => r.id).join('')
+check('D-I, then D-II, then D-III lists', lists === 'dbcea', lists)
+check('hasNpi is false with only RPI', hasNpi(idx.get(2025)) === false)
+check('hasNpi is true once an NPI rank exists', hasNpi(cur) === true)
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1) }
 console.log('\nall passed')

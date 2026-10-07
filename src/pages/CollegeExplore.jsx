@@ -9,7 +9,7 @@ import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { matchesSchool, scoreSchool, expandTerms } from '../lib/schoolMatch'
 import {
-  indexResults, seasonsOffered, seasonLabel, sortByRecord, sortByRank, recordText, pctText,
+  indexResults, seasonsOffered, seasonLabel, sortByRecord, sortByRank, recordText, pctText, hasNpi,
 } from '../lib/exploreRecords'
 
 /**
@@ -160,6 +160,7 @@ export default function CollegeExplore() {
     () => (results && season != null ? results.get(season) || new Map() : null),
     [results, season])
   const hasRecords = !!recs && offered.length > 0
+  const npiLoaded = !!recs && hasNpi(recs)
 
   const divisions = useMemo(() => {
     if (!rows) return []
@@ -318,7 +319,9 @@ export default function CollegeExplore() {
               )}
               {hasRecords && sort === 'rank' && (
                 <p className="text-xs text-gray-500 text-right">
-                  RPI ranks Division I and NPI ranks Division II. Divisions III and below are not ranked.
+                  {npiLoaded
+                    ? 'RPI ranks Division I; the NCAA Power Index (NPI) ranks Divisions II and III. Each division is its own list.'
+                    : 'Division I is ranked by RPI. Division II and III rankings (NPI) are not available yet.'}
                 </p>
               )}
             </div>
