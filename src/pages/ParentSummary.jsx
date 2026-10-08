@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import CoachAvatar from '../college-profiles/cards/CoachAvatar';
 import { isValidEmail } from '../lib/validation';
 import { 
   PageLoader, 
@@ -100,6 +101,7 @@ function SchoolCoachEmailCard({ school, coaches, eventName, onEmailSaved, showTo
       <div className="space-y-2 mb-3">
         {uniqueCoaches.map(coach => (
           <div key={coach.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <CoachAvatar client={supabase} coach={coach} size={28} />
             <span className="text-gray-700">
               {coach.first_name} {coach.last_name}
               {coach.title && <span className="text-gray-400 text-xs ml-1">({coach.title})</span>}
@@ -231,6 +233,7 @@ function CollegeCentricEmailSection({ coaches, eventName, onEmailSaved, showToas
       <div className="space-y-2 mb-3">
         {coaches.map(coach => (
           <div key={coach.id} className="flex flex-wrap items-center gap-2 text-sm">
+            <CoachAvatar client={supabase} coach={coach} size={28} />
             <span className="text-gray-700">
               {coach.first_name} {coach.last_name}
               {coach.title && <span className="text-gray-400 text-xs ml-1">({coach.title})</span>}

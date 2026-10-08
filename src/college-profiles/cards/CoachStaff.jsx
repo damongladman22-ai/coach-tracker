@@ -1,7 +1,10 @@
+import CoachAvatar from './CoachAvatar'
+
 /**
  * CoachStaff — the current staff on file for this program, from the coaches
  * table. Head coach first, then associates/assistants, then others; email and
- * phone render as tappable links.
+ * phone render as tappable links. Each coach shows their headshot when the
+ * owner switch is on and a photo exists (CoachAvatar), otherwise initials.
  */
 function initials(f, l) {
   const s = ((f || '')[0] || '') + ((l || '')[0] || '')
@@ -15,7 +18,7 @@ function rank(title) {
   return 3
 }
 
-export default function CoachStaff({ coaches }) {
+export default function CoachStaff({ coaches, client }) {
   const list = (coaches || []).slice().sort(
     (a, b) => rank(a.title) - rank(b.title) || (a.last_name || '').localeCompare(b.last_name || '')
   )
@@ -31,7 +34,8 @@ export default function CoachStaff({ coaches }) {
             const name = [c.first_name, c.last_name].filter(Boolean).join(' ')
             return (
               <li key={c.id}>
-                <span className="cp-av">{initials(c.first_name, c.last_name)}</span>
+                <CoachAvatar client={client} coach={c} size={48}
+                  fallback={<span className="cp-av">{initials(c.first_name, c.last_name)}</span>} />
                 <div className="cp-staff-body">
                   <div className="cp-staff-nm">{name || '—'}</div>
                   <div className="cp-staff-role">{c.title || 'Coach'}</div>

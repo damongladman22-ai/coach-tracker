@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import CoachAvatar from '../college-profiles/cards/CoachAvatar';
 import { isValidEmail } from '../lib/validation';
 import OPLogo from '../components/OPLogo';
 import FeedbackButton from '../components/FeedbackButton';
@@ -918,7 +919,11 @@ export default function CoachDirectory() {
                       key={coach.id}
                       className={`px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 ${!isActive ? 'bg-gray-50' : ''}`}
                     >
-                      <div className="flex-grow">
+                      <div className="flex-grow flex items-center gap-3 min-w-0">
+                        {/* Headshot only when the owner switch is on and a photo exists;
+                            otherwise nothing renders and the row looks as before. */}
+                        <CoachAvatar client={supabase} coach={coach} size={36} dim={!isActive} />
+                        <div className="min-w-0">
                         <span className={`font-medium ${!isActive ? 'text-gray-500 line-through decoration-gray-400' : ''}`}>
                           {coach.first_name} {coach.last_name}
                         </span>
@@ -932,6 +937,7 @@ export default function CoachDirectory() {
                             Inactive
                           </span>
                         )}
+                        </div>
                       </div>
                       
                       <div className="flex flex-wrap items-center gap-3 text-sm">

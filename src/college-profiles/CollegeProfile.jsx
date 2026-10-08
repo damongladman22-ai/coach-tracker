@@ -194,7 +194,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               </div>
             )}
             <div id="sec-staff" className="cp-anchor cp-sec">
-              <CoachStaff coaches={coaches} />
+              <CoachStaff coaches={coaches} client={client} />
             </div>
             <footer className="cp-foot">
               <p><b>About this data.</b> Roster, class, position, and hometown data are aggregated from
