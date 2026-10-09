@@ -22,6 +22,7 @@ import ProgramResults from './cards/ProgramResults'
 import RosterBuild from './cards/RosterBuild'
 import CampusAndCost from './cards/CampusAndCost'
 import { useProgramResults } from './data/useProgramResults'
+import { usePeerResults } from './data/usePeerResults'
 import { useProgramTransfers } from './data/useProgramTransfers'
 import { useEarlyDepartures } from './data/useEarlyDepartures'
 import { useCollegeFacts } from './data/useCollegeFacts'
@@ -66,6 +67,8 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
     useProgramProfile(client, schoolId)
   const benchmarks = useProgramBenchmarks(client, school, currentSeason)
   const results = useProgramResults(client, schoolId)
+  // Peers' records for the Program performance standing lines (backlog G2).
+  const peerResults = usePeerResults(client, results.rows, school?.program_gender || null)
   const transfers = useProgramTransfers(client, schoolId)
   const departures = useEarlyDepartures(client, schoolId)
   const college = useCollegeFacts(client, schoolId)
@@ -137,11 +140,6 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               rosterUrl={rosterUrl}
               homeUrl={homeUrl}
             />
-            {results.rows.length > 0 && (
-              <div className="cp-perf-sec">
-                <ProgramResults rows={results.rows} />
-              </div>
-            )}
             {benchmarks.div && (
               <div className="cp-peerbar">
                 <span className="cp-peerbar-l">Compared against</span>
@@ -156,6 +154,14 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
                   )}
                 </div>
                 <span className="cp-peerbar-note">Every card below compares to this peer group</span>
+              </div>
+            )}
+            {/* The peer bar sits above Program performance (backlog G2, 2026-10-09):
+                the card's standing lines follow the same switch as every card below. */}
+            {results.rows.length > 0 && (
+              <div className="cp-perf-sec">
+                <ProgramResults rows={results.rows} schoolId={schoolId} peers={peerResults.index}
+                  scope={activePeer} genderWord={benchmarks.genderWord} />
               </div>
             )}
             <KpiStrip
