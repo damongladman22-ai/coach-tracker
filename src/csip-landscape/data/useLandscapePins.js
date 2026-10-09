@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { SEASON_YEARS, TRANSITION_START_YEARS } from './landscapeFormat'
+import { compositionSeries, originSeries, POSITION_BUCKETS, CLASS_BUCKETS } from './pinSeries'
 
 /**
  * useLandscapePins — like useLandscapePin but for up to a few programs at once.
@@ -58,8 +59,12 @@ function computeSnapshot(school, rosters) {
   }
 }
 
-/** Per-season trajectory for the Trend lens (season-independent of the picker). */
-function computeSeries(rosters) {
+/**
+ * Per-season trajectory for the Trend lens (season-independent of the picker).
+ * posShare / classShare / origin (backlog G6, 2026-10-09) use the backdrop's
+ * own definitions; see pinSeries.js.
+ */
+function computeSeries(rosters, schoolState) {
   const roster = SEASON_YEARS
     .map(s => ({ season: s, value: rosters.filter(r => r.roster_season === s).length }))
     .filter(p => p.value > 0)
@@ -73,7 +78,12 @@ function computeSeries(rosters) {
       .filter(Boolean)
   }
   const { returnRate, newcomerRate } = retentionSeries(rosters)
-  return { roster, heightByPos, returnRate, newcomerRate }
+  return {
+    roster, heightByPos, returnRate, newcomerRate,
+    posShare: compositionSeries(rosters, 'position', POSITION_BUCKETS),
+    classShare: compositionSeries(rosters, 'class_year', CLASS_BUCKETS),
+    origin: originSeries(rosters, schoolState),
+  }
 }
 
 /**
@@ -164,7 +174,7 @@ export function useLandscapePins(client, ids, season) {
       try {
         const results = await Promise.all(list.map(async id => {
           const [schoolRes, rostersRes] = await Promise.all([
-            client.from('schools').select('id, school, division, conference, program_gender').eq('id', id).single(),
+            client.from('schools').select('id, school, division, conference, program_gender, state').eq('id', id).single(),
             client.from('college_rosters')
               .select('roster_season, position, class_year, height_inches, hometown_state, hometown_country, player_id')
               .eq('school_id', id).eq('is_active', true),
@@ -186,7 +196,7 @@ export function useLandscapePins(client, ids, season) {
   const items = useMemo(() => (ids || []).map(id => {
     const r = raw.byId[id]
     if (!r) return { loading: raw.loading, hasSeason: false, seasonsAvailable: [], roster: 0, school: null, series: null }
-    return { ...computeProgram(r.school, r.rosters, season), series: computeSeries(r.rosters), snapshot: computeSnapshot(r.school, r.rosters) }
+    return { ...computeProgram(r.school, r.rosters, season), series: computeSeries(r.rosters, r.school?.state), snapshot: computeSnapshot(r.school, r.rosters) }
   }), [raw, key, season])
 
   return { loading: raw.loading, error: raw.error, items }

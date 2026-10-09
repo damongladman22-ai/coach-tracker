@@ -16,6 +16,15 @@ import { useLandscapePins, PIN_COLORS } from './data/useLandscapePins'
  * median line); composition families use a stacked flow (counts stacked per
  * season, share·count on tap). Geography gets its own rich pass. Mobile-first:
  * all text is HTML; only shapes are SVG.
+ *
+ * PINNING (backlog G6, 2026-10-09): every family can pin up to three programs.
+ * Height, Roster and Retention draw the program's line over the band. Position
+ * and Class mix are a stacked flow, which cannot carry a program's line, so
+ * with a program pinned each group becomes its own small chart: the division's
+ * share band and median, and each pinned program's share as a colored line.
+ * Geography adds International and In-state share charts above its map when a
+ * program is pinned. Pinned values use the backdrop's definitions
+ * (data/pinSeries.js).
  */
 const SF_COLORS = ['#2a78d6', '#1baf7a', '#eda100', '#4a3aa7', '#e34948']
 
@@ -251,11 +260,32 @@ export default function TrendLens({ client, trend, selection }) {
     const groups = family === 'position'
       ? [{ k: 'GK', label: 'Goalkeepers' }, { k: 'D', label: 'Defenders' }, { k: 'M', label: 'Midfielders' }, { k: 'F', label: 'Forwards' }]
       : [{ k: 'FR', label: 'Freshmen' }, { k: 'SO', label: 'Sophomores' }, { k: 'JR', label: 'Juniors' }, { k: 'SR', label: 'Seniors' }, { k: 'GR', label: 'Graduate' }]
+    const seriesKey = family === 'position' ? 'posShare' : 'classShare'
     return (
       <div className="csl-tlwrap">
         {head(family === 'position' ? 'Position mix' : 'Class mix', 'How the mix shifts, season by season', TREND_INFO[family])}
-        <StackedFlow dim={family} groups={groups} get={get} />
-        <p className="csl-note">Typical program composition each season (median counts stacked). Tap a season for its share and player count per group.</p>
+        {pinBar}
+        {active.length === 0 ? (
+          <>
+            <StackedFlow dim={family} groups={groups} get={get} />
+            <p className="csl-note">Typical program composition each season (median counts stacked). Tap a season for its share and player count per group. Pin a program to compare its mix group by group.</p>
+          </>
+        ) : (
+          <>
+            <div className="csl-ed-grid">
+              {groups.map((g, i) => (
+                <div className="csl-cmp-panel" key={g.k}>
+                  <EditorialArea
+                    points={seasonPoints(get, family, g.k, 'share')}
+                    fmt="pct" color={SF_COLORS[i]} label={g.label} compact
+                    overlays={active.map(a => ({ color: a.color, name: a.name, points: a.d.series[seriesKey]?.[g.k] || [] }))}
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="csl-note">With a program pinned, each group is shown on its own: the median program’s share each season with the p25–p75 band, and each pinned program’s own share as a colored line (seasons where it lists fewer than nine players with a {family === 'position' ? 'position' : 'class'} are left out, as the band leaves them out). Remove the pins to return to the stacked mix.</p>
+          </>
+        )}
       </div>
     )
   }
@@ -287,6 +317,28 @@ export default function TrendLens({ client, trend, selection }) {
   return (
     <div className="csl-tlwrap">
       {head('Recruiting geography', 'Where players come from — and how it’s shifting', TREND_INFO.geography)}
+      {pinBar}
+      {active.length > 0 && (
+        <>
+          <div className="csl-ed-grid">
+            <div className="csl-cmp-panel">
+              <EditorialArea
+                points={seasonPoints(get, 'origin', 'international', 'share')} fmt="pct" color="#2a78d6"
+                label="International players (share of a program)" compact
+                overlays={active.map(a => ({ color: a.color, name: a.name, points: a.d.series.origin?.international || [] }))}
+              />
+            </div>
+            <div className="csl-cmp-panel">
+              <EditorialArea
+                points={seasonPoints(get, 'origin', 'in_state', 'share')} fmt="pct" color="#1baf7a"
+                label="In-state players (share of U.S. players)" compact
+                overlays={active.map(a => ({ color: a.color, name: a.name, points: a.d.series.origin?.in_state || [] }))}
+              />
+            </div>
+          </div>
+          <p className="csl-note">Median program each season with the p25–p75 band; pinned programs plot their own share. International = players from outside the U.S. among players with a known country; in-state = U.S. players from the college’s own state among U.S. players with a known state (seasons with fewer than nine such players are left out). The map and origins below are the whole division.</p>
+        </>
+      )}
       <GeographyTrend client={client} division={division} gender={gender} />
     </div>
   )

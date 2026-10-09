@@ -64,13 +64,13 @@ export const TREND_INFO = {
   position: {
     title: 'Position mix, over time',
     what: 'How the roster’s position mix shifts season by season.',
-    read: 'Each column is a season; segment heights are the typical program’s composition (median counts stacked). Tap a season to read each group’s share and player count.',
+    read: 'Each column is a season; segment heights are the typical program’s composition (median counts stacked). Tap a season to read each group’s share and player count. Pin a program to see each group on its own chart, with the program’s share as a line.',
     source: 'Programs with at least nine classified players.',
   },
   class: {
     title: 'Class mix, over time',
     what: 'How the roster’s class mix shifts season by season.',
-    read: 'Each column is a season; segment heights are the typical program’s composition (median counts stacked). Tap a season to read each group’s share and player count.',
+    read: 'Each column is a season; segment heights are the typical program’s composition (median counts stacked). Tap a season to read each group’s share and player count. Pin a program to see each group on its own chart, with the program’s share as a line.',
     source: 'Programs with at least nine classified players.',
   },
   retention: {
@@ -82,7 +82,7 @@ export const TREND_INFO = {
   geography: {
     title: 'Recruiting geography, over time',
     what: 'Where players come from and how the footprint is shifting.',
-    read: 'A footprint map across the seasons plus the domestic-vs-international trend — arriving in the next pass.',
+    read: 'A footprint map across the seasons plus the international-origins flow. Pin a program to add International and In-state share charts, with the program’s share as a line over the division band.',
     source: 'Player-level counts per season.',
   },
 }
