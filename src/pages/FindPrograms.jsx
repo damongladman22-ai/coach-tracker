@@ -15,6 +15,9 @@ import {
   buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel,
 } from '../lib/majorFilter'
 import { STYLE_OPTIONS, styleMap, toggleStyle, matchesStyles, styleReason } from '../lib/styleFilter'
+import { teamsFor, defaultTeamId, summarizeAttendance, attendanceReason } from '../lib/attendanceSignal'
+import { getActiveSeasonId } from '../lib/season'
+import { useFavorites } from '../hooks/useFavorite'
 
 /**
  * FindPrograms — "Find programs" (backlog F3, Targeting: ranked fit list).
@@ -45,6 +48,14 @@ import { STYLE_OPTIONS, styleMap, toggleStyle, matchesStyles, styleReason } from
  * program_recruiting_style (pipeline out_sql/21); rules in
  * src/lib/styleFilter.js. Each row also says which styles mark the program.
  * If the table cannot be read the style chips are simply not shown.
+ *
+ * COACH ATTENDANCE (backlog F5, Damon 2026-10-09: flag + filter, ranking
+ * unchanged). The family picks one of the club's teams for the active season
+ * (their starred team is picked for them). Programs whose coaches logged
+ * attendance at that team's games get a "Watched your team" badge and a
+ * reason line, and "Only programs that have watched us" narrows the list.
+ * Rules in src/lib/attendanceSignal.js. If teams cannot be read, the team
+ * picker is simply not shown.
  */
 const PAGE = 1000
 const STEP = 25
@@ -97,6 +108,23 @@ async function fetchStyles() {
   const rows = await fetchPaged(() => supabase.from('program_recruiting_style')
     .select('school_id,build_band,reach_band,abroad_band,stability_band').order('school_id'))
   return styleMap(rows)
+}
+
+async function fetchClubTeams() {
+  const seasonId = await getActiveSeasonId()
+  if (!seasonId) return []
+  const { data, error } = await supabase.from('teams')
+    .select('id,name,slug,gender').eq('season_id', seasonId).eq('active', true)
+  if (error) throw error
+  return data || []
+}
+
+// Every attendance row at one team's games, with the coach's program and the game date.
+async function fetchWatched(teamId) {
+  const rows = await fetchPaged(() => supabase.from('attendance')
+    .select('id,coach_id,game_id,coaches!inner(school_id),games!inner(team_id,game_date)')
+    .eq('games.team_id', teamId).order('id'))
+  return summarizeAttendance(rows)
 }
 
 async function fetchCatalog() {
@@ -180,6 +208,12 @@ export default function FindPrograms() {
   // Recruiting style filter
   const [styleData, setStyleData] = useState(null)   // Map(school_id -> row); null until loaded or on failure
   const [styles, setStyles] = useState(() => new Set())
+  // Coach attendance (F5)
+  const favorites = useFavorites()
+  const [clubTeams, setClubTeams] = useState(null)   // null until loaded; stays null on failure
+  const [teamPick, setTeamPick] = useState(null)     // null = not chosen by hand: use the starred team
+  const [watched, setWatched] = useState({ key: null, map: null, err: '' })
+  const [onlyWatched, setOnlyWatched] = useState(false)
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -193,6 +227,9 @@ export default function FindPrograms() {
     fetchStyles()
       .then(m => { if (!cancelled) setStyleData(m) })
       .catch(() => { /* no style table: the style chips are not shown */ })
+    fetchClubTeams()
+      .then(t => { if (!cancelled) setClubTeams(t) })
+      .catch(() => { /* no teams: the team picker is not shown */ })
     return () => { cancelled = true }
   }, [status])
 
@@ -221,10 +258,33 @@ export default function FindPrograms() {
       .catch(e => { if (!cancelled) setRes({ key, rows: null, err: e.message || 'Could not load programs.' }) })
     return () => { cancelled = true }
   }, [status, key])
+  // The team whose games count: picked by hand ('' = none), else the starred team.
+  const offeredTeams = useMemo(() => teamsFor(clubTeams, gender), [clubTeams, gender])
+  const teamId = teamPick === ''
+    ? null
+    : (teamPick != null && offeredTeams.some(t => String(t.id) === String(teamPick))
+      ? teamPick
+      : defaultTeamId(offeredTeams, favorites))
+  const team = teamId != null ? offeredTeams.find(t => String(t.id) === String(teamId)) : null
+  const teamKey = team ? String(team.id) : null
+  const teamRawId = team ? team.id : null   // the id as stored, for the query
+  useEffect(() => {
+    if (status !== 'allowed' || teamRawId == null) return
+    const k = String(teamRawId)
+    let cancelled = false
+    fetchWatched(teamRawId)
+      .then(map => { if (!cancelled) setWatched({ key: k, map, err: '' }) })
+      .catch(e => { if (!cancelled) setWatched({ key: k, map: null, err: e.message || 'Could not load coach attendance.' }) })
+    return () => { cancelled = true }
+  }, [status, teamRawId])
+  const watchedMap = teamKey && watched.key === teamKey ? watched.map : null
+  const filterWatched = onlyWatched && !!team
+
   const answered = key != null && res.key === key
   const rows = answered ? res.rows : null
-  const loading = ready && (!answered || !offerReady)
-  const err = loadErr || (answered ? res.err : '') || (choiceKey && offer.key === choiceKey ? offer.err : '')
+  const loading = ready && (!answered || !offerReady || (filterWatched && watched.key !== teamKey))
+  const err = loadErr || (answered ? res.err : '') || (choiceKey && offer.key === choiceKey ? offer.err : '') ||
+    (filterWatched && watched.key === teamKey ? watched.err : '')
   const limit = more.key === key ? more.n : STEP
 
   const ranked = useMemo(() => {
@@ -233,9 +293,11 @@ export default function FindPrograms() {
       ? (offerings ? r => !!offeringFor(offerings, r.school_id, r.schools?.division) : () => false)
       : null
     const styleKeep = styles.size && styleData ? r => matchesStyles(styleData.get(r.school_id), styles) : null
-    const keep = majorKeep && styleKeep ? r => majorKeep(r) && styleKeep(r) : (majorKeep || styleKeep)
+    const watchKeep = filterWatched ? (watchedMap ? r => watchedMap.has(r.school_id) : () => false) : null
+    const keeps = [majorKeep, styleKeep, watchKeep].filter(Boolean)
+    const keep = keeps.length ? r => keeps.every(k => k(r)) : null
     return rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null, keep })
-  }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData])
+  }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData, filterWatched, watchedMap])
 
   const years = latest != null ? [latest + 1, latest + 2, latest + 3, latest + 4] : []
   const pos = POSITIONS.find(p => p.code === position)
@@ -394,6 +456,24 @@ export default function FindPrograms() {
               </div>
             </div>
           )}
+
+          {offeredTeams.length > 0 && (
+            <div className="mt-3">
+              <div className="text-xs text-gray-500 mb-1.5">
+                Your team <span className="text-gray-400">· flags programs whose coaches have watched its games</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select className={selectCls} value={team ? String(team.id) : ''} aria-label="Your team"
+                  onChange={e => setTeamPick(e.target.value)}>
+                  <option value="">No team</option>
+                  {offeredTeams.map(t => <option key={t.id} value={String(t.id)}>{t.name}</option>)}
+                </select>
+                {team && (
+                  <Chip on={onlyWatched} onClick={() => setOnlyWatched(v => !v)}>Only programs that have watched us</Chip>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {err && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-rose-700">{err}</div>}
@@ -410,7 +490,8 @@ export default function FindPrograms() {
           <>
             <p className="text-sm text-gray-600 mb-2 px-1">
               {ranked.length.toLocaleString()} {ranked.length === 1 ? 'program' : 'programs'}, ranked by estimated
-              openings for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}.
+              openings for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}
+              {filterWatched ? <>, whose coaches have watched {team.name}</> : null}.
             </p>
             <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
               {shown.map((r, i) => {
@@ -427,6 +508,11 @@ export default function FindPrograms() {
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-gray-900 leading-snug">{s.school}</span>
                           <GenderBadge gender={s.program_gender} />
+                          {watchedMap?.has(r.school_id) && (
+                            <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                              Watched your team
+                            </span>
+                          )}
                         </div>
                         <div className="text-xs text-gray-500 truncate">
                           {[s.division, s.conference].filter(Boolean).join(' · ')}
@@ -452,6 +538,9 @@ export default function FindPrograms() {
                         <li className="text-xs text-gray-600">
                           {majorReason(offeringFor(offerings, r.school_id, s.division), choice)}
                         </li>
+                      )}
+                      {watchedMap?.has(r.school_id) && (
+                        <li className="text-xs text-emerald-800">{attendanceReason(watchedMap.get(r.school_id))}</li>
                       )}
                       {styleData && styleReason(styleData.get(r.school_id), s.division) && (
                         <li className="text-xs text-gray-600">{styleReason(styleData.get(r.school_id), s.division)}</li>
@@ -488,6 +577,8 @@ export default function FindPrograms() {
               {choice && <> Majors come from the federal College Scorecard: a college counts if it awarded the
               degree in the last two years (bachelor’s, or at a junior college an associate degree too). Programs
               we cannot link to a federal college, such as joint teams, are left out when a major is chosen.</>}
+              {team && <> Coach attendance counts the coaches logged at {team.name}’s games this season; a program
+              that has not been logged may still be interested.</>}
               {styleData && <> Recruiting styles compare each program with the middle half of other programs in its
               division, as on its College Profile; a program with too little data for a chosen style is left out.</>}
             </p>
