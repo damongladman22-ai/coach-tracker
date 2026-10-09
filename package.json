@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "test": "node test/schoolMatch.test.mjs && node test/resolveSchool.test.mjs && node test/newcomerMix.test.mjs && node test/returnRate.test.mjs && node test/openingsEstimate.test.mjs && node test/transferFlows.test.mjs && node test/exploreRecords.test.mjs && node test/findPrograms.test.mjs && node test/divisionMix.test.mjs && node test/resultsStanding.test.mjs && node test/peerOverlays.test.mjs && node test/cityMap.test.mjs && node test/majorFilter.test.mjs && node test/pinSeries.test.mjs && node test/recruitingStyle.test.mjs",
+    "test": "node test/schoolMatch.test.mjs && node test/resolveSchool.test.mjs && node test/newcomerMix.test.mjs && node test/returnRate.test.mjs && node test/openingsEstimate.test.mjs && node test/transferFlows.test.mjs && node test/exploreRecords.test.mjs && node test/findPrograms.test.mjs && node test/divisionMix.test.mjs && node test/resultsStanding.test.mjs && node test/peerOverlays.test.mjs && node test/cityMap.test.mjs && node test/majorFilter.test.mjs && node test/pinSeries.test.mjs && node test/recruitingStyle.test.mjs && node test/styleFilter.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

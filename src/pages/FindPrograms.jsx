@@ -14,6 +14,7 @@ import {
 import {
   buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel,
 } from '../lib/majorFilter'
+import { STYLE_OPTIONS, styleMap, toggleStyle, matchesStyles, styleReason } from '../lib/styleFilter'
 
 /**
  * FindPrograms — "Find programs" (backlog F3, Targeting: ranked fit list).
@@ -36,6 +37,14 @@ import {
  * college graduates students in it (College Scorecard, the same data as the
  * Campus and cost card); rules in src/lib/majorFilter.js. If the catalog
  * cannot be read the major box is simply not shown.
+ *
+ * RECRUITING STYLE (backlog G8 follow-up, 2026-10-09). The College Profile
+ * "Recruiting style" labels as hard filters: builds through freshmen, leans on
+ * transfers, heavily in-state, mostly out of state, international lean, stable
+ * roster. Each program is read against its own division, from
+ * program_recruiting_style (pipeline out_sql/21); rules in
+ * src/lib/styleFilter.js. Each row also says which styles mark the program.
+ * If the table cannot be read the style chips are simply not shown.
  */
 const PAGE = 1000
 const STEP = 25
@@ -82,6 +91,12 @@ async function fetchPaged(build) {
     from += PAGE
   }
   return all
+}
+
+async function fetchStyles() {
+  const rows = await fetchPaged(() => supabase.from('program_recruiting_style')
+    .select('school_id,build_band,reach_band,abroad_band,stability_band').order('school_id'))
+  return styleMap(rows)
 }
 
 async function fetchCatalog() {
@@ -162,6 +177,9 @@ export default function FindPrograms() {
   const [choice, setChoice] = useState(null)          // { kind: 'major' | 'area', code, label }
   const [query, setQuery] = useState('')
   const [offer, setOffer] = useState({ key: null, map: null, err: '' })
+  // Recruiting style filter
+  const [styleData, setStyleData] = useState(null)   // Map(school_id -> row); null until loaded or on failure
+  const [styles, setStyles] = useState(() => new Set())
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -172,6 +190,9 @@ export default function FindPrograms() {
     fetchCatalog()
       .then(c => { if (!cancelled) setCatalog(c) })
       .catch(() => { /* no catalog: the major box is not shown */ })
+    fetchStyles()
+      .then(m => { if (!cancelled) setStyleData(m) })
+      .catch(() => { /* no style table: the style chips are not shown */ })
     return () => { cancelled = true }
   }, [status])
 
@@ -208,11 +229,13 @@ export default function FindPrograms() {
 
   const ranked = useMemo(() => {
     if (!rows) return []
-    const keep = choiceKey
+    const majorKeep = choiceKey
       ? (offerings ? r => !!offeringFor(offerings, r.school_id, r.schools?.division) : () => false)
       : null
+    const styleKeep = styles.size && styleData ? r => matchesStyles(styleData.get(r.school_id), styles) : null
+    const keep = majorKeep && styleKeep ? r => majorKeep(r) && styleKeep(r) : (majorKeep || styleKeep)
     return rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null, keep })
-  }, [rows, divisions, states, latest, choiceKey, offerings])
+  }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData])
 
   const years = latest != null ? [latest + 1, latest + 2, latest + 3, latest + 4] : []
   const pos = POSITIONS.find(p => p.code === position)
@@ -353,6 +376,24 @@ export default function FindPrograms() {
               )}
             </div>
           )}
+
+          {styleData && (
+            <div className="mt-3">
+              <div className="text-xs text-gray-500 mb-1.5">
+                Recruiting style {styles.size === 0 ? '(any)' : ''}
+                <span className="text-gray-400"> · against other programs in its division</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {STYLE_OPTIONS.map(o => (
+                  <Chip key={o.key} on={styles.has(o.key)} onClick={() => setStyles(sel => toggleStyle(sel, o.key))}>{o.label}</Chip>
+                ))}
+                {styles.size > 0 && (
+                  <button type="button" onClick={() => setStyles(new Set())}
+                    className="text-sm text-[#1d4ed8] hover:underline ml-1">Any style</button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {err && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-rose-700">{err}</div>}
@@ -412,6 +453,9 @@ export default function FindPrograms() {
                           {majorReason(offeringFor(offerings, r.school_id, s.division), choice)}
                         </li>
                       )}
+                      {styleData && styleReason(styleData.get(r.school_id), s.division) && (
+                        <li className="text-xs text-gray-600">{styleReason(styleData.get(r.school_id), s.division)}</li>
+                      )}
                       {isBehind(r, latest) && (
                         <li className="text-xs text-amber-700">
                           Newest roster on file is {r.current_season}; these numbers may be a year behind.
@@ -444,6 +488,8 @@ export default function FindPrograms() {
               {choice && <> Majors come from the federal College Scorecard: a college counts if it awarded the
               degree in the last two years (bachelor’s, or at a junior college an associate degree too). Programs
               we cannot link to a federal college, such as joint teams, are left out when a major is chosen.</>}
+              {styleData && <> Recruiting styles compare each program with the middle half of other programs in its
+              division, as on its College Profile; a program with too little data for a chosen style is left out.</>}
             </p>
           </>
         )}

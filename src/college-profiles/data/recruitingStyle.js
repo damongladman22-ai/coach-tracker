@@ -59,7 +59,7 @@ export function intlShareFromGeo(geo) {
   return known ? { share: intl / known, intl, known } : null
 }
 
-const LABELS = {
+export const LABELS = {
   build: { high: 'Leans on transfers', low: 'Builds through freshmen', typical: 'Typical mix of freshmen and transfers' },
   reach: { high: 'Recruits heavily in-state', low: 'Recruits mostly out of state', typical: 'Typical in-state share' },
   abroad: { high: 'International lean', low: 'Mostly domestic', typical: 'Typical international share' },
