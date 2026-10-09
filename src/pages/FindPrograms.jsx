@@ -15,8 +15,8 @@ import {
   buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel,
 } from '../lib/majorFilter'
 import { STYLE_OPTIONS, styleMap, toggleStyle, matchesStyles, styleReason } from '../lib/styleFilter'
-import { teamsFor, defaultTeamId, summarizeAttendance, attendanceReason } from '../lib/attendanceSignal'
-import { getActiveSeasonId } from '../lib/season'
+import { teamsFor, defaultTeamId, summarizeAttendance, attendanceReason, lineage } from '../lib/attendanceSignal'
+import { getActiveSeasonId, listSeasons } from '../lib/season'
 import { useFavorites } from '../hooks/useFavorite'
 
 /**
@@ -110,20 +110,20 @@ async function fetchStyles() {
   return styleMap(rows)
 }
 
+// The club's teams in every season (for lineages), the seasons, and the active season.
 async function fetchClubTeams() {
-  const seasonId = await getActiveSeasonId()
-  if (!seasonId) return []
-  const { data, error } = await supabase.from('teams')
-    .select('id,name,slug,gender').eq('season_id', seasonId).eq('active', true)
-  if (error) throw error
-  return data || []
+  const [activeId, seasons] = await Promise.all([getActiveSeasonId(), listSeasons()])
+  if (!activeId) return null
+  const teams = await fetchPaged(() => supabase.from('teams')
+    .select('id,name,slug,gender,season_id,program_id,active,age_groups(name)').order('id'))
+  return { activeId, seasons, teams }
 }
 
-// Every attendance row at one team's games, with the coach's program and the game date.
-async function fetchWatched(teamId) {
+// Every attendance row at the lineage's games, with the coach's program and the game date.
+async function fetchWatched(teamIds) {
   const rows = await fetchPaged(() => supabase.from('attendance')
     .select('id,coach_id,game_id,coaches!inner(school_id),games!inner(team_id,game_date)')
-    .eq('games.team_id', teamId).order('id'))
+    .in('games.team_id', teamIds).order('id'))
   return summarizeAttendance(rows)
 }
 
@@ -259,24 +259,29 @@ export default function FindPrograms() {
     return () => { cancelled = true }
   }, [status, key])
   // The team whose games count: picked by hand ('' = none), else the starred team.
-  const offeredTeams = useMemo(() => teamsFor(clubTeams, gender), [clubTeams, gender])
+  // Teams on offer: the active season's active teams. A team's lineage (the
+  // same team in earlier seasons, one age group younger each year) counts too.
+  const offeredTeams = useMemo(() => teamsFor(
+    (clubTeams?.teams || []).filter(t => t.active && String(t.season_id) === String(clubTeams.activeId)), gender),
+  [clubTeams, gender])
   const teamId = teamPick === ''
     ? null
     : (teamPick != null && offeredTeams.some(t => String(t.id) === String(teamPick))
       ? teamPick
-      : defaultTeamId(offeredTeams, favorites))
+      : defaultTeamId(offeredTeams, favorites, clubTeams?.teams, clubTeams?.seasons))
   const team = teamId != null ? offeredTeams.find(t => String(t.id) === String(teamId)) : null
-  const teamKey = team ? String(team.id) : null
-  const teamRawId = team ? team.id : null   // the id as stored, for the query
+  const teamLine = useMemo(() => (team ? lineage(team, clubTeams?.teams, clubTeams?.seasons) : []), [team, clubTeams])
+  const teamKey = teamLine.length ? teamLine.map(l => l.team.id).join(',') : null
   useEffect(() => {
-    if (status !== 'allowed' || teamRawId == null) return
-    const k = String(teamRawId)
+    if (status !== 'allowed' || !teamKey) return
     let cancelled = false
-    fetchWatched(teamRawId)
-      .then(map => { if (!cancelled) setWatched({ key: k, map, err: '' }) })
-      .catch(e => { if (!cancelled) setWatched({ key: k, map: null, err: e.message || 'Could not load coach attendance.' }) })
+    const ids = teamLine.map(l => l.team.id)
+    fetchWatched(ids)
+      .then(map => { if (!cancelled) setWatched({ key: teamKey, map, err: '' }) })
+      .catch(e => { if (!cancelled) setWatched({ key: teamKey, map: null, err: e.message || 'Could not load coach attendance.' }) })
     return () => { cancelled = true }
-  }, [status, teamRawId])
+  }, [status, teamKey, teamLine])
+  const earlier = teamLine.slice(1)
   const watchedMap = teamKey && watched.key === teamKey ? watched.map : null
   const filterWatched = onlyWatched && !!team
 
@@ -472,6 +477,16 @@ export default function FindPrograms() {
                   <Chip on={onlyWatched} onClick={() => setOnlyWatched(v => !v)}>Only programs that have watched us</Chip>
                 )}
               </div>
+              {earlier.length > 0 && (
+                <div className="text-xs text-gray-500 mt-1.5">
+                  Also counts {earlier.map((l, i) => (
+                    <span key={l.team.id}>
+                      {i > 0 ? (i === earlier.length - 1 ? ' and ' : ', ') : ''}
+                      {l.team.name}{l.season?.name ? ` (${l.season.name})` : ''}
+                    </span>
+                  ))}: the same team in earlier seasons.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -577,8 +592,9 @@ export default function FindPrograms() {
               {choice && <> Majors come from the federal College Scorecard: a college counts if it awarded the
               degree in the last two years (bachelor’s, or at a junior college an associate degree too). Programs
               we cannot link to a federal college, such as joint teams, are left out when a major is chosen.</>}
-              {team && <> Coach attendance counts the coaches logged at {team.name}’s games this season; a program
-              that has not been logged may still be interested.</>}
+              {team && <> Coach attendance counts the coaches logged at {team.name}’s games, including the same team
+              in earlier seasons (one age group younger each year); a program that has not been logged may still be
+              interested.</>}
               {styleData && <> Recruiting styles compare each program with the middle half of other programs in its
               division, as on its College Profile; a program with too little data for a chosen style is left out.</>}
             </p>
