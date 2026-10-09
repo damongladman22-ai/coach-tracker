@@ -54,7 +54,10 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlay
   if (!points.length) return <div className="csl-ed"><p className="csl-empty">No data.</p></div>
   const last = points[points.length - 1], first = points[0]
   const delta = last.median - first.median
-  const dir = dirOf(delta)
+  // The arrow follows the rounded label, so a change too small to show reads
+  // "– no change" rather than "▲ no change".
+  const dLabel = deltaLabel(delta, fmt)
+  const dir = dLabel === 'no change' ? 'flat' : dirOf(delta)
 
   const VBW = 600, VBH = compact ? 96 : 150, pad = 10
   let lo = Infinity, hi = -Infinity
@@ -78,7 +81,7 @@ function EditorialArea({ points, fmt, color = '#2a78d6', label, compact, overlay
       <div className="csl-ed-hero">
         <span className={compact ? 'csl-ed-val--sm' : 'csl-ed-val'}>{fmtVal(last.median, fmt)}</span>
         <span className={`csl-ed-delta csl-ed-delta--${dir}`}>
-          {dir === 'up' ? '▲' : dir === 'down' ? '▼' : '–'} {deltaLabel(delta, fmt)}
+          {dir === 'up' ? '▲' : dir === 'down' ? '▼' : '–'} {dLabel}
           <span className="csl-ed-since"> since {first.season}</span>
         </span>
       </div>
