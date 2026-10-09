@@ -25,9 +25,10 @@ import { useEffect, useState } from 'react'
  *   scope.seasonCell(metric, dimension, bucket, season) -> same shape | null
  *
  * seasonCell() reads one exact season with no fallback. It serves the
- * per-season return-rate ticks on Roster stability (backlog G4, 2026-10-09),
- * so the return_rate rows are also loaded for every season (a second, small
- * query: one row per season per scope).
+ * per-season return-rate ticks on Roster stability (backlog G4, 2026-10-09)
+ * and the recruiting-style shift line (backlog G8, 2026-10-09), so the
+ * return_rate and experienced_newcomer_rate rows are also loaded for every
+ * season (a second, small query: one row per season per metric per scope).
  */
 
 const POOLED = 0
@@ -104,14 +105,15 @@ export function useProgramBenchmarks(client, school, currentSeason) {
             .eq('program_gender', programGender)
             .in('conference', conferences)
             .in('roster_season', seasons),
-          // Every season's return rate, for the per-season ticks (G4).
+          // Every season's return rate (per-season ticks, G4) and experienced
+          // newcomer rate (recruiting-style shift, G8).
           client
             .from('program_benchmarks')
             .select(cols)
             .eq('division', division)
             .eq('program_gender', programGender)
             .in('conference', conferences)
-            .eq('metric', 'return_rate'),
+            .in('metric', ['return_rate', 'experienced_newcomer_rate']),
         ])
 
         if (cancelled) return

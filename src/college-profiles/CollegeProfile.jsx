@@ -17,6 +17,7 @@ import CompositionOverTime from './cards/CompositionOverTime'
 import SizeProfile from './cards/SizeProfile'
 import SectionNav from './cards/SectionNav'
 import GeographyTrend from './cards/GeographyTrend'
+import RecruitingStyle from './cards/RecruitingStyle'
 import CoachStaff from './cards/CoachStaff'
 import ProgramResults from './cards/ProgramResults'
 import RosterBuild from './cards/RosterBuild'
@@ -30,6 +31,7 @@ import { useCollegeFacts } from './data/useCollegeFacts'
 import { useHometownGeocodes } from './data/useHometownGeocodes'
 import { themeFromSchool, softOf } from './data/schoolBranding'
 import { classShares, inStateShare } from './data/peerOverlays'
+import { intlShareFromGeo, styleShift } from './data/recruitingStyle'
 
 /**
  * CollegeProfile — the portable module entry point.
@@ -55,6 +57,7 @@ function seasonRange(seasons) {
 }
 
 const NAV = [
+  { id: 'sec-style', label: 'Style' },
   { id: 'sec-squad', label: 'Squad' },
   { id: 'sec-openings', label: 'Openings' },
   { id: 'sec-arrivals', label: 'Arrivals' },
@@ -113,6 +116,10 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   // G4 overlays: current-roster class mix and in-state share, defined as the peer substrate defines them.
   const classMix = ready ? classShares(currentRoster) : null
   const inState = ready ? inStateShare(currentRoster, school.state) : null
+  // G8 recruiting style: the international share exactly as the Geography card
+  // computes it, and the shift line against the page's peer scope.
+  const intlShare = ready ? intlShareFromGeo(geoTime) : null
+  const shift = ready && scope ? styleShift(mixData, currentSeason, scope.seasonCell) : null
   // Two-year programs are included again: their stored grad_year was corrected
   // to two-year offsets on 2026-09-29 (pipeline out_sql/13_two_year_grad_year.sql),
   // so the "graduating" count matches the NEXT bar for them too.
@@ -186,6 +193,10 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               benchmark={scope}
             />
             <SectionNav items={navItems} />
+            <div id="sec-style" className="cp-anchor cp-sec">
+              <RecruitingStyle mix={mixData} inState={inState} intl={intlShare} returnRate={returnStats?.rate}
+                benchmark={scope} schoolState={school.state} shift={shift} />
+            </div>
             <div id="sec-squad" className="cp-anchor">
               <SquadMap roster={currentRoster} season={currentSeason} />
             </div>
