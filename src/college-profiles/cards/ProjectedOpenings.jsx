@@ -11,16 +11,36 @@ import { clampTip } from '../data/format'
  *
  * NEXT-SEASON ESTIMATE (item 1 of the transfer-display plan, 2026-09-29).
  * Under the bars, one estimate for next season only: graduating players (the
- * "next" bar) plus expected early leavers, from this program's own
- * early-departure rate, gives the expected new spots; the program's own
- * experienced share of newcomers says how many of those usually go to
- * freshmen. It is labelled as an estimate and kept off the bars, which stay
- * facts. See nextSeasonOpeningsEstimate() in data/metrics.js.
+ * "next" bar) plus expected early leavers gives the expected new spots; the
+ * program's own experienced share of newcomers says how many of those usually
+ * go to freshmen. It is labelled as an estimate and kept off the bars, which
+ * stay facts. See nextSeasonOpeningsEstimate() in data/metrics.js.
+ *
+ * Since backlog G8 (2026-10-09) the early-leaver rate is the program's
+ * departure outlook (program_departure_outlook): its own history steadied
+ * toward similar programs and adjusted for roster mix and win record, the
+ * same rate Find programs uses. The note says which basis was used.
  */
 const POS = ['GK', 'D', 'M', 'F']
 const POSFULL = { GK: 'Goalkeeper', D: 'Defense', M: 'Midfield', F: 'Attack' }
 
 function pct0(x) { return x == null ? '—' : Math.round(x * 100) }
+
+/** The sentence about early leavers, by where the rate came from. */
+function RateNote({ est, who }) {
+  const p = <b>{pct0(est.earlyRate)}%</b>
+  if (est.rateSource === 'program') {
+    const n = est.transitions
+    const span = n ? ` (${n} ${n === 1 ? 'year' : 'years'})` : ''
+    return <>Expected from its own roster history{span}, weighed against similar programs and adjusted for its roster mix
+      and win record: about {p} of its {who} leave before the next season</>
+  }
+  if (est.rateSource === 'division') {
+    return <>Too few seasons are tracked for its own history, so this uses similar programs, adjusted for its roster mix
+      and win record: about {p} of its {who} leave before the next season</>
+  }
+  return <>From this program’s own history: about {p} of its {who} leave before the next season</>
+}
 
 function Estimate({ est, isJC }) {
   const g = est.graduating
@@ -46,7 +66,7 @@ function Estimate({ est, isJC }) {
         )}
       </div>
       <p className="cp-est-note">
-        From this program’s own history: about <b>{pct0(est.earlyRate)}%</b> of its {who} leave before the next season
+        <RateNote est={est} who={who} />
         {fr != null
           ? <>, and <b>{pct0(est.frShare)}%</b> of its newcomers arrive as freshmen.</>
           : <>. Too few newcomers are tracked to say how the spots usually fill.</>}

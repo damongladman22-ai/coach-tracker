@@ -25,6 +25,7 @@ import { useProgramResults } from './data/useProgramResults'
 import { usePeerResults } from './data/usePeerResults'
 import { useProgramTransfers } from './data/useProgramTransfers'
 import { useEarlyDepartures } from './data/useEarlyDepartures'
+import { useDepartureOutlook } from './data/useDepartureOutlook'
 import { useCollegeFacts } from './data/useCollegeFacts'
 import { useHometownGeocodes } from './data/useHometownGeocodes'
 import { themeFromSchool, softOf } from './data/schoolBranding'
@@ -73,6 +74,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const peerResults = usePeerResults(client, results.rows, school?.program_gender || null)
   const transfers = useProgramTransfers(client, schoolId)
   const departures = useEarlyDepartures(client, schoolId)
+  const departureOutlook = useDepartureOutlook(client, schoolId)
   const college = useCollegeFacts(client, schoolId)
   // Map positions for the Recruiting geography Cities view (backlog G5).
   const hometownPoints = useHometownGeocodes(client, rosters)
@@ -114,8 +116,12 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   // Two-year programs are included again: their stored grad_year was corrected
   // to two-year offsets on 2026-09-29 (pipeline out_sql/13_two_year_grad_year.sql),
   // so the "graduating" count matches the NEXT bar for them too.
-  const openingsEstimate = ready
-    ? nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix: mixData, twoYear })
+  // G8: the early-leaver rate is the program's departure outlook (the same rate
+  // Find programs uses). Wait for it rather than flash the old own average; if
+  // it cannot be read, the estimate falls back to the own average.
+  const openingsEstimate = ready && !departureOutlook.loading
+    ? nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix: mixData,
+        outlook: departureOutlook.outlook, twoYear })
     : null
 
   return (
@@ -218,8 +224,9 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <p>Metrics reflect the seasons currently tracked for this program ({seasonRange(seasons)}).
                 Position analysis is at the group level (GK / Defense / Midfield / Attack); geography is at
                 the state/country level. Projected openings count players reaching their graduation year;
-                the next-season estimate adds expected early departures and the program’s usual freshman
-                share, both from its own history. Both are a forward signal, not a guarantee —
+                the next-season estimate adds expected early departures (the program’s own history, steadied by
+                similar programs and adjusted for its roster mix and win record) and the program’s usual freshman
+                share. Both are a forward signal, not a guarantee —
                 transfers, redshirts, and recruiting all shift the picture.</p>
               {college.facts && (
                 <p>Campus, cost, admissions, outcomes, and majors are the U.S. Department of Education&rsquo;s

@@ -103,14 +103,26 @@ export function projectedOpeningsAfterCurrent(currentRoster, { twoYear = false }
  *                  card's own "next" bar, counted the same way, so they agree
  *   eligible     = the rest of the roster that still has eligibility, by the
  *                  same rule as nonSeniorReturnRate (two-year: first-years only)
- *   earlyLeavers = eligible x this program's own early-departure rate
+ *   earlyLeavers = eligible x the early-departure rate
  *   spots        = graduating + earlyLeavers
  *   freshmen     = spots x (1 - this program's experienced share of newcomers),
  *                  only when at least `minKnown` newcomers are tracked
- * Returns null when there is no early-departure rate to project from.
+ *
+ * THE EARLY-DEPARTURE RATE (backlog G8, Damon 2026-10-09)
+ * `outlook` is the program's row from program_departure_outlook (pipeline
+ * out_sql/20): { rate, transitions, basis }. Its rate is the program's own
+ * history steadied toward similar programs and adjusted for its roster mix
+ * and win record, backtested against 2021-2026. Find programs uses the same
+ * rate, so the card and the list agree. basis 'division' = no back-to-back
+ * seasons tracked, so the rate comes from similar programs.
+ * Without an outlook row (not loaded, or not readable) the program's raw own
+ * average from returnStats is used, as before G8 (rateSource 'own').
+ * Returns null when there is no rate to project from.
  */
-export function nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix, twoYear = false, minKnown = 10 }) {
-  if (currentSeason == null || !returnStats || returnStats.earlyDeparture == null) return null
+export function nextSeasonOpeningsEstimate({ currentRoster, currentSeason, returnStats, mix, outlook = null, twoYear = false, minKnown = 10 }) {
+  if (currentSeason == null) return null
+  const fromOutlook = outlook && outlook.rate != null && Number.isFinite(Number(outlook.rate))
+  if (!fromOutlook && (!returnStats || returnStats.earlyDeparture == null)) return null
   const terminal = twoYear ? JC_TERMINAL : TERMINAL
   const season = currentSeason + 1
   let graduating = 0, eligible = 0
@@ -118,13 +130,15 @@ export function nextSeasonOpeningsEstimate({ currentRoster, currentSeason, retur
     if (r.grad_year === season) { graduating++; continue }
     if (!terminal.has(r.class_year)) eligible++
   }
-  const earlyRate = returnStats.earlyDeparture
+  const earlyRate = fromOutlook ? Number(outlook.rate) : returnStats.earlyDeparture
+  const rateSource = fromOutlook ? (outlook.basis === 'division' ? 'division' : 'program') : 'own'
+  const transitions = fromOutlook ? (outlook.transitions ?? null) : (returnStats.transitions?.length ?? null)
   const earlyLeavers = eligible * earlyRate
   const spots = graduating + earlyLeavers
   const p = mix?.pooled
   const frShare = p && p.known >= minKnown && p.share != null ? 1 - p.share : null
   const freshmen = frShare == null ? null : spots * frShare
-  return { season, graduating, eligible, earlyRate, earlyLeavers, spots, frShare, freshmen }
+  return { season, graduating, eligible, earlyRate, rateSource, transitions, earlyLeavers, spots, frShare, freshmen }
 }
 
 /**

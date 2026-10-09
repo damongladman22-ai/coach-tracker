@@ -67,6 +67,23 @@ const mix = { pooled: { known: 40, share: 0.25 } }
   check('too few newcomers -> spots but no freshman split', thin && thin.freshmen === null && thin.frShare === null && close(thin.spots, 5.2))
 }
 
+// 5. G8: the departure outlook replaces the own average when present.
+{
+  const own = nextSeasonOpeningsEstimate({ currentRoster: roster, currentSeason: 2026, returnStats, mix })
+  check('no outlook -> own average, said so', own.rateSource === 'own' && close(own.earlyRate, 0.2))
+  const o = nextSeasonOpeningsEstimate({ currentRoster: roster, currentSeason: 2026, returnStats, mix,
+    outlook: { rate: 0.25, transitions: 5, basis: 'program' } })
+  check('outlook rate used', close(o.earlyRate, 0.25) && close(o.earlyLeavers, 1.5) && close(o.spots, 5.5), JSON.stringify(o))
+  check('outlook basis and years carried', o.rateSource === 'program' && o.transitions === 5)
+  const d = nextSeasonOpeningsEstimate({ currentRoster: roster, currentSeason: 2026,
+    returnStats: { rate: null, earlyDeparture: null }, mix, outlook: { rate: '0.3', transitions: 0, basis: 'division' } })
+  check('no history but an outlook -> estimate from similar programs', d && d.rateSource === 'division' && close(d.earlyLeavers, 1.8), JSON.stringify(d))
+  const bad = nextSeasonOpeningsEstimate({ currentRoster: roster, currentSeason: 2026, returnStats, mix, outlook: { rate: null } })
+  check('outlook without a rate -> own average', bad.rateSource === 'own')
+  // Parity with Find programs: early_rate x continuing (S+1) = this card's early leavers.
+  check('same base as Find programs (continuing for S+1)', o.eligible === 6)
+}
+
 console.log('\nprojectedOpeningsAfterCurrent')
 {
   check('four-year: SR + GR', projectedOpeningsAfterCurrent(roster) === 4)

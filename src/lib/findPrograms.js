@@ -115,8 +115,11 @@ const plural = (n, one, many) => (n === 1 ? one : many)
 
 /**
  * Plain-words reasons for one row, in the order the page shows them.
- * Every number is the program's own; nothing is a guess dressed as a fact:
- * graduations are counted, early leavers and the freshman share are averages.
+ * Nothing is a guess dressed as a fact: graduations are counted; the freshman
+ * share is an average; early leavers use the departure outlook (backlog G8:
+ * the program's own history steadied toward similar programs and adjusted for
+ * roster mix and win record), said as "expected". transitions 0 = no
+ * back-to-back seasons tracked, so the rate comes from similar programs.
  */
 export function reasons(row, posCode, entryYear) {
   const p = POSITIONS.find(x => x.code === posCode) || { one: 'player', many: 'players' }
@@ -130,8 +133,12 @@ export function reasons(row, posCode, entryYear) {
     const early = (row.continuing || 0) * er
     const more = aboutText(early)
     const n = Math.round(early)
-    out.push(`It usually loses ${Math.round(er * 100)}% of players who still have eligibility, ` +
-      `which could free ${more} more ${p.one} ${more !== 'under 1' && n > 1 ? 'spots' : 'spot'}.`)
+    const spots = `${more} more ${p.one} ${more !== 'under 1' && n > 1 ? 'spots' : 'spot'}`
+    out.push(row.transitions === 0
+      ? `Too few seasons tracked for its own history, so this uses similar programs: about ${Math.round(er * 100)}% ` +
+        `of players who still have eligibility are expected to leave, which could free ${spots}.`
+      : `It is expected to lose about ${Math.round(er * 100)}% of players who still have eligibility, ` +
+        `which could free ${spots}.`)
   } else if (er == null) {
     out.push('Not enough seasons tracked to estimate early leavers.')
   }

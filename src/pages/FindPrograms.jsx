@@ -41,7 +41,7 @@ const PAGE = 1000
 const STEP = 25
 
 const COLS = 'school_id,entry_season,position,current_season,two_year,roster_rows,' +
-  'graduating,continuing,early_rate,fresh_share,fresh_share_source,est_spots,est_freshman,' +
+  'graduating,continuing,early_rate,transitions,fresh_share,fresh_share_source,est_spots,est_freshman,' +
   'schools!inner(school,program_gender,division,conference,city,state)'
 
 async function fetchLatestSeason() {
@@ -437,8 +437,9 @@ export default function FindPrograms() {
             )}
             <p className="text-xs text-gray-500 mt-4 px-1 leading-relaxed">
               How this is worked out: players who finish before your freshman fall are counted from each
-              program’s current roster. Early leavers and the share of newcomers who arrive as freshmen are
-              that program’s own averages from the seasons we track, so they are estimates, not promises.
+              program’s current roster. Early leavers are expected from each program’s own history, steadied by
+              similar programs and adjusted for its roster mix and win record; the share of newcomers who arrive as
+              freshmen is that program’s own average. Both are estimates, not promises.
               Commits already made for your class are not known and are not subtracted.
               {choice && <> Majors come from the federal College Scorecard: a college counts if it awarded the
               degree in the last two years (bachelor’s, or at a junior college an associate degree too). Programs

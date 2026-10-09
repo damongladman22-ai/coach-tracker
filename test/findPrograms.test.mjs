@@ -51,7 +51,12 @@ check('too-old rosters left out', ids(rankPrograms(aged, { minSeason: 2025 })) =
 check('about text', aboutText(0.4) === 'under 1' && aboutText(2.6) === 'about 3' && aboutText(null) === null)
 const r1 = reasons({ graduating: 3, continuing: 6, early_rate: '0.15', fresh_share: '0.8' }, 'D', 2027)
 check('reason: graduations counted', r1[0] === '3 defenders on the current roster finish before fall 2027.', r1[0])
-check('reason: early leavers', r1[1] === 'It usually loses 15% of players who still have eligibility, which could free about 1 more defender spot.', r1[1])
+check('reason: early leavers', r1[1] === 'It is expected to lose about 15% of players who still have eligibility, which could free about 1 more defender spot.', r1[1])
+const r6 = reasons({ graduating: 3, continuing: 10, early_rate: '0.22', transitions: 0, fresh_share: '0.8' }, 'D', 2027)
+check('reason: no history -> similar programs, said plainly', r6[1] ===
+  'Too few seasons tracked for its own history, so this uses similar programs: about 22% of players who still have eligibility are expected to leave, which could free about 2 more defender spots.', r6[1])
+const r7 = reasons({ graduating: 3, continuing: 10, early_rate: '0.22', transitions: 4, fresh_share: '0.8' }, 'D', 2027)
+check('reason: with history -> expected', r7[1].startsWith('It is expected to lose about 22%'), r7[1])
 const r4 = reasons({ graduating: 2, continuing: 12, early_rate: '0.25', fresh_share: null }, 'M', 2027)
 check('reason: plural spots', r4[1].endsWith('could free about 3 more midfielder spots.'), r4[1])
 check('reason: freshman share', r1[2].startsWith('80% of its newcomers arrive as freshmen'), r1[2])
