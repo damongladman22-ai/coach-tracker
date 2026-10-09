@@ -16,6 +16,8 @@ import VideoBadge from '../components/VideoBadge';
 import GameVideosPanel from '../components/GameVideosPanel';
 import { useRealtimeVideos } from '../hooks/useRealtimeVideos';
 import { matchesSchool } from '../lib/schoolMatch'
+import { inDivision } from '../lib/divisionMix'
+import DivisionMix from '../components/DivisionMix'
 
 /**
  * SchoolCoachEmailCard - Displays coaches from a school with email functionality
@@ -329,6 +331,9 @@ export default function ParentSummary() {
   
   // School search filter
   const [searchTerm, setSearchTerm] = useState('');
+  // Division chip (F14): 'ALL' or D1 / D2 / D3 / NAIA / JC / OTHER. Narrows
+  // the college list in both views, together with the search box.
+  const [divisionFilter, setDivisionFilter] = useState('ALL');
   
   // Export state
   const [exporting, setExporting] = useState(false);
@@ -473,6 +478,13 @@ export default function ParentSummary() {
     (schoolName, searchTerm) =>
       matchesSchool({ school: schoolName }, searchTerm, { fields: ['name'] }),
     []);
+
+  // The search box and the division chip together. Empty search passes all.
+  const passesFilters = useCallback(
+    (school) =>
+      inDivision(school, divisionFilter) &&
+      (!searchTerm || matchesSchoolSearch(school.school, searchTerm)),
+    [divisionFilter, searchTerm, matchesSchoolSearch]);
 
   // Get attendance for a specific game
   const getGameAttendance = useCallback((gameId) => {
@@ -722,6 +734,11 @@ export default function ParentSummary() {
             <CompactStat value={uniqueSchools} label="Colleges" />
             <CompactStat value={uniqueCoaches} label="Coaches" />
           </div>
+          <DivisionMix
+            schools={attendance.map(a => a.coaches?.schools).filter(Boolean)}
+            selected={divisionFilter}
+            onSelect={setDivisionFilter}
+          />
         </div>
 
         {/* View Toggle and Export */}
@@ -791,14 +808,16 @@ export default function ParentSummary() {
                 </button>
               )}
             </div>
-            {searchTerm && (
+            {(searchTerm || divisionFilter !== 'ALL') && (
               <p className="mt-2 text-sm text-gray-500">
                 {(() => {
                   const allSchools = getAttendanceBySchool();
-                  const matchCount = allSchools.filter(({ school }) => 
-                    matchesSchoolSearch(school.school, searchTerm)
-                  ).length;
-                  return `${matchCount} of ${allSchools.length} school${allSchools.length !== 1 ? 's' : ''} match "${searchTerm}"`;
+                  const matchCount = allSchools.filter(({ school }) => passesFilters(school)).length;
+                  const what = [
+                    divisionFilter !== 'ALL' ? divisionFilter.replace('OTHER', 'other divisions') : '',
+                    searchTerm ? `"${searchTerm}"` : '',
+                  ].filter(Boolean).join(' and ');
+                  return `${matchCount} of ${allSchools.length} school${allSchools.length !== 1 ? 's' : ''} match ${what}`;
                 })()}
               </p>
             )}
@@ -831,11 +850,7 @@ export default function ParentSummary() {
           <div className="space-y-4">
             {games.map((game, index) => {
               const allSchoolAttendance = getGameAttendanceBySchool(game.id);
-              const schoolAttendance = searchTerm
-                ? allSchoolAttendance.filter(({ school }) =>
-                    matchesSchoolSearch(school.school, searchTerm)
-                  )
-                : allSchoolAttendance;
+              const schoolAttendance = allSchoolAttendance.filter(({ school }) => passesFilters(school));
               
               // If searching and no matches for this game, still show the game header
               const hasMatches = schoolAttendance.length > 0;
@@ -866,21 +881,19 @@ export default function ParentSummary() {
           <div className="space-y-4">
             {(() => {
               const allSchools = getAttendanceBySchool();
-              const filteredSchools = searchTerm 
-                ? allSchools.filter(({ school }) => 
-                    matchesSchoolSearch(school.school, searchTerm)
-                  )
-                : allSchools;
+              const filteredSchools = allSchools.filter(({ school }) => passesFilters(school));
               
-              if (filteredSchools.length === 0 && searchTerm) {
+              if (filteredSchools.length === 0 && (searchTerm || divisionFilter !== 'ALL')) {
                 return (
                   <div className="bg-white rounded-lg shadow-md p-8 text-center">
-                    <p className="text-gray-500">No schools match "{searchTerm}"</p>
+                    <p className="text-gray-500">
+                      {searchTerm ? `No schools match "${searchTerm}"` : 'No schools in this division'}
+                    </p>
                     <button 
-                      onClick={() => setSearchTerm('')}
+                      onClick={() => { setSearchTerm(''); setDivisionFilter('ALL'); }}
                       className="mt-2 text-blue-600 hover:text-blue-800 text-sm"
                     >
-                      Clear search
+                      Clear filters
                     </button>
                   </div>
                 );
