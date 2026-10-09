@@ -64,6 +64,18 @@ const a = [row(2024, 'p1', 'FR'), row(2024, 'p2', 'SO'), row(2024, 'p3', 'JR'),
   check('a season of seniors only gives no transition', s.transitions.length === 0)
 }
 
+// 4b. Only back-to-back seasons count (Notre Dame W, 2026-10-09: rosters for
+//     2021 and 2026 only gave a 0% "return rate").
+{
+  const g = [row(2021, 'a', 'FR'), row(2021, 'b', 'SO'), row(2026, 'c', 'FR'),
+             row(2024, 'd', 'FR'), row(2025, 'd', 'SO'), row(2025, 'e', 'FR')]
+  const r = nonSeniorReturnRate(g, [2021, 2026])
+  check('a gap between seasons gives no transition', r.transitions.length === 0 && r.rate === null)
+  const r2 = nonSeniorReturnRate(g, [2021, 2024, 2025, 2026])
+  check('only the back-to-back pairs count', r2.transitions.length === 2 &&
+    r2.transitions[0].from === 2024 && r2.transitions[1].from === 2025, JSON.stringify(r2.transitions))
+}
+
 // 5. Which JC programs are two-year: their own class labels decide.
 {
   const rows = (fr, so, jr, sr) => [...Array(fr)].map(() => row(2025, 'x', 'FR'))

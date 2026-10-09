@@ -58,6 +58,10 @@ const SchoolProfile = lazy(() => import('./pages/SchoolProfile'))
 // Explore Colleges — the CSIP index (front door); lazy-loaded, gated by CsipGate.
 const CollegeExplore = lazy(() => import('./pages/CollegeExplore'))
 
+// Find programs — programs ranked by likely openings for a position and class
+// (backlog F3); lazy-loaded, gated by CsipGate like Explore.
+const FindPrograms = lazy(() => import('./pages/FindPrograms'))
+
 // College Soccer Landscape — portable premium module (sibling to College Profiles),
 // hosted via a thin wrapper page. Gated inside the host (kill switch + owner bypass); lazy-loaded.
 const Landscape = lazy(() => import('./pages/Landscape'))
@@ -145,6 +149,7 @@ function App() {
             <Route element={<CsipGate session={session} />}>
               <Route element={<CsipShell />}>
                 <Route path="/schools" element={<CollegeExplore session={session} />} />
+                <Route path="/find" element={<FindPrograms session={session} />} />
                 <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
                 <Route path="/landscape" element={<Landscape session={session} />} />
               </Route>

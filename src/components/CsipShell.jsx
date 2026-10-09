@@ -5,7 +5,8 @@ import HamburgerMenu from './HamburgerMenu'
 /**
  * CsipShell — shared chrome for every CSIP surface (Explore index, program
  * profile, Landscape). Rendered as a react-router layout route inside CsipGate,
- * so all three sit under one consistent header with Explore | Landscape tabs.
+ * so all of them sit under one consistent header with Explore | Find programs |
+ * Landscape tabs.
  *
  * The tabs are CSIP's OWN internal nav; the drawer (HamburgerMenu) stays as the
  * exit back to the club app. A profile is a drill-down under Explore, so the
@@ -21,6 +22,7 @@ function tabCls(active) {
 export default function CsipShell() {
   const { pathname } = useLocation()
   const onLandscape = pathname.startsWith('/landscape')
+  const onFind = pathname.startsWith('/find')
 
   return (
     <>
@@ -34,7 +36,8 @@ export default function CsipShell() {
             <HamburgerMenu />
           </div>
           <nav className="flex gap-6 border-t border-[#22314e]" aria-label="College Soccer Intelligence">
-            <Link to="/schools" className={tabCls(!onLandscape)}>Explore</Link>
+            <Link to="/schools" className={tabCls(!onLandscape && !onFind)}>Explore</Link>
+            <Link to="/find" className={tabCls(onFind)}>Find programs</Link>
             <Link to="/landscape" className={tabCls(onLandscape)}>Landscape</Link>
           </nav>
         </div>

@@ -52,6 +52,12 @@ function idsInSeason(rosters, season) {
  * Non-senior return rate, averaged across every consecutive season transition.
  * Denominator = players with remaining eligibility in season N (not SR/GR; at a
  * JC, first-years only); numerator = those still present in N+1.
+ * Only back-to-back seasons count (Damon, 2026-10-09). A program tracked in
+ * 2021 and 2026 only has no 2021 -> 2022 data, and treating 2021 -> 2026 as one
+ * year counted every 2021 underclassman who had simply graduated as an early
+ * leaver (Notre Dame W: 0% return, ~22 early leavers on the openings card).
+ * program_early_departures (pipeline out_sql/12) already required N+1, and
+ * program_openings_outlook (out_sql/17) applies the same rule.
  * Pass { twoYear } (isTwoYearProgram) so a two-year program is judged on
  * two-year eligibility: a sophomore there who finishes is not an early departure.
  * Returns { rate, earlyDeparture, transitions:[{from,to,eligible,returned,rate}] }
@@ -61,6 +67,7 @@ export function nonSeniorReturnRate(rosters, seasons, { twoYear = false } = {}) 
   const transitions = []
   for (let i = 0; i < seasons.length - 1; i++) {
     const a = seasons[i], b = seasons[i + 1]
+    if (b !== a + 1) continue
     const nextIds = idsInSeason(rosters, b)
     let eligible = 0, returned = 0
     const seen = new Set()
