@@ -278,7 +278,8 @@
 .cp-gflag{font-size:9px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--slate);
   background:var(--paper); border:1px solid var(--line); border-radius:5px; padding:1px 5px}
 .cp-gtrack{flex:1; height:8px; background:var(--paper); border-radius:999px; overflow:hidden}
-.cp-gfill{height:100%; background:var(--accent); border-radius:999px; opacity:.85}
+/* display:block: the fill is a <span>, and an inline span ignores width and height (bars never showed until 2026-10-09) */
+.cp-gfill{display:block; height:100%; background:var(--accent); border-radius:999px; opacity:.85}
 .cp-gn{font-family:"Barlow Condensed",sans-serif; font-weight:700; width:26px; text-align:right; color:var(--ink)}
 .cp-gpct{font-size:11px; color:var(--slate-2); width:38px; text-align:right; flex:none; font-variant-numeric:tabular-nums}
 .cp-gpct-inline{color:var(--slate-2); font-size:11px}
