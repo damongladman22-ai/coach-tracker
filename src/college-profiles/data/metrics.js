@@ -188,6 +188,9 @@ export function geographyBuckets(currentRoster) {
   return arr
 }
 
+/** 'state|city' exactly as stored: the hometown_geocodes key (G5). */
+export function cityKey(state, city) { return `${state}|${city}` }
+
 /** Classify a roster row's origin using the normalized columns. */
 function bucketOf(row) {
   const country = (row.hometown_country || '').trim()
@@ -203,7 +206,11 @@ function bucketOf(row) {
  *   byRoster[year]     — everyone on that season's roster (footprint that year)
  *   byRecruit[year]    — players first seen that season (that recruiting class)
  *   all                — every distinct player, once (all-time footprint)
- * Each scope: { states:{name:count}, intl:{country:count}, unknown, total, distinctStates }.
+ * Each scope: { states:{name:count}, intl:{country:count}, cities:{key:count},
+ *               unknown, total, distinctStates }.
+ * cities (backlog G5, 2026-10-09) counts U.S. players by 'state|city' with
+ * the two values EXACTLY as stored, the key of the hometown_geocodes table;
+ * a U.S. player with no city counts toward the state only.
  */
 export function geographyOverTime(rosters, seasons) {
   const first = firstSeenMap(rosters)
@@ -214,11 +221,16 @@ export function geographyOverTime(rosters, seasons) {
     if (!cur || r.roster_season > cur.roster_season) repByPlayer.set(r.player_id, r)
   }
 
-  const emptyScope = () => ({ states: {}, intl: {}, unknown: 0, total: 0, distinctStates: 0 })
+  const emptyScope = () => ({ states: {}, intl: {}, cities: {}, unknown: 0, total: 0, distinctStates: 0 })
   const add = (scope, row) => {
     const b = bucketOf(row)
-    if (b.kind === 'state') scope.states[b.name] = (scope.states[b.name] || 0) + 1
-    else if (b.kind === 'intl') scope.intl[b.name] = (scope.intl[b.name] || 0) + 1
+    if (b.kind === 'state') {
+      scope.states[b.name] = (scope.states[b.name] || 0) + 1
+      if ((row.hometown_city || '').trim()) {
+        const k = cityKey(row.hometown_state, row.hometown_city)
+        scope.cities[k] = (scope.cities[k] || 0) + 1
+      }
+    } else if (b.kind === 'intl') scope.intl[b.name] = (scope.intl[b.name] || 0) + 1
     else scope.unknown++
     scope.total++
   }

@@ -26,6 +26,7 @@ import { usePeerResults } from './data/usePeerResults'
 import { useProgramTransfers } from './data/useProgramTransfers'
 import { useEarlyDepartures } from './data/useEarlyDepartures'
 import { useCollegeFacts } from './data/useCollegeFacts'
+import { useHometownGeocodes } from './data/useHometownGeocodes'
 import { themeFromSchool, softOf } from './data/schoolBranding'
 import { classShares, inStateShare } from './data/peerOverlays'
 
@@ -73,6 +74,8 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const transfers = useProgramTransfers(client, schoolId)
   const departures = useEarlyDepartures(client, schoolId)
   const college = useCollegeFacts(client, schoolId)
+  // Map positions for the Recruiting geography Cities view (backlog G5).
+  const hometownPoints = useHometownGeocodes(client, rosters)
   // The Campus chip only appears when the program has a federal college to show.
   // Memoised: SectionNav rebuilds its scroll observer whenever `items` changes.
   const hasCampus = !!college.facts
@@ -196,7 +199,8 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <SizeProfile data={sizeData} benchmark={scope} season={currentSeason} />
             </div>
             <div id="sec-geography" className="cp-anchor">
-              <GeographyTrend data={geoTime} benchmark={scope} inState={inState} schoolState={school.state} />
+              <GeographyTrend data={geoTime} benchmark={scope} inState={inState} schoolState={school.state}
+                cityPoints={hometownPoints.points} />
             </div>
             {college.facts && (
               <div id="sec-campus" className="cp-anchor cp-sec">

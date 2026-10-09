@@ -3,6 +3,7 @@ import { US_VIEWBOX, US_BORDERS, US_STATE_PATHS } from '../data/usStatesPaths'
 import { WORLD_VIEWBOX, WORLD_BORDERS, WORLD_NAMES, WORLD_PATHS } from '../data/worldCountriesPaths'
 import { clampTip } from '../data/format'
 import { COUNTRY_CODE, COUNTRY_FLAGS } from '../data/countryFlags'
+import { cityDots, dotRadius } from '../data/cityMap'
 
 /**
  * GeographyTrend — recruiting footprint as a heat map, time-aware, with a
@@ -15,6 +16,14 @@ import { COUNTRY_CODE, COUNTRY_FLAGS } from '../data/countryFlags'
  * against the peer median and band. `inState` comes from
  * peerOverlays.inStateShare (same definition as the peer substrate: U.S.
  * players with a known home state) and is null when fewer than 9 qualify.
+ *
+ * CITIES (backlog G5, 2026-10-09): on the U.S. map a States / Cities switch.
+ * Cities draws one dot per hometown, sized by players, at the U.S. Census
+ * point of the place (hometown_geocodes, via useHometownGeocodes -> the
+ * `cityPoints` prop), and lists the top cities. It follows the same View and
+ * Season controls. A hometown with no map position (about 2.5% of U.S.
+ * players) is still listed, and the caption says how many have no dot. With
+ * no positions loaded the switch does not appear.
  */
 function scaleFill(count, max) {
   if (!count) return '#EAEDEF'
@@ -34,10 +43,11 @@ function Flag({ code }) {
     : <span className="cp-flag cp-flag--none" aria-hidden="true" />
 }
 
-export default function GeographyTrend({ data, benchmark, inState = null, schoolState = null }) {
+export default function GeographyTrend({ data, benchmark, inState = null, schoolState = null, cityPoints = null }) {
   const [mode, setMode] = useState('recruit')   // 'recruit' | 'roster'
   const [sel, setSel] = useState('all')         // 'all' | year
   const [mapMode, setMapMode] = useState('us')  // 'us' | 'world'
+  const [layer, setLayer] = useState('states')  // 'states' | 'cities' (U.S. map only)
   const [tip, setTip] = useState(null)
 
   // international share vs peer (latest full-roster season, among known-origin players)
@@ -71,6 +81,12 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
   const pctOf = c => (total ? Math.round(100 * c / total) : 0)
   const rankedStates = Object.entries(states).sort((a, b) => b[1] - a[1])
   const rankedIntl = Object.entries(intl).sort((a, b) => b[1] - a[1])
+
+  // cities (G5)
+  const canCities = mapMode === 'us' && !!cityPoints && cityPoints.size > 0
+  const showCities = canCities && layer === 'cities'
+  const cd = showCities ? cityDots(scope?.cities, cityPoints) : null
+  const maxCity = cd && cd.ranked.length ? cd.ranked[0].n : 1
 
   // world roll-up: USA = all domestic; each country = base-code sum
   const worldCounts = {}
@@ -146,6 +162,13 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
             <button type="button" className="cp-fbtn" aria-pressed={mapMode === 'us'} onClick={() => setMapMode('us')}>U.S.</button>
             <button type="button" className="cp-fbtn" aria-pressed={mapMode === 'world'} onClick={() => setMapMode('world')}>World</button>
           </div>
+          {canCities && (
+            <div className="cp-fgrp cp-fgrp--gap">
+              <span className="cp-glabel">Show</span>
+              <button type="button" className="cp-fbtn" aria-pressed={layer === 'states'} onClick={() => setLayer('states')}>States</button>
+              <button type="button" className="cp-fbtn" aria-pressed={layer === 'cities'} onClick={() => setLayer('cities')}>Cities</button>
+            </div>
+          )}
           <div className="cp-fgrp cp-fgrp--gap">
             <span className="cp-glabel">Season</span>
             <button type="button" className="cp-fbtn" aria-pressed={sel === 'all'} onClick={() => setSel('all')}>All-time</button>
@@ -158,9 +181,11 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
         <div className="cp-geomap">
           <div className="cp-map">
             <div className="cp-map-cap">
-              {selLabel} · <b>{total}</b> players · {mapMode === 'us'
-                ? <><b>{rankedStates.length}</b> states{rankedIntl.length ? <> · <b>{rankedIntl.length}</b> intl</> : null}</>
-                : <><b>{rankedCountries.length}</b> countries</>}
+              {selLabel} · <b>{total}</b> players · {showCities
+                ? <><b>{cd.dots.length}</b> cities{cd.unplaced ? <> · <b>{cd.unplaced}</b> U.S. {cd.unplaced === 1 ? 'player' : 'players'} without a map position</> : null}</>
+                : mapMode === 'us'
+                  ? <><b>{rankedStates.length}</b> states{rankedIntl.length ? <> · <b>{rankedIntl.length}</b> intl</> : null}</>
+                  : <><b>{rankedCountries.length}</b> countries</>}
             </div>
 
             {mapMode === 'us' ? (
@@ -168,12 +193,18 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
                 {Object.entries(US_STATE_PATHS).map(([name, d]) => {
                   const c = states[name] || 0
                   return (
-                    <path key={name} d={d} className="cp-st" fill={scaleFill(c, maxCount)}
+                    <path key={name} d={d} className="cp-st" fill={showCities ? '#EAEDEF' : scaleFill(c, maxCount)}
                       onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name, c })}
                       onMouseLeave={() => setTip(null)} />
                   )
                 })}
                 <path d={US_BORDERS} className="cp-borders" />
+                {showCities && cd.dots.map(d => (
+                  <circle key={d.key} cx={d.x} cy={d.y} r={dotRadius(d.n, cd.max)}
+                    fill="rgb(187,0,0)" fillOpacity={0.62} stroke="#fff" strokeWidth={0.8}
+                    onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name: d.label, c: d.n })}
+                    onMouseLeave={() => setTip(null)} />
+                ))}
               </svg>
             ) : (
               <svg viewBox={WORLD_VIEWBOX} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="World recruiting footprint heat map">
@@ -188,11 +219,28 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
                 <path d={WORLD_BORDERS} className="cp-borders" />
               </svg>
             )}
-            <div className="cp-heatkey"><span>Fewer</span><i className="cp-heatbar" /><span>More</span></div>
+            {showCities
+              ? <div className="cp-heatkey"><span>Dot size = players from that hometown · U.S. Census place locations</span></div>
+              : <div className="cp-heatkey"><span>Fewer</span><i className="cp-heatbar" /><span>More</span></div>}
           </div>
 
           <div className="cp-geo-side">
-            {mapMode === 'us' ? (
+            {showCities ? (
+              <>
+                <p className="cp-eyebrow" style={{ marginBottom: 8 }}>Top cities</p>
+                <ul className="cp-geo">
+                  {cd.ranked.slice(0, 10).map(r => (
+                    <li key={r.key} title={r.x == null ? 'No map position for this hometown' : undefined}>
+                      <span className="cp-gname">{r.label}</span>
+                      <span className="cp-gtrack"><span className="cp-gfill" style={{ width: `${100 * r.n / maxCity}%` }} /></span>
+                      <span className="cp-gn cp-num">{r.n}</span>
+                      <span className="cp-gpct">{pctOf(r.n)}%</span>
+                    </li>
+                  ))}
+                  {cd.ranked.length === 0 && <li className="cp-muted">No U.S. hometown cities in this view.</li>}
+                </ul>
+              </>
+            ) : mapMode === 'us' ? (
               <>
                 <p className="cp-eyebrow" style={{ marginBottom: 8 }}>Top states</p>
                 <ul className="cp-geo">
