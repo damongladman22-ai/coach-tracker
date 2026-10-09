@@ -355,6 +355,8 @@ export default function ProfileLens({ client, bench, geo, transfers, selection }
   const rosterRow = get('overall', 'ALL', 'roster_size')
   const heightRow = get('overall', 'ALL', 'height_inches')
   const intlRow = get('origin', 'international', 'share')
+  // Head count beside the share (origin metric='count', added 2026-10-09).
+  const intlCountRow = get('origin', 'international', 'count')
   const frRow = get('class', 'FR', 'share')
   const posShareRow = get('position', 'D', 'share')
   const classShareRow = get('class', 'FR', 'share')
@@ -427,8 +429,11 @@ export default function ProfileLens({ client, bench, geo, transfers, selection }
         <div className="csl-kpi">
           <div className="csl-kpi-v csl-num">{pct(intlRow?.median)}</div>
           <div className="csl-kpi-l">International (median)</div>
+          {intlCountRow?.median != null && (
+            <div className="csl-kpi-l">{whole(intlCountRow.median)} {Math.round(Number(intlCountRow.median)) === 1 ? 'player' : 'players'} on the typical roster</div>
+          )}
           {active[0] && active[0].d.intl.share != null && (
-            <div className="csl-kpi-pin" style={{ color: active[0].color }}>pin {pct(active[0].d.intl.share)}</div>
+            <div className="csl-kpi-pin" style={{ color: active[0].color }}>pin {pct(active[0].d.intl.share)} · {active[0].d.intl.count}</div>
           )}
         </div>
         <div className="csl-kpi">

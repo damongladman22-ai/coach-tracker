@@ -6,11 +6,16 @@ import { pct, divShort, genderLabel, seasonLabel } from './data/landscapeFormat'
  * GeographyCompare — side-by-side recruiting footprints for the compare segments
  * (reusing the shared Choropleth), plus an international-share comparison bar.
  * Colour = segment; hovering the shared legend dims the others.
+ *
+ * typicalIntl (2026-10-09): per segment, the international head count of the
+ * typical (median) program, from program_benchmarks origin metric='count'.
+ * The bars are player-level shares; this line is the per-program count, so it
+ * is labelled as such. Pinned programs show their own count.
  */
 const segLabel = sg => `${divShort(sg.division)} ${genderLabel(sg.gender)} · ${seasonLabel(sg.season)}`
 const dimOf = (hovered, i) => (hovered != null && hovered !== i ? 0.28 : 1)
 
-export default function GeographyCompare({ geo, segments, colors, hovered, pins = [] }) {
+export default function GeographyCompare({ geo, segments, colors, hovered, pins = [], typicalIntl = [] }) {
   const [mapMode, setMapMode] = useState('us')
 
   if (geo.loading) return <div className="csl-geo-loading">Loading geography…</div>
@@ -100,6 +105,21 @@ export default function GeographyCompare({ geo, segments, colors, hovered, pins 
             </div>
           ))}
         </div>
+        {(typicalIntl.some(v => v != null) || pins.some(pn => pn.snap?.intl?.count != null)) && (
+          <p className="csl-note" style={{ marginTop: 8 }}>
+            International players on the typical roster:{' '}
+            {segments.map((sg, i) => (typicalIntl[i] == null ? null : (
+              <span key={i} style={{ opacity: dimOf(hovered, i), whiteSpace: 'nowrap' }}>
+                <i className="csl-cmp-dot" style={{ background: colors[i] }} /> {divShort(sg.division)} {genderLabel(sg.gender)} <b>{Math.round(Number(typicalIntl[i]))}</b>{'  '}
+              </span>
+            )))}
+            {pins.map((pn, pi) => (pn.snap?.intl?.count == null ? null : (
+              <span key={`p${pi}`} style={{ whiteSpace: 'nowrap' }}>
+                <i className="csl-cmp-dot" style={{ background: pn.color }} /> {(pn.name || '').replace(/\s+(University|College)$/i, '')} <b>{pn.snap.intl.count}</b>{'  '}
+              </span>
+            )))}
+          </p>
+        )}
       </div>
     </div>
   )

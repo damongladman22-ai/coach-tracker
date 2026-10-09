@@ -383,7 +383,8 @@ export default function CompareLens({ client, compare, segments, setSegments }) 
               <span className="csl-cmp-panel-hint">Footprint per segment · player-level</span>
               <InfoTip {...COMPARE_INFO.geography} />
             </div>
-            <GeographyCompare geo={geo} segments={segments} colors={CMP_COLORS} hovered={hovered} pins={active} />
+            <GeographyCompare geo={geo} segments={segments} colors={CMP_COLORS} hovered={hovered} pins={active}
+              typicalIntl={segments.map((_, i) => compare.get(i, 'origin', 'international', 'count')?.median ?? null)} />
           </section>
 
           <p className="csl-note">
