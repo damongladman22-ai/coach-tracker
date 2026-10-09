@@ -11,6 +11,9 @@ import {
   POSITIONS, DIVISIONS, STATES, REGIONS, statesInRegion, stateAbbr, rankPrograms,
   rankValue, aboutText, reasons, isBehind,
 } from '../lib/findPrograms'
+import {
+  buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel,
+} from '../lib/majorFilter'
 
 /**
  * FindPrograms — "Find programs" (backlog F3, Targeting: ranked fit list).
@@ -26,6 +29,13 @@ import {
  * season x position, built with the same rules as the College Profile
  * "Projected openings" card. Ranking and wording live in src/lib/findPrograms.js
  * (tested). Nothing is saved: there are no family accounts yet (F1).
+ *
+ * MAJOR (Damon 2026-10-09: a specific major, with search). Typing suggests
+ * majors from college_major_catalog (pipeline out_sql/19_...), plus whole
+ * areas ("Engineering, any major"). Picking one keeps only programs whose
+ * college graduates students in it (College Scorecard, the same data as the
+ * Campus and cost card); rules in src/lib/majorFilter.js. If the catalog
+ * cannot be read the major box is simply not shown.
  */
 const PAGE = 1000
 const STEP = 25
@@ -59,6 +69,39 @@ async function fetchOutlook(gender, position, entrySeason) {
     from += PAGE
   }
   return all
+}
+
+async function fetchPaged(build) {
+  let from = 0
+  let all = []
+  for (;;) {
+    const { data, error } = await build().range(from, from + PAGE - 1)
+    if (error) throw error
+    all = all.concat(data || [])
+    if (!data || data.length < PAGE) break
+    from += PAGE
+  }
+  return all
+}
+
+async function fetchCatalog() {
+  const { data, error } = await supabase.from('college_major_catalog')
+    .select('cip_code,title,family_code,family_title,colleges_bachelors,colleges_associate').limit(PAGE)
+  if (error) throw error
+  return buildCatalog(data || [])
+}
+
+// Programs and majors for one choice: who offers it.
+async function fetchOfferings(kind, code) {
+  const [links, rows] = await Promise.all([
+    fetchPaged(() => supabase.from('school_federal_college').select('school_id,unitid').order('school_id')),
+    fetchPaged(() => supabase.from('college_majors')
+      .select('unitid,cip_code,title,credential_level,graduates_2yr')
+      .eq(kind === 'area' ? 'family_code' : 'cip_code', code)
+      .in('credential_level', [2, 3])
+      .order('unitid').order('cip_code').order('credential_level')),
+  ])
+  return offeringsBySchool(links, rows)
 }
 
 function deriveMonogram(name) {
@@ -114,6 +157,11 @@ export default function FindPrograms() {
   // over for each new question.
   const [res, setRes] = useState({ key: null, rows: null, err: '' })
   const [more, setMore] = useState({ key: null, n: STEP })
+  // Major filter
+  const [catalog, setCatalog] = useState(null)        // null until loaded; stays null on failure
+  const [choice, setChoice] = useState(null)          // { kind: 'major' | 'area', code, label }
+  const [query, setQuery] = useState('')
+  const [offer, setOffer] = useState({ key: null, map: null, err: '' })
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -121,8 +169,25 @@ export default function FindPrograms() {
     fetchLatestSeason()
       .then(s => { if (!cancelled) setLatest(s) })
       .catch(e => { if (!cancelled) setLoadErr(e.message || 'Could not load.') })
+    fetchCatalog()
+      .then(c => { if (!cancelled) setCatalog(c) })
+      .catch(() => { /* no catalog: the major box is not shown */ })
     return () => { cancelled = true }
   }, [status])
+
+  const choiceKey = choice ? `${choice.kind}|${choice.code}` : null
+  useEffect(() => {
+    if (status !== 'allowed' || !choiceKey) return
+    let cancelled = false
+    const [kind, code] = choiceKey.split('|')
+    fetchOfferings(kind, code)
+      .then(map => { if (!cancelled) setOffer({ key: choiceKey, map, err: '' }) })
+      .catch(e => { if (!cancelled) setOffer({ key: choiceKey, map: null, err: e.message || 'Could not load majors.' }) })
+    return () => { cancelled = true }
+  }, [status, choiceKey])
+  const offerReady = !choiceKey || offer.key === choiceKey
+  const offerings = choiceKey && offer.key === choiceKey ? offer.map : null
+  const suggestions = useMemo(() => (choice ? [] : searchMajors(catalog, query)), [catalog, query, choice])
 
   const ready = !!(gender && position && entry)
   const key = ready ? `${gender}|${position}|${entry}` : null
@@ -137,13 +202,17 @@ export default function FindPrograms() {
   }, [status, key])
   const answered = key != null && res.key === key
   const rows = answered ? res.rows : null
-  const loading = ready && !answered
-  const err = loadErr || (answered ? res.err : '')
+  const loading = ready && (!answered || !offerReady)
+  const err = loadErr || (answered ? res.err : '') || (choiceKey && offer.key === choiceKey ? offer.err : '')
   const limit = more.key === key ? more.n : STEP
 
-  const ranked = useMemo(
-    () => (rows ? rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null }) : []),
-    [rows, divisions, states, latest])
+  const ranked = useMemo(() => {
+    if (!rows) return []
+    const keep = choiceKey
+      ? (offerings ? r => !!offeringFor(offerings, r.school_id, r.schools?.division) : () => false)
+      : null
+    return rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null, keep })
+  }, [rows, divisions, states, latest, choiceKey, offerings])
 
   const years = latest != null ? [latest + 1, latest + 2, latest + 3, latest + 4] : []
   const pos = POSITIONS.find(p => p.code === position)
@@ -241,6 +310,49 @@ export default function FindPrograms() {
               </div>
             )}
           </div>
+
+          {catalog && (
+            <div className="mt-3">
+              <div className="text-xs text-gray-500 mb-1.5">Major {!choice && '(any)'}</div>
+              {choice ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm rounded-full px-3 py-1.5 bg-[#0a1628] text-white">{choiceLabel(choice)}</span>
+                  <button type="button" onClick={() => { setChoice(null); setQuery('') }}
+                    className="text-sm text-[#1d4ed8] hover:underline">Any major</button>
+                </div>
+              ) : (
+                <div className="relative max-w-md">
+                  <input type="search" value={query} onChange={e => setQuery(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter' && suggestions[0]) { setChoice(suggestions[0]); setQuery('') } }}
+                    placeholder="Type a major, e.g. nursing, kinesiology, engineering"
+                    aria-label="Major"
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-800" />
+                  {suggestions.length > 0 && (
+                    <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                      {suggestions.map(sg => (
+                        <li key={sg.kind + sg.code}>
+                          <button type="button" onClick={() => { setChoice(sg); setQuery('') }}
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50">
+                            <div className="text-sm text-gray-900">{choiceLabel(sg)}</div>
+                            <div className="text-[11px] text-gray-500">
+                              {sg.kind === 'area'
+                                ? 'Every major in this area'
+                                : sg.colleges > 0
+                                  ? `${sg.area} · bachelor’s at ${sg.colleges.toLocaleString()} soccer colleges`
+                                  : `${sg.area} · associate degree at ${sg.associate.toLocaleString()} soccer colleges`}
+                            </div>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {query.trim() && suggestions.length === 0 && (
+                    <div className="text-xs text-gray-500 mt-1">No major matches “{query.trim()}”.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {err && <div className="bg-white border border-gray-200 rounded-xl p-6 text-center text-rose-700">{err}</div>}
@@ -257,7 +369,7 @@ export default function FindPrograms() {
           <>
             <p className="text-sm text-gray-600 mb-2 px-1">
               {ranked.length.toLocaleString()} {ranked.length === 1 ? 'program' : 'programs'}, ranked by estimated
-              openings for a {pos?.one} entering in fall {entry}.
+              openings for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}.
             </p>
             <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
               {shown.map((r, i) => {
@@ -295,6 +407,11 @@ export default function FindPrograms() {
                       {reasons(r, position, Number(entry)).map((t, k) => (
                         <li key={k} className="text-xs text-gray-600">{t}</li>
                       ))}
+                      {choice && offerings && (
+                        <li className="text-xs text-gray-600">
+                          {majorReason(offeringFor(offerings, r.school_id, s.division), choice)}
+                        </li>
+                      )}
                       {isBehind(r, latest) && (
                         <li className="text-xs text-amber-700">
                           Newest roster on file is {r.current_season}; these numbers may be a year behind.
@@ -306,7 +423,7 @@ export default function FindPrograms() {
               })}
               {shown.length === 0 && (
                 <div className="px-3 py-10 text-center text-gray-500 text-sm">
-                  No programs match. Try more divisions or states.
+                  No programs match. Try more divisions{choice ? ', states or another major' : ' or states'}.
                 </div>
               )}
             </div>
@@ -323,6 +440,9 @@ export default function FindPrograms() {
               program’s current roster. Early leavers and the share of newcomers who arrive as freshmen are
               that program’s own averages from the seasons we track, so they are estimates, not promises.
               Commits already made for your class are not known and are not subtracted.
+              {choice && <> Majors come from the federal College Scorecard: a college counts if it awarded the
+              degree in the last two years (bachelor’s, or at a junior college an associate degree too). Programs
+              we cannot link to a federal college, such as joint teams, are left out when a major is chosen.</>}
             </p>
           </>
         )}

@@ -44,6 +44,7 @@ check('state filter is hard and reads full names', ids(rankPrograms(rows, { stat
 check('empty sets mean everything', rankPrograms(rows, { divisions: new Set(), states: new Set() }).length === 5)
 check('does not reorder the input', ids(rows) === 'abcde')
 const aged = rows.map((r, i) => ({ ...r, current_season: i === 1 ? 2024 : 2026 }))
+check('extra hard filter (major)', ids(rankPrograms(rows, { keep: r => r.school_id !== 'c' })) === 'ebda')
 check('too-old rosters left out', ids(rankPrograms(aged, { minSeason: 2025 })) === 'ceda', ids(rankPrograms(aged, { minSeason: 2025 })))
 
 // Display text

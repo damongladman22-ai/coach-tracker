@@ -84,11 +84,14 @@ export function rankValue(row) {
  *   states     Set of state abbreviations (empty or null = every state)
  *   minSeason  leave out programs whose newest roster is older than this
  *              (their numbers would describe a different entering class)
+ *   keep       optional row -> boolean, another hard filter (the major
+ *              filter, src/lib/majorFilter.js)
  * Ties: more players graduating first, then name. Returns a new array.
  */
-export function rankPrograms(rows, { divisions = null, states = null, minSeason = null } = {}) {
+export function rankPrograms(rows, { divisions = null, states = null, minSeason = null, keep = null } = {}) {
   const out = (rows || []).filter(r => {
     const s = r.schools || {}
+    if (keep && !keep(r)) return false
     if (minSeason != null && (r.current_season == null || r.current_season < minSeason)) return false
     if (divisions && divisions.size && !divisions.has(s.division)) return false
     if (states && states.size && !states.has(stateAbbr(s.state))) return false
