@@ -113,7 +113,56 @@ export function typoMatch(name, nameNoSpaces, term) {
  */
 let ALIAS_INDEX = new Map();
 
-export function setAliasIndex(index) {
+// Short names people actually call a school -- Mizzou, Ole Miss, Pitt, Cal,
+// Penn, UConn -- school_aliases kind 'common_name', hand-checked (backlog F15,
+// pipeline data/common_name_aliases.csv). Typing one names the school almost
+// as precisely as its full name, so a hit scores 90: below an exact name (100),
+// above everything else. Without it "pitt" put Pittsburg State first, "lsu" La
+// Salle and "penn" every Penn State campus.
+let COMMON_INDEX = new Map();
+
+// school_id -> lowercased name, so callers that hold only a NAME still get
+// aliases. CoachDirectory and ParentSummary pass { school: name } with no id,
+// and every alias in the table was invisible to them until 2026-10-09.
+let NAME_OF = new Map();
+
+/** alias -> Set of ids, plus each multi-word alias closed up ("tarheels"). */
+function withClosedUp(index) {
+  const augmented = new Map(index);
+  for (const [alias, ids] of index) {
+    const closed = alias.replace(/\s+/g, '');
+    if (closed === alias) continue;
+    const existing = augmented.get(closed);
+    if (existing) {
+      for (const id of ids) existing.add(id);
+    } else {
+      augmented.set(closed, new Set(ids));
+    }
+  }
+  return augmented;
+}
+
+/** Does this alias entry name this school? By id when the caller has one,
+ * otherwise by the school's name. */
+function aliasHit(ids, id, lname) {
+  if (!ids) return false;
+  if (id) return ids.has(id);
+  if (!lname) return false;
+  for (const x of ids) if (NAME_OF.get(x) === lname) return true;
+  return false;
+}
+
+/**
+ * index   alias_norm -> Set of school_id, every kind
+ * extras  { common: alias_norm -> Set of school_id (kind 'common_name'),
+ *           names:  school_id -> school name }   -- both optional
+ */
+export function setAliasIndex(index, extras = {}) {
+  COMMON_INDEX = extras && extras.common instanceof Map ? withClosedUp(extras.common) : new Map();
+  NAME_OF = new Map();
+  if (extras && extras.names instanceof Map) {
+    for (const [id, name] of extras.names) NAME_OF.set(id, String(name || '').toLowerCase());
+  }
   if (!(index instanceof Map)) {
     ALIAS_INDEX = new Map();
     return;
@@ -129,18 +178,7 @@ export function setAliasIndex(index) {
   //
   // Sets are UNIONED rather than overwritten: two different aliases can
   // collapse to the same string, and dropping one would lose a school.
-  const augmented = new Map(index);
-  for (const [alias, ids] of index) {
-    const closed = alias.replace(/\s+/g, '');
-    if (closed === alias) continue;
-    const existing = augmented.get(closed);
-    if (existing) {
-      for (const id of ids) existing.add(id);
-    } else {
-      augmented.set(closed, new Set(ids));
-    }
-  }
-  ALIAS_INDEX = augmented;
+  ALIAS_INDEX = withClosedUp(index);
 }
 
 export function aliasIndexSize() {
@@ -293,16 +331,19 @@ export function scoreSchool(school, terms, opts = {}) {
   // nickname has named that school as precisely as typing its name, and more
   // precisely than a query that merely prefixes it.
   const rawQuery = opts.query || terms.query;
-  if (id && rawQuery) {
+  const name = String(school.school || '').toLowerCase();
+  if ((id || name) && rawQuery) {
     const whole = String(rawQuery).toLowerCase().trim().replace(/\s+/g, ' ');
+    const closedWhole = whole.replace(/\s+/g, '');
+    // A short name the school is known by (F15): 90, one step below its exact
+    // name. Checked on the whole query, one word or several ("ole miss").
+    if (aliasHit(COMMON_INDEX.get(whole), id, name) ||
+        aliasHit(COMMON_INDEX.get(closedWhole), id, name)) return 90;
     if (whole.includes(' ')) {
-      const hits = ALIAS_INDEX.get(whole);
-      if (hits && hits.has(id)) return 60;
-      const closed = ALIAS_INDEX.get(whole.replace(/\s+/g, ''));
-      if (closed && closed.has(id)) return 60;
+      if (aliasHit(ALIAS_INDEX.get(whole), id, name)) return 60;
+      if (aliasHit(ALIAS_INDEX.get(closedWhole), id, name)) return 60;
     }
   }
-  const name = String(school.school || '').toLowerCase();
   const fields = {
     name,
     nameNoSpaces: name.replace(/\s+/g, ''),
@@ -319,8 +360,7 @@ export function scoreSchool(school, terms, opts = {}) {
     // hit (20), which is where an alias belongs: "osu" should put Ohio State
     // above a school with "osu" buried in its name, without outranking someone
     // who typed the name itself.
-    const hits = id && ALIAS_INDEX.get(alternatives[0]);
-    if (hits && hits.has(id)) best = 45;
+    if (aliasHit(ALIAS_INDEX.get(alternatives[0]), id, name)) best = 45;
     // Index 0 is what the user actually typed; everything after it is an
     // expansion we inferred, and is scored strictly. See scoreOne.
     for (let i = 0; i < alternatives.length; i++) {

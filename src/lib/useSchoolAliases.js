@@ -37,7 +37,7 @@ export function useSchoolAliases() {
         for (;;) {
           let q = supabase
             .from('school_aliases')
-            .select('id, school_id, alias_norm')
+            .select('id, school_id, alias_norm, kind, schools(school)')
             .order('id')
             .limit(1000);
           if (last !== null) q = q.gt('id', last);
@@ -51,13 +51,20 @@ export function useSchoolAliases() {
         if (cancelled) return;
 
         const index = new Map();
+        const common = new Map();   // kind 'common_name': Mizzou, Pitt, Cal (F15)
+        const names = new Map();    // school_id -> name, for callers without ids
+        const add = (map, key, id) => {
+          let set = map.get(key);
+          if (!set) map.set(key, (set = new Set()));
+          set.add(id);
+        };
         for (const r of rows) {
           if (!r.alias_norm || !r.school_id) continue;
-          let set = index.get(r.alias_norm);
-          if (!set) index.set(r.alias_norm, (set = new Set()));
-          set.add(r.school_id);
+          add(index, r.alias_norm, r.school_id);
+          if (r.kind === 'common_name') add(common, r.alias_norm, r.school_id);
+          if (r.schools?.school) names.set(r.school_id, r.schools.school);
         }
-        setAliasIndex(index);
+        setAliasIndex(index, { common, names });
       } catch (err) {
         // Deliberately non-fatal. Search keeps working without aliases.
         console.error('school_aliases failed to load; search continues without them', err);

@@ -270,5 +270,45 @@ t('setAliasIndex rejects an object', (setAliasIndex({ osu: 1 }), aliasIndexSize(
 t('search survives a mis-shaped index', hits('duke'), ['Duke University']);
 t('setAliasIndex rejects null', (setAliasIndex(null), aliasIndexSize()), 0);
 
+// ── short names (F15, 2026-10-09) ────────────────────────────────────────────
+// Explore on 2026-10-09: "pitt" put Pittsburg State first, "penn" every Penn
+// State campus, "ole miss" found nothing. Hand-checked short names score 90.
+{
+  const S = ['University of Pittsburgh', 'Pittsburg State University',
+             'University of Pennsylvania – Penn', 'Penn State', 'Penn State Abington',
+             'University of Mississippi', 'Mississippi State University',
+             'University of Washington', 'University of Wisconsin', 'Washington State University']
+    .map(x => ({ id: 'id:' + x, school: x }))
+  const common = new Map([
+    ['pitt', new Set(['id:University of Pittsburgh'])],
+    ['penn', new Set(['id:University of Pennsylvania – Penn'])],
+    ['ole miss', new Set(['id:University of Mississippi'])],
+    ['uw', new Set(['id:University of Washington', 'id:University of Wisconsin'])],
+  ])
+  const names = new Map(S.map(x => [x.id, x.school]))
+  setAliasIndex(new Map(common), { common, names })
+  const rank = q => {
+    const terms = expandTerms(q)
+    return S.map(x => [scoreSchool(x, terms, { fields: ['name'] }), x.school])
+      .filter(r => r[0] > 0).sort((a, b) => b[0] - a[0]).map(r => r[1])
+  }
+  t('pitt: Pitt before Pittsburg State', rank('pitt'), ['University of Pittsburgh', 'Pittsburg State University'])
+  t('penn: Penn first, Penn State still found', rank('penn')[0], 'University of Pennsylvania – Penn')
+  t('penn: Penn State campuses still listed', rank('penn').length, 3)
+  t('ole miss: finds Ole Miss', rank('ole miss'), ['University of Mississippi'])
+  t('olemiss closed up', rank('olemiss'), ['University of Mississippi'])
+  t('uw: both schools, nothing else', rank('uw').sort(), ['University of Washington', 'University of Wisconsin'])
+  t('exact name still outranks a short name',
+    scoreSchool(S[0], expandTerms('university of pittsburgh'), { fields: ['name'] }) > 90, true)
+  // Callers that hold only a NAME (CoachDirectory, ParentSummary) get aliases too.
+  t('name-only caller: pitt', matchesSchool({ school: 'University of Pittsburgh' }, 'pitt', { fields: ['name'] }), true)
+  t('name-only caller: not another school', matchesSchool({ school: 'Duke University' }, 'pitt', { fields: ['name'] }), false)
+  t('name-only caller: ole miss', matchesSchool({ school: 'University of Mississippi' }, 'ole miss', { fields: ['name'] }), true)
+  // No extras: behaves exactly as before.
+  setAliasIndex(new Map(common))
+  t('without names, a name-only caller gets no alias', matchesSchool({ school: 'University of Pittsburgh' }, 'ole miss', { fields: ['name'] }), false)
+  setAliasIndex(null)
+}
+
 console.log(`\n  ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
