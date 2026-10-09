@@ -9,6 +9,12 @@ import { COUNTRY_CODE, COUNTRY_FLAGS } from '../data/countryFlags'
  * U.S. (state choropleth) / World (country choropleth) toggle so international
  * recruiting gets the same heat treatment as domestic. City-level pins need
  * geocoding (deferred); state/country is supported by the normalized columns.
+ *
+ * IN-STATE RECRUITS (backlog G4, 2026-10-09): beside the international line,
+ * the latest roster's share of U.S. players from the college's own state,
+ * against the peer median and band. `inState` comes from
+ * peerOverlays.inStateShare (same definition as the peer substrate: U.S.
+ * players with a known home state) and is null when fewer than 9 qualify.
  */
 function scaleFill(count, max) {
   if (!count) return '#EAEDEF'
@@ -28,7 +34,7 @@ function Flag({ code }) {
     : <span className="cp-flag cp-flag--none" aria-hidden="true" />
 }
 
-export default function GeographyTrend({ data, benchmark }) {
+export default function GeographyTrend({ data, benchmark, inState = null, schoolState = null }) {
   const [mode, setMode] = useState('recruit')   // 'recruit' | 'roster'
   const [sel, setSel] = useState('all')         // 'all' | year
   const [mapMode, setMapMode] = useState('us')  // 'us' | 'world'
@@ -48,6 +54,13 @@ export default function GeographyTrend({ data, benchmark }) {
   const geoAxisMax = Math.min(1, Math.max(0.05, progIntlShare || 0, bIntl ? bIntl.p75 : 0) + 0.05)
   const gpos = v => `${(100 * v / geoAxisMax).toFixed(1)}%`
   const gwid = (a, b) => `${(100 * (b - a) / geoAxisMax).toFixed(1)}%`
+
+  // in-state share vs peer (G4), same latest roster season
+  const bIn = benchmark && inState ? benchmark.cell('share', 'origin', 'in_state') : null
+  const inThin = !!bIn && bIn.n < 25
+  const inAxisMax = bIn ? Math.min(1, Math.max(0.05, inState.share, bIn.p75) + 0.05) : 1
+  const ipos = v => `${(100 * v / inAxisMax).toFixed(1)}%`
+  const iwid = (a, b) => `${(100 * (b - a) / inAxisMax).toFixed(1)}%`
 
   const scope = sel === 'all'
     ? data.all
@@ -100,6 +113,24 @@ export default function GeographyTrend({ data, benchmark }) {
             <span className="cp-geo-bench-read">
               <b className="cp-num">{pc0(progIntlShare)}%</b> here
               <span className={`cp-cb-sub${geoThin ? ' cp-cb-sub--thin' : ''}`}>{benchmark.label} median {pc0(bIntl.median)}% · n {bIntl.n.toLocaleString()}</span>
+            </span>
+          </div>
+        )}
+
+        {bIn && (
+          <div className="cp-geo-bench">
+            <span className="cp-geo-bench-lab">In-state recruits <span className="cp-muted">· {benchSeason} roster</span></span>
+            <div className="cp-cb-track cp-geo-bench-track">
+              <span className="cp-size-bench-band" style={{ left: ipos(bIn.p25), width: iwid(bIn.p25, bIn.p75) }}
+                title={`${geoScopeLabel}: middle 50% ${pc0(bIn.p25)}–${pc0(bIn.p75)}%`} />
+              <span className="cp-size-bench-tick" style={{ left: ipos(bIn.median) }}
+                title={`${geoScopeLabel} median ${pc0(bIn.median)}% (n ${bIn.n.toLocaleString()})`} />
+              <span className="cp-cb-dot" style={{ left: ipos(inState.share) }}
+                title={`${inState.inState} of ${inState.domestic} U.S. players with a known home state${schoolState ? ` are from ${schoolState}` : ''}`} />
+            </div>
+            <span className="cp-geo-bench-read">
+              <b className="cp-num">{pc0(inState.share)}%</b> here
+              <span className={`cp-cb-sub${inThin ? ' cp-cb-sub--thin' : ''}`}>{benchmark.label} median {pc0(bIn.median)}% · n {bIn.n.toLocaleString()}</span>
             </span>
           </div>
         )}

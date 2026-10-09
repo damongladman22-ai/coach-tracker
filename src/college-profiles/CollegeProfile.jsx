@@ -27,6 +27,7 @@ import { useProgramTransfers } from './data/useProgramTransfers'
 import { useEarlyDepartures } from './data/useEarlyDepartures'
 import { useCollegeFacts } from './data/useCollegeFacts'
 import { themeFromSchool, softOf } from './data/schoolBranding'
+import { classShares, inStateShare } from './data/peerOverlays'
 
 /**
  * CollegeProfile — the portable module entry point.
@@ -104,6 +105,9 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const compData = ready ? compositionOverTime(rosters, seasons) : null
   const sizeData = ready ? sizeProfile(currentRoster) : null
   const mixData = ready ? newcomerMix(rosters, seasons) : null
+  // G4 overlays: current-roster class mix and in-state share, defined as the peer substrate defines them.
+  const classMix = ready ? classShares(currentRoster) : null
+  const inState = ready ? inStateShare(currentRoster, school.state) : null
   // Two-year programs are included again: their stored grad_year was corrected
   // to two-year offsets on 2026-09-29 (pipeline out_sql/13_two_year_grad_year.sql),
   // so the "graduating" count matches the NEXT bar for them too.
@@ -188,11 +192,11 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <RosterTable roster={currentRoster} />
             </div>
             <div id="sec-trends" className="cp-anchor cp-pair">
-              <CompositionOverTime data={compData} benchmark={scope} />
+              <CompositionOverTime data={compData} benchmark={scope} classMix={classMix} />
               <SizeProfile data={sizeData} benchmark={scope} season={currentSeason} />
             </div>
             <div id="sec-geography" className="cp-anchor">
-              <GeographyTrend data={geoTime} benchmark={scope} />
+              <GeographyTrend data={geoTime} benchmark={scope} inState={inState} schoolState={school.state} />
             </div>
             {college.facts && (
               <div id="sec-campus" className="cp-anchor cp-sec">

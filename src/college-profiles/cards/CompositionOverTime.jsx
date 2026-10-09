@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { clampTip } from '../data/format'
+import { classRowsToShow } from '../data/peerOverlays'
 
 /**
  * CompositionOverTime — how the program allocates roster spots across position
@@ -8,6 +9,12 @@ import { clampTip } from '../data/format'
  * summarizes the change since the first tracked season. When a peer group is
  * selected, a "current mix vs peer" block plots the latest-season position
  * shares against the peer median + p25–p75 band.
+ *
+ * CLASS MIX (backlog G4, 2026-10-09): a second block plots the current
+ * roster's share of each class (FR / SO / JR / SR / GR) the same way, so an
+ * unusually young or old roster shows against its peers. `classMix` comes from
+ * peerOverlays.classShares (same definition as the peer substrate) and is null
+ * when fewer than 9 players have a class.
  */
 const GROUPS = [
   { k: 'F', label: 'Attack' },
@@ -21,7 +28,7 @@ function sign(n) { return n > 0 ? `+${n}` : `${n}` }
 function pct0(x) { return Math.round(x * 100) }
 function signPts(n) { return n > 0 ? `+${n}` : n < 0 ? `\u2212${Math.abs(n)}` : '\u00B10' }
 
-export default function CompositionOverTime({ data, benchmark }) {
+export default function CompositionOverTime({ data, benchmark, classMix = null }) {
   const [tip, setTip] = useState(null)
   const rows = data?.rows || []
   const maxTotal = Math.max(1, ...rows.map(r => r.total))
@@ -44,6 +51,20 @@ export default function CompositionOverTime({ data, benchmark }) {
   axisMax = Math.min(1, axisMax + 0.05)
   const cpos = v => `${(100 * v / axisMax).toFixed(1)}%`
   const cwid = (a, b) => `${(100 * (b - a) / axisMax).toFixed(1)}%`
+
+  // current class mix vs peer (G4)
+  const classCell = k => (benchmark ? benchmark.cell('share', 'class', k) : null)
+  const classRows = (benchmark && classMix && last)
+    ? classRowsToShow(classMix, classCell).map(c => ({ c, share: classMix.shares[c.k], b: classCell(c.k) }))
+    : []
+  let classMax = 0.01, classThin = false
+  for (const m of classRows) {
+    classMax = Math.max(classMax, m.share, m.b ? m.b.p75 : 0)
+    if (m.b && m.b.n < THIN_N) classThin = true
+  }
+  classMax = Math.min(1, classMax + 0.05)
+  const kpos = v => `${(100 * v / classMax).toFixed(1)}%`
+  const kwid = (a, b) => `${(100 * (b - a) / classMax).toFixed(1)}%`
 
   return (
     <section className="cp-sec">
@@ -131,6 +152,41 @@ export default function CompositionOverTime({ data, benchmark }) {
               )
             })}
             {anyThin && <p className="cp-size-flag" style={{ marginTop: 8 }}>Small peer samples (n &lt; {THIN_N}) — bands are approximate.</p>}
+          </div>
+        )}
+
+        {classRows.length > 0 && (
+          <div className="cp-cmpbench">
+            <p className="cp-eyebrow" style={{ margin: '4px 0 10px' }}>{last.season} class mix vs {scopeLabel}</p>
+            {classRows.map(({ c, share, b }) => {
+              const delta = b ? Math.round((share - b.median) * 100) : null
+              const thin = !!b && b.n < THIN_N
+              return (
+                <div className="cp-cb-row" key={c.k}>
+                  <span className="cp-cb-lab">{c.label}</span>
+                  <div className="cp-cb-track">
+                    {b && (
+                      <>
+                        <span className="cp-size-bench-band" style={{ left: kpos(b.p25), width: kwid(b.p25, b.p75) }}
+                          title={`${scopeLabel}: middle 50% ${pct0(b.p25)}–${pct0(b.p75)}%`} />
+                        <span className="cp-size-bench-tick" style={{ left: kpos(b.median) }}
+                          title={`${scopeLabel} median ${pct0(b.median)}% (n ${b.n.toLocaleString()})`} />
+                      </>
+                    )}
+                    <span className="cp-cb-dot" style={{ left: kpos(share) }}
+                      title={`${classMix.counts[c.k]} of ${classMix.classed} players with a listed class`} />
+                  </div>
+                  <span className="cp-cb-read">
+                    <b className="cp-num">{pct0(share)}%</b>
+                    {b && <span className={`cp-cb-sub${thin ? ' cp-cb-sub--thin' : ''}`}>{benchmark.label} {pct0(b.median)}% <span className="cp-cb-delta">{signPts(delta)}</span></span>}
+                  </span>
+                </div>
+              )
+            })}
+            <p className="cp-build-note" style={{ marginTop: 8 }}>
+              Share of the {classMix.classed} players with a listed class.
+              {classThin ? ` Small peer samples (n < ${THIN_N}) — bands are approximate.` : ''}
+            </p>
           </div>
         )}
       </div>

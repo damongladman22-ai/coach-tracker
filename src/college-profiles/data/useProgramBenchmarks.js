@@ -21,6 +21,13 @@ import { useEffect, useState } from 'react'
  * By default cell() uses the current season and falls back to the pooled row
  * only where the current cell is missing or very thin. Pass { pooled: true }
  * to force the all-seasons row (used for the multi-year retention tiles).
+ *
+ *   scope.seasonCell(metric, dimension, bucket, season) -> same shape | null
+ *
+ * seasonCell() reads one exact season with no fallback. It serves the
+ * per-season return-rate ticks on Roster stability (backlog G4, 2026-10-09),
+ * so the return_rate rows are also loaded for every season (a second, small
+ * query: one row per season per scope).
  */
 
 const POOLED = 0
@@ -59,7 +66,11 @@ function buildScope(rows, currentSeason, label, gword) {
     if (cur.n < THIN_FALLBACK && pooled && pooled.n > cur.n) return shape(pooled, POOLED)
     return shape(cur, currentSeason)
   }
-  return { label, genderWord: gword, cell }
+  const seasonCell = (metric, dimension, bucket, season) => {
+    const r = idx[season]?.[`${metric}|${dimension}|${bucket}`]
+    return r ? shape(r, season) : null
+  }
+  return { label, genderWord: gword, cell, seasonCell }
 }
 
 export function useProgramBenchmarks(client, school, currentSeason) {
@@ -84,17 +95,30 @@ export function useProgramBenchmarks(client, school, currentSeason) {
         const seasons = [POOLED]
         if (currentSeason != null && currentSeason !== POOLED) seasons.push(currentSeason)
 
-        const res = await client
-          .from('program_benchmarks')
-          .select('conference, roster_season, metric, dimension, bucket, unit, n, median, p25, p75, mean')
-          .eq('division', division)
-          .eq('program_gender', programGender)
-          .in('conference', conferences)
-          .in('roster_season', seasons)
+        const cols = 'conference, roster_season, metric, dimension, bucket, unit, n, median, p25, p75, mean'
+        const [res, perSeason] = await Promise.all([
+          client
+            .from('program_benchmarks')
+            .select(cols)
+            .eq('division', division)
+            .eq('program_gender', programGender)
+            .in('conference', conferences)
+            .in('roster_season', seasons),
+          // Every season's return rate, for the per-season ticks (G4).
+          client
+            .from('program_benchmarks')
+            .select(cols)
+            .eq('division', division)
+            .eq('program_gender', programGender)
+            .in('conference', conferences)
+            .eq('metric', 'return_rate'),
+        ])
 
         if (cancelled) return
         if (res.error) throw res.error
-        setState({ loading: false, error: null, rows: res.data || [] })
+        // The per-season rows are an extra; if they fail the page keeps every other overlay.
+        const extra = perSeason.error ? [] : (perSeason.data || [])
+        setState({ loading: false, error: null, rows: (res.data || []).concat(extra) })
       } catch (e) {
         if (!cancelled) setState({ loading: false, error: e?.message || String(e), rows: [] })
       }

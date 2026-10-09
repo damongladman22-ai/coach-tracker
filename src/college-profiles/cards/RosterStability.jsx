@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { clampTip } from '../data/format'
+import { transitionPeer } from '../data/peerOverlays'
 
 /**
  * RosterStability — the program's underclassman retention, positive framing.
@@ -22,8 +23,18 @@ import { clampTip } from '../data/format'
  * eligibility, so the wording follows `twoYear` (isTwoYearProgram: a JC whose
  * own rosters look two-year), and the numbers do too (nonSeniorReturnRate and
  * program_early_departures share that definition).
+ *
+ * PER-SEASON PEER TICKS (backlog G4, 2026-10-09): each season's return-rate
+ * bar carries a thin tick at that season's peer median (the benchmark row for
+ * the arrival season, never the pooled one) and the median in words, so one
+ * weak year shows against its peers rather than only inside the average. The
+ * bar itself clips (overflow hidden), so the tick sits in a wrapper above it.
+ * A season with fewer than 5 peer programs gets no tick.
  */
 const PEER_MIN = 5       // the benchmark only counts program-seasons with >= 5 leavers
+const THIN_N = 25        // peer cells below this many programs read dimmed, as on the other overlays
+const tickStyle = { position: 'absolute', top: -3, bottom: -3, width: 2, marginLeft: -1, background: 'var(--slate)', borderRadius: 2 }
+const tickCapStyle = { fontSize: 11.5, color: 'var(--slate)', marginTop: 4, lineHeight: 1.3 }
 const LABEL_MIN = 0.2    // a segment narrower than this carries no inside label
 
 function pct1(x) { return x == null ? '—' : (Math.round(x * 1000) / 10).toFixed(1) }
@@ -100,13 +111,30 @@ export default function RosterStability({ stats, benchmark, departures, twoYear 
       {transitions.length > 0 && (
         <div className="cp-trend">
           <p className="cp-eyebrow" style={{ marginBottom: 8 }}>Return rate by season</p>
-          {transitions.map(t => (
-            <div className="cp-trend-row" key={t.from}>
-              <span className="cp-trend-lab">{t.from} → {t.to}</span>
-              <div className="cp-track"><div className="cp-fill" style={{ width: `${t.rate * 100}%` }} /></div>
-              <span className="cp-trend-pc cp-num">{pct0(t.rate)}%</span>
-            </div>
-          ))}
+          {transitions.map(t => {
+            const pt = transitionPeer(benchmark?.seasonCell, t)
+            const thin = !!pt && pt.n < THIN_N
+            return (
+              <div className="cp-trend-row" key={t.from}>
+                <span className="cp-trend-lab">{t.from} → {t.to}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ position: 'relative' }}>
+                    <div className="cp-track"><div className="cp-fill" style={{ width: `${t.rate * 100}%` }} /></div>
+                    {pt && (
+                      <span style={{ ...tickStyle, left: `${(pt.median * 100).toFixed(1)}%` }}
+                        title={`${scopeLabel} median ${pct0(pt.median)}% in ${t.to} (n ${pt.n.toLocaleString()})`} />
+                    )}
+                  </div>
+                  {pt && (
+                    <div style={thin ? { ...tickCapStyle, opacity: 0.72, fontStyle: 'italic' } : tickCapStyle}>
+                      {scopeLabel} median {pct0(pt.median)}%
+                    </div>
+                  )}
+                </div>
+                <span className="cp-trend-pc cp-num">{pct0(t.rate)}%</span>
+              </div>
+            )
+          })}
         </div>
       )}
 
