@@ -13,11 +13,24 @@ import { useEffect, useState, useCallback } from 'react'
  * `active` lets the caller skip all work for viewers who don't need the fence
  * (e.g. the platform owner, who bypasses it): when false the hook stays idle.
  *
+ * RATE LIMIT (backlog P2, 2026-10-10): the database refuses a network after 10
+ * wrong passcodes in 15 minutes (a correct one is never counted). The refusal
+ * is an RPC error with hint 'rate_limited', not a false, so it is shown as its
+ * own message, and a phrase already saved in this browser is NOT cleared on any
+ * error: only a definite "wrong" (false) clears it. Before this, a parent who
+ * had entered the right passcode would have been logged out by someone else's
+ * wrong tries on the same Wi-Fi.
+ *
  * Returns { status, error, submit }:
  *   status 'checking' | 'granted' | 'needed'
  *   submit(candidate) -> Promise<boolean>  (also flips status to 'granted' on success)
  */
 const STORAGE_KEY = 'csip_passcode'
+
+function isRateLimited(err) {
+  return !!err && (err.hint === 'rate_limited' || /^Too many/.test(err.message || ''))
+}
+const RETRY_MSG = 'Couldn’t verify right now — try again.'
 
 export function useCsipPasscode(client, active = true) {
   const [status, setStatus] = useState('checking')
@@ -36,6 +49,10 @@ export function useCsipPasscode(client, active = true) {
         if (cancelled) return
         if (!rpcErr && data === true) {
           setStatus('granted')
+        } else if (rpcErr) {
+          // Keep the saved phrase: the check failed, it did not say "wrong".
+          setError(isRateLimited(rpcErr) ? rpcErr.message : RETRY_MSG)
+          setStatus('needed')
         } else {
           try { window.localStorage.removeItem(STORAGE_KEY) } catch (_e) { /* ignore */ }
           setStatus('needed')
@@ -60,10 +77,14 @@ export function useCsipPasscode(client, active = true) {
         setStatus('granted')
         return true
       }
+      if (rpcErr) {
+        setError(isRateLimited(rpcErr) ? rpcErr.message : RETRY_MSG)
+        return false
+      }
       setError('That passcode isn’t right.')
       return false
     } catch (_e) {
-      setError('Couldn’t verify right now — try again.')
+      setError(RETRY_MSG)
       return false
     }
   }, [client])
