@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import Choropleth from './Choropleth'
+import { useState, lazy, Suspense } from 'react'
+// Map shapes load on their own (performance pass, 2026-10-09).
+const Choropleth = lazy(() => import('./Choropleth'))
 import { useLandscapeGeoTrend } from './data/useLandscapeGeoTrend'
 import { pct, divShort, genderLabel, SEASON_YEARS, LATEST_SEASON } from './data/landscapeFormat'
 
@@ -103,10 +104,12 @@ export default function GeographyTrend({ client, division, gender }) {
         </div>
       </div>
 
-      <Choropleth
-        states={cur.states} countries={cur.countries} total={cur.total} unknown={cur.unknown}
-        mapMode={mapMode} caption={cap}
-      />
+      <Suspense fallback={<div className="csl-card" style={{ minHeight: 360 }}><p className="csl-eyebrow">Loading map…</p></div>}>
+        <Choropleth
+          states={cur.states} countries={cur.countries} total={cur.total} unknown={cur.unknown}
+          mapMode={mapMode} caption={cap}
+        />
+      </Suspense>
 
       <div className="csl-geosplit">
         <div className="csl-geosplit-h">

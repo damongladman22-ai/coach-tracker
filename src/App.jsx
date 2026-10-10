@@ -6,16 +6,19 @@ import { PageLoader } from './components/LoadingStates'
 import { useSchoolAliases } from './lib/useSchoolAliases'
 
 // Parent Pages - loaded immediately (primary use case)
-import TeamGames from './pages/TeamGames'
-import GameAttendance from './pages/GameAttendance'
-import ParentSummary from './pages/ParentSummary'
 import ClubDashboard from './pages/ClubDashboard'
-import EventLanding from './pages/EventLanding'
-import PublicTeamPage from './pages/PublicTeamPage'
-import TeamCollegeDetail from './pages/TeamCollegeDetail'
-import TeamGameDetail from './pages/TeamGameDetail'
-import CoachDirectory from './pages/CoachDirectory'
-import Help from './pages/Help'
+// Family pages load on demand (performance pass, 2026-10-09). Only the home
+// page stays in the first download; every other page is its own small file,
+// so a phone opening one page does not download all the others first.
+const TeamGames = lazy(() => import('./pages/TeamGames'))
+const GameAttendance = lazy(() => import('./pages/GameAttendance'))
+const ParentSummary = lazy(() => import('./pages/ParentSummary'))
+const EventLanding = lazy(() => import('./pages/EventLanding'))
+const PublicTeamPage = lazy(() => import('./pages/PublicTeamPage'))
+const TeamCollegeDetail = lazy(() => import('./pages/TeamCollegeDetail'))
+const TeamGameDetail = lazy(() => import('./pages/TeamGameDetail'))
+const CoachDirectory = lazy(() => import('./pages/CoachDirectory'))
+const Help = lazy(() => import('./pages/Help'))
 
 // Admin Pages - lazy loaded (secondary use case, larger components)
 const AdminLogin = lazy(() => import('./pages/AdminLogin'))

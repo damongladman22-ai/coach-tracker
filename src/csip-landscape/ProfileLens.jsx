@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, lazy, Suspense } from 'react'
 import {
   pct, pct1, inchesToFtIn, whole, seasonLabel, genderLabel, divShort, THIN_N,
 } from './data/landscapeFormat'
-import GeographyMap from './GeographyMap'
+// Map shapes load on their own (performance pass, 2026-10-09).
+const GeographyMap = lazy(() => import('./GeographyMap'))
 import InfoTip from './InfoTip'
 import TransferFlows from './TransferFlows'
 import PinControl from './PinControl'
@@ -470,7 +471,9 @@ export default function ProfileLens({ client, bench, geo, transfers, selection }
           {active.length > 1 && (
             <IntlShareCompare divGeo={geo} pins={active.map(a => ({ name: a.name, color: a.color, intl: a.d.intl }))} />
           )}
-          <GeographyMap geo={geo} segmentLabel={segmentLabel} />
+          <Suspense fallback={<div className="csl-card" style={{ minHeight: 360 }}><p className="csl-eyebrow">Loading map…</p></div>}>
+            <GeographyMap geo={geo} segmentLabel={segmentLabel} />
+          </Suspense>
           {geoSingle && (
             <div className="csl-geosec-rail">
               <PinFootprint geo={geoSingle.d.geo} intl={geoSingle.d.intl} name={geoSingle.name} />

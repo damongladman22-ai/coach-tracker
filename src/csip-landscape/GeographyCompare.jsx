@@ -1,5 +1,11 @@
-import { useState } from 'react'
-import Choropleth from './Choropleth'
+import { useState, lazy, Suspense } from 'react'
+// Map shapes load on their own (performance pass, 2026-10-09).
+const LazyChoropleth = lazy(() => import('./Choropleth'))
+const Choropleth = props => (
+  <Suspense fallback={<div style={{ minHeight: 160 }} className="csl-eyebrow">Loading map…</div>}>
+    <LazyChoropleth {...props} />
+  </Suspense>
+)
 import { pct, divShort, genderLabel, seasonLabel } from './data/landscapeFormat'
 
 /**

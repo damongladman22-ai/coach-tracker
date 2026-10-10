@@ -1,5 +1,5 @@
 import './college-profile.css'
-import { useMemo, useState } from 'react'
+import { useMemo, useState, lazy, Suspense } from 'react'
 import { useProgramProfile } from './data/useProgramProfile'
 import { useProgramBenchmarks } from './data/useProgramBenchmarks'
 import {
@@ -16,7 +16,10 @@ import RosterTable from './cards/RosterTable'
 import CompositionOverTime from './cards/CompositionOverTime'
 import SizeProfile from './cards/SizeProfile'
 import SectionNav from './cards/SectionNav'
-import GeographyTrend from './cards/GeographyTrend'
+// The Geography card carries the U.S. and world map shapes (about 670 kB of
+// path data). Loaded on its own so the rest of the profile shows without
+// waiting for it (performance pass, 2026-10-09).
+const GeographyTrend = lazy(() => import('./cards/GeographyTrend'))
 import RecruitingStyle from './cards/RecruitingStyle'
 import CoachStaff from './cards/CoachStaff'
 import ProgramResults from './cards/ProgramResults'
@@ -216,8 +219,10 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
               <SizeProfile data={sizeData} benchmark={scope} season={currentSeason} />
             </div>
             <div id="sec-geography" className="cp-anchor">
-              <GeographyTrend data={geoTime} benchmark={scope} inState={inState} schoolState={school.state}
-                cityPoints={hometownPoints.points} />
+              <Suspense fallback={<div className="cp-panel" style={{ minHeight: 420 }}><p className="cp-panel-desc">Loading map…</p></div>}>
+                <GeographyTrend data={geoTime} benchmark={scope} inState={inState} schoolState={school.state}
+                  cityPoints={hometownPoints.points} />
+              </Suspense>
             </div>
             {college.facts && (
               <div id="sec-campus" className="cp-anchor cp-sec">

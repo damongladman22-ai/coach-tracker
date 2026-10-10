@@ -4,8 +4,9 @@
  *
  * Supabase returns at most 1,000 rows per request. The pages used to be
  * fetched one after another (each waiting for the previous), so a 3,000-row
- * list cost three round trips in a row. This counts the rows first, then asks
- * for every page at once: two round trips whatever the size.
+ * list cost three round trips in a row. This asks for the first page and the
+ * total count together, then for every remaining page at once: one round trip
+ * up to 1,000 rows, two beyond that, and never more than fetching page by page.
  *
  *   fetchAllRows(client, 'v_college_index', 'id,school,...', q => q.order('id'))
  *
@@ -15,14 +16,14 @@
  * (schools!inner(...)) count correctly.
  */
 export async function fetchAllRows(client, table, cols, apply = q => q, pageSize = 1000) {
-  const head = await apply(client.from(table).select(cols, { count: 'exact', head: true }))
-  if (head.error) throw head.error
-  const n = head.count || 0
-  if (n === 0) return []
+  const first = await apply(client.from(table).select(cols, { count: 'exact' })).range(0, pageSize - 1)
+  if (first.error) throw first.error
+  const rows = [...(first.data || [])]
+  const n = first.count ?? rows.length
+  if (rows.length < pageSize || n <= pageSize) return rows
   const pages = Math.ceil(n / pageSize)
-  const results = await Promise.all(Array.from({ length: pages }, (_, i) =>
-    apply(client.from(table).select(cols)).range(i * pageSize, i * pageSize + pageSize - 1)))
-  const rows = []
+  const results = await Promise.all(Array.from({ length: pages - 1 }, (_, i) =>
+    apply(client.from(table).select(cols)).range((i + 1) * pageSize, (i + 2) * pageSize - 1)))
   for (const r of results) {
     if (r.error) throw r.error
     rows.push(...(r.data || []))
