@@ -8,6 +8,7 @@ import FeedbackButton from '../components/FeedbackButton';
 import HamburgerMenu from '../components/HamburgerMenu';
 import GenderBadge from '../components/GenderBadge';
 import { matchesText, matchesSchool } from '../lib/schoolMatch';
+import { useIsSuperAdmin } from '../lib/useIsSuperAdmin';
 
 // US States for filter dropdown
 const US_STATES = [
@@ -36,6 +37,20 @@ export default function CoachDirectory() {
   
   // Settings
   const [emailLinksEnabled, setEmailLinksEnabled] = useState(true);
+
+  // Export CSV is owner-only (backlog P3, Damon 2026-10-10: "Owner-only export
+  // now"). The button downloaded every filtered coach's email and phone for
+  // anyone, no login needed: a one-click copy of the paid data. Parents see no
+  // other change. The route passes no session, so this page reads it itself.
+  // The raw read through the public key stays open until accounts (F1) exist.
+  const [authSession, setAuthSession] = useState(null);
+  useEffect(() => {
+    let live = true;
+    supabase.auth.getSession().then(({ data }) => { if (live) setAuthSession(data?.session || null); });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => { if (live) setAuthSession(s); });
+    return () => { live = false; sub?.subscription?.unsubscribe(); };
+  }, []);
+  const canExport = useIsSuperAdmin(authSession) === 'allowed';
   
   // Search/Filter state - separate input value from debounced value
   const [searchInput, setSearchInput] = useState('');
@@ -372,6 +387,7 @@ export default function CoachDirectory() {
 
   // Export filtered coaches to CSV
   const exportToCSV = () => {
+    if (!canExport) return;
     // Build CSV header
     const headers = ['School', 'City', 'State', 'Division', 'Conference', 'First Name', 'Last Name', 'Title', 'Email', 'Phone', 'Active'];
     
@@ -857,7 +873,7 @@ export default function CoachDirectory() {
             {inactivePending && <span className="text-gray-400">· loading inactive coaches…</span>}
           </div>
           
-          {filteredCoaches.length > 0 && (
+          {canExport && filteredCoaches.length > 0 && (
             <button
               onClick={exportToCSV}
               className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
