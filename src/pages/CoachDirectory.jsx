@@ -126,85 +126,94 @@ export default function CoachDirectory() {
     };
   }, [searchInput]);
 
-  // Load all data on mount
-  useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      
-      try {
-        // Load email setting
-        const { data: settingData } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'directory_email_enabled')
-          .single();
-        
-        if (settingData) {
-          setEmailLinksEnabled(settingData.value === 'true');
-        }
+  // ── Loading (performance pass, 2026-10-09) ────────────────────────────────
+  // The directory used to fetch EVERY coach (both genders, active and
+  // inactive, ~14,500 rows) in 15 sequential 1,000-row pages, then the
+  // schools in 3 more sequential pages, before showing anything: about 5.5 s
+  // on a fast connection, far longer on a phone. Now:
+  //   - coaches are fetched in slices (gender x active / inactive), filtered
+  //     on the server; the page shows as soon as the selected gender's
+  //     ACTIVE coaches arrive, and the other gender follows in the background
+  //     so switching stays instant;
+  //   - inactive coaches load only when "Show inactive coaches" is ticked;
+  //   - each slice is counted first and all its pages fetched in parallel,
+  //     ordered by last name then id so pages never overlap or skip a row;
+  //   - the email setting and the schools list load alongside, not before.
+  const COACH_COLS = `
+    id, first_name, last_name, email, phone, title, is_active,
+    schools!inner (id, school, city, state, division, conference, program_gender)
+  `;
+  const BATCH = 1000;
+  const [loadedSlices, setLoadedSlices] = useState(() => new Set());
+  const loadingSlices = useRef(new Set());
 
-        // Fetch all coaches with school info (incl. program_gender on the school)
-        let allCoaches = [];
-        let from = 0;
-        const batchSize = 1000;
-        
-        while (true) {
-          const { data, error } = await supabase
-            .from('coaches')
-            .select(`
-              id, first_name, last_name, email, phone, title, is_active,
-              schools (id, school, city, state, division, conference, program_gender)
-            `)
-            .order('last_name')
-            .range(from, from + batchSize - 1);
-          
-          if (error) {
-            console.error('Error fetching coaches:', error);
-            break;
-          }
-          
-          if (!data || data.length === 0) break;
-          allCoaches = [...allCoaches, ...data];
-          
-          if (data.length < batchSize) break;
-          from += batchSize;
-        }
-        
-        setCoaches(allCoaches);
-        
-        // Fetch all schools for reference (incl. program_gender)
-        let allSchools = [];
-        from = 0;
-        
-        while (true) {
-          const { data, error } = await supabase
-            .from('schools')
-            .select('id, school, city, state, division, conference, program_gender')
-            .order('school')
-            .range(from, from + batchSize - 1);
-          
-          if (error) break;
-          if (!data || data.length === 0) break;
-          allSchools = [...allSchools, ...data];
-          if (data.length < batchSize) break;
-          from += batchSize;
-        }
-        
-        setSchools(allSchools);
-        
-        // Extract unique conferences
-        const uniqueConferences = [...new Set(allSchools.map(s => s.conference).filter(Boolean))].sort();
-        setConferences(uniqueConferences);
-        
-      } catch (err) {
-        console.error('Error loading data:', err);
-      } finally {
-        setLoading(false);
+  const fetchSlice = useCallback(async (gender, active) => {
+    const key = `${gender}|${active ? 'a' : 'i'}`;
+    if (loadingSlices.current.has(key)) return;
+    loadingSlices.current.add(key);
+    const scoped = q => {
+      q = q.eq('schools.program_gender', gender);
+      // is_active null counts as active (back-compat with pre-migration rows)
+      return active ? q.not('is_active', 'is', false) : q.eq('is_active', false);
+    };
+    try {
+      const { count, error: cErr } = await scoped(
+        supabase.from('coaches').select('id, schools!inner(program_gender)', { count: 'exact', head: true }));
+      if (cErr) throw cErr;
+      const pages = Math.max(1, Math.ceil((count || 0) / BATCH));
+      const results = await Promise.all(Array.from({ length: pages }, (_, i) =>
+        scoped(supabase.from('coaches').select(COACH_COLS))
+          .order('last_name').order('id')
+          .range(i * BATCH, i * BATCH + BATCH - 1)));
+      const rows = [];
+      for (const r of results) {
+        if (r.error) throw r.error;
+        rows.push(...(r.data || []));
       }
+      setCoaches(prev => {
+        const seen = new Set(prev.map(c => c.id));
+        return [...prev, ...rows.filter(c => !seen.has(c.id))];
+      });
+      setLoadedSlices(prev => new Set(prev).add(key));
+    } catch (err) {
+      console.error('Error fetching coaches:', err);
+      loadingSlices.current.delete(key);
+      setLoadedSlices(prev => new Set(prev).add(key)); // stop the spinner; the list shows what loaded
     }
-    
-    loadData();
+  }, [COACH_COLS]);
+
+  // Settings and schools: alongside the coaches, never blocking them.
+  useEffect(() => {
+    supabase.from('app_settings').select('value').eq('key', 'directory_email_enabled').single()
+      .then(({ data }) => { if (data) setEmailLinksEnabled(data.value === 'true'); });
+    (async () => {
+      const { count } = await supabase.from('schools').select('id', { count: 'exact', head: true });
+      const pages = Math.max(1, Math.ceil((count || 0) / BATCH));
+      const results = await Promise.all(Array.from({ length: pages }, (_, i) =>
+        supabase.from('schools')
+          .select('id, school, city, state, division, conference, program_gender')
+          .order('school').order('id')
+          .range(i * BATCH, i * BATCH + BATCH - 1)));
+      const allSchools = results.flatMap(r => r.data || []);
+      setSchools(allSchools);
+      setConferences([...new Set(allSchools.map(s => s.conference).filter(Boolean))].sort());
+    })().catch(err => console.error('Error loading schools:', err));
   }, []);
+
+  // The selected gender's active coaches first; the other gender after.
+  useEffect(() => {
+    fetchSlice(genderFilter, true).then(() => fetchSlice(genderFilter === 'W' ? 'M' : 'W', true));
+  }, [genderFilter, fetchSlice]);
+
+  // Inactive coaches only when asked for.
+  useEffect(() => {
+    if (showInactive) fetchSlice(genderFilter, false);
+  }, [showInactive, genderFilter, fetchSlice]);
+
+  useEffect(() => {
+    if (loadedSlices.has(`${genderFilter}|a`)) setLoading(false);
+  }, [loadedSlices, genderFilter]);
+  const inactivePending = showInactive && !loadedSlices.has(`${genderFilter}|i`);
 
   // Shared matcher (src/lib/schoolMatch.js). This page had its own copy of a
   // substring + space-collapsed rule, identical to ParentSummary's.
@@ -613,7 +622,7 @@ export default function CoachDirectory() {
     }
   }, [toast.show]);
 
-  if (loading) {
+  if (loading || !loadedSlices.has(`${genderFilter}|a`)) {
     return (
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
@@ -845,6 +854,7 @@ export default function CoachDirectory() {
             <span>{stats.totalCoaches} coaches</span>
             <span>•</span>
             <span>{stats.withEmail} with email</span>
+            {inactivePending && <span className="text-gray-400">· loading inactive coaches…</span>}
           </div>
           
           {filteredCoaches.length > 0 && (
