@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getAdminRole } from '../../lib/adminRole'
 
 /**
  * useCsipLandscapeAccess — the two-layer gate for the College Soccer Landscape module.
@@ -40,11 +41,11 @@ export function useCsipLandscapeAccess(client) {
       if (cancelled) return
 
       // Layer 0 — owner bypass.
+      // One shared request per email (lib/adminRole.js).
       if (email) {
-        const { data, error } = await client
-          .from('allowed_admins').select('role').eq('email', email).maybeSingle()
+        const role = await getAdminRole(client, email)
         if (cancelled) return
-        if (!error && data?.role === 'super_admin') { setStatus('allowed'); return }
+        if (role === 'super_admin') { setStatus('allowed'); return }
       }
 
       // Layer 1 — global kill switch (platform_settings row). Missing table/row

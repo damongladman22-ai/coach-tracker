@@ -8,6 +8,7 @@ import { useCollegeProfileLogos } from '../college-profiles/access/useCollegePro
 import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { matchesSchool, scoreSchool, expandTerms } from '../lib/schoolMatch'
+import { fetchAllRows } from '../lib/fetchAllRows'
 import {
   indexResults, seasonsOffered, seasonLabel, sortByRecord, sortByRank, recordText, pctText, hasNpi,
 } from '../lib/exploreRecords'
@@ -46,21 +47,12 @@ function deriveMonogram(name) {
   return (letters || name.slice(0, 2)).toUpperCase()
 }
 
+// Pages in parallel (performance pass, 2026-10-09): the three 1,000-row pages
+// used to load one after another. Ordered by id, so pages never overlap.
 async function fetchAllIndex() {
-  let from = 0
-  let all = []
-  for (;;) {
-    const { data, error } = await supabase
-      .from('v_college_index')
-      .select('id,school,program_gender,division,conference,city,state,seasons,current_active')
-      .order('id', { ascending: true })
-      .range(from, from + PAGE - 1)
-    if (error) throw error
-    all = all.concat(data || [])
-    if (!data || data.length < PAGE) break
-    from += PAGE
-  }
-  return all
+  return fetchAllRows(supabase, 'v_college_index',
+    'id,school,program_gender,division,conference,city,state,seasons,current_active',
+    q => q.order('id', { ascending: true }), PAGE)
 }
 
 // program_results for the latest season and the one before it. Two small
@@ -72,22 +64,11 @@ async function fetchRecentResults() {
   const latest = top.data?.[0]?.season
   if (latest == null) return []
   const seasons = [Number(latest), Number(latest) - 1]
-  let from = 0
-  let all = []
-  for (;;) {
-    const { data, error } = await supabase
-      .from('program_results')
-      .select('school_id,season,division,wins,losses,ties,win_pct,rpi_rank')
-      .in('season', seasons)
+  return fetchAllRows(supabase, 'program_results',
+    'school_id,season,division,wins,losses,ties,win_pct,rpi_rank',
+    q => q.in('season', seasons)
       .order('school_id', { ascending: true })
-      .order('season', { ascending: true })
-      .range(from, from + PAGE - 1)
-    if (error) throw error
-    all = all.concat(data || [])
-    if (!data || data.length < PAGE) break
-    from += PAGE
-  }
-  return all
+      .order('season', { ascending: true }), PAGE)
 }
 
 function Crest({ row, logosEnabled }) {
@@ -130,18 +111,18 @@ export default function CollegeExplore() {
   const [results, setResults] = useState(null)       // Map(season -> Map(school_id -> record)) | null
   const [season, setSeason] = useState(null)
 
+  // The list is public data: start loading at once, alongside the access
+  // check, instead of after it (one round trip less). It is only shown once
+  // access is 'allowed'.
   useEffect(() => {
-    if (status !== 'allowed') return
     let cancelled = false
-    setRows(null); setErr('')
     fetchAllIndex()
       .then(data => { if (!cancelled) setRows(data) })
       .catch(e => { if (!cancelled) setErr(e.message || 'Could not load colleges.') })
     return () => { cancelled = true }
-  }, [status])
+  }, [])
 
   useEffect(() => {
-    if (status !== 'allowed') return
     let cancelled = false
     fetchRecentResults()
       .then(data => {
@@ -153,7 +134,7 @@ export default function CollegeExplore() {
       // Non-critical: on failure the record sorts and the switch stay hidden.
       .catch(() => { if (!cancelled) setResults(null) })
     return () => { cancelled = true }
-  }, [status])
+  }, [])
 
   const offered = useMemo(() => (results ? seasonsOffered(results) : []), [results])
   const recs = useMemo(

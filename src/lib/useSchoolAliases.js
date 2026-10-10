@@ -16,62 +16,88 @@
 import { useEffect } from 'react';
 import { supabase } from './supabase';
 import { setAliasIndex } from './schoolMatch';
+import { fetchAllRows } from './fetchAllRows';
 
-// Fetched once per page load and shared. Not React state: the matcher reads it
-// synchronously during scoring, and nothing re-renders on its arrival beyond
-// the next keystroke, which is when a search result would change anyway.
+// WHEN IT LOADS (performance pass, 2026-10-09; Damon: load the short-names
+// list only when someone searches, and remember it for the visit). The list
+// is about 5,000 rows and used to download on every page, competing with the
+// page's own data even where nobody searches. Now:
+//   - it loads the first time any text box, search box, select or file input
+//     gets focus (every search box, and the admin coach import, start that
+//     way), so the matcher has it before the first keystroke lands;
+//   - its pages are fetched in parallel;
+//   - it is kept in sessionStorage for the rest of the visit, so other pages
+//     and reloads use it without downloading it again.
+// Still one call at app level, so every search box gets aliases.
+const CACHE_KEY = 'pitchside.schoolAliases.v1';
 let loaded = false;
+let loading = null;
+
+function buildIndex(rows) {
+  // rows: [school_id, alias_norm, kind, school name]
+  const index = new Map();
+  const common = new Map();   // kind 'common_name': Mizzou, Pitt, Cal (F15)
+  const names = new Map();    // school_id -> name, for callers without ids
+  const add = (map, key, id) => {
+    let set = map.get(key);
+    if (!set) map.set(key, (set = new Set()));
+    set.add(id);
+  };
+  for (const [id, alias, kind, name] of rows) {
+    if (!alias || !id) continue;
+    add(index, alias, id);
+    if (kind === 'common_name') add(common, alias, id);
+    if (name) names.set(id, name);
+  }
+  setAliasIndex(index, { common, names });
+}
+
+/** Load the alias list now (once per visit). Safe to call any number of times. */
+export function ensureSchoolAliases() {
+  if (loaded) return Promise.resolve();
+  if (loading) return loading;
+  loading = (async () => {
+    try {
+      try {
+        const cached = sessionStorage.getItem(CACHE_KEY);
+        if (cached) {
+          buildIndex(JSON.parse(cached));
+          loaded = true;
+          return;
+        }
+      } catch { /* no or unreadable cache: fetch */ }
+      const data = await fetchAllRows(supabase, 'school_aliases',
+        'id, school_id, alias_norm, kind, schools(school)', q => q.order('id'));
+      const rows = data.map(r => [r.school_id, r.alias_norm, r.kind, r.schools?.school || null]);
+      buildIndex(rows);
+      loaded = true;
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(rows)); } catch { /* full or blocked: fine */ }
+    } catch (err) {
+      // Deliberately non-fatal. Search keeps working without aliases.
+      console.error('school_aliases failed to load; search continues without them', err);
+    } finally {
+      loading = null;
+    }
+  })();
+  return loading;
+}
+
+const WANTS_ALIASES = 'input, textarea, select';
 
 export function useSchoolAliases() {
   useEffect(() => {
     if (loaded) return;
-    loaded = true;
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const rows = [];
-        let last = null;
-        // Keyset pagination on id, not .range(). Offset paging over a table
-        // that is being written skips and repeats rows; seeking cannot.
-        for (;;) {
-          let q = supabase
-            .from('school_aliases')
-            .select('id, school_id, alias_norm, kind, schools(school)')
-            .order('id')
-            .limit(1000);
-          if (last !== null) q = q.gt('id', last);
-          const { data, error } = await q;
-          if (error) throw error;
-          if (!data || data.length === 0) break;
-          rows.push(...data);
-          last = data[data.length - 1].id;
-          if (data.length < 1000) break;
-        }
-        if (cancelled) return;
-
-        const index = new Map();
-        const common = new Map();   // kind 'common_name': Mizzou, Pitt, Cal (F15)
-        const names = new Map();    // school_id -> name, for callers without ids
-        const add = (map, key, id) => {
-          let set = map.get(key);
-          if (!set) map.set(key, (set = new Set()));
-          set.add(id);
-        };
-        for (const r of rows) {
-          if (!r.alias_norm || !r.school_id) continue;
-          add(index, r.alias_norm, r.school_id);
-          if (r.kind === 'common_name') add(common, r.alias_norm, r.school_id);
-          if (r.schools?.school) names.set(r.school_id, r.schools.school);
-        }
-        setAliasIndex(index, { common, names });
-      } catch (err) {
-        // Deliberately non-fatal. Search keeps working without aliases.
-        console.error('school_aliases failed to load; search continues without them', err);
-        loaded = false;   // allow a retry on the next mount
+    const onFocus = e => {
+      if (e.target?.matches?.(WANTS_ALIASES)) {
+        document.removeEventListener('focusin', onFocus, true);
+        ensureSchoolAliases();
       }
-    })();
-
-    return () => { cancelled = true; };
+    };
+    // Already cached this visit: build the index straight away (no network).
+    try {
+      if (sessionStorage.getItem(CACHE_KEY)) { ensureSchoolAliases(); return; }
+    } catch { /* fall through to waiting for a focus */ }
+    document.addEventListener('focusin', onFocus, true);
+    return () => document.removeEventListener('focusin', onFocus, true);
   }, []);
 }

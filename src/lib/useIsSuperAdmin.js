@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { getAdminRole } from './adminRole'
 
 /**
  * useIsSuperAdmin — single source of truth for the platform-owner check.
@@ -19,15 +20,11 @@ export function useIsSuperAdmin(session) {
       setStatus('denied')
       return
     }
-    supabase
-      .from('allowed_admins')
-      .select('role')
-      .eq('email', email)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (cancelled) return
-        setStatus(!error && data?.role === 'super_admin' ? 'allowed' : 'denied')
-      })
+    // One shared request per email (lib/adminRole.js).
+    getAdminRole(supabase, email).then(role => {
+      if (cancelled) return
+      setStatus(role === 'super_admin' ? 'allowed' : 'denied')
+    })
     return () => {
       cancelled = true
     }

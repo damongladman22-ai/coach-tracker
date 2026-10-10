@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { fetchAllRows } from '../lib/fetchAllRows'
 import GenderBadge from '../components/GenderBadge'
 import { PageLoader } from '../components/LoadingStates'
 import { useCollegeProfilesAccess } from '../college-profiles/access/useCollegeProfilesAccess'
@@ -71,26 +72,48 @@ async function fetchLatestSeason() {
   return data?.[0]?.current_season ?? null
 }
 
+// Every read below fetches its pages in parallel (lib/fetchAllRows.js,
+// performance pass 2026-10-09); each order is unique per row.
 async function fetchOutlook(gender, position, entrySeason) {
-  let from = 0
-  let all = []
-  for (;;) {
-    const { data, error } = await supabase
-      .from('program_openings_outlook')
-      .select(COLS)
-      .eq('entry_season', entrySeason)
+  return fetchAllRows(supabase, 'program_openings_outlook', COLS,
+    q => q.eq('entry_season', entrySeason)
       .eq('position', position)
       .eq('schools.program_gender', gender)
-      .order('school_id', { ascending: true })
-      .range(from, from + PAGE - 1)
-    if (error) throw error
-    all = all.concat(data || [])
-    if (!data || data.length < PAGE) break
-    from += PAGE
-  }
-  return all
+      .order('school_id', { ascending: true }), PAGE)
 }
 
+async function fetchStyles() {
+  const rows = await fetchAllRows(supabase, 'program_recruiting_style',
+    'school_id,build_band,reach_band,abroad_band,stability_band', q => q.order('school_id'), PAGE)
+  return styleMap(rows)
+}
+
+// The club's teams in every season (for lineages), the seasons, and the active season.
+async function fetchClubTeams() {
+  const [activeId, seasons] = await Promise.all([getActiveSeasonId(), listSeasons()])
+  if (!activeId) return null
+  const teams = await fetchAllRows(supabase, 'teams',
+    'id,name,slug,gender,season_id,program_id,active,age_groups(name)', q => q.order('id'), PAGE)
+  return { activeId, seasons, teams }
+}
+
+// Every attendance row at the lineage's games, with the coach's program and the game date.
+async function fetchWatched(teamIds) {
+  const rows = await fetchAllRows(supabase, 'attendance',
+    'id,coach_id,game_id,coaches!inner(school_id),games!inner(team_id,game_date)',
+    q => q.in('games.team_id', teamIds).order('id'), PAGE)
+  return summarizeAttendance(rows)
+}
+
+async function fetchCatalog() {
+  const { data, error } = await supabase.from('college_major_catalog')
+    .select('cip_code,title,family_code,family_title,colleges_bachelors,colleges_associate').limit(PAGE)
+  if (error) throw error
+  return buildCatalog(data || [])
+}
+
+// Sequential pages, kept for the majors reads: their sort order is not known
+// to be unique per row, which parallel pages would need.
 async function fetchPaged(build) {
   let from = 0
   let all = []
@@ -102,36 +125,6 @@ async function fetchPaged(build) {
     from += PAGE
   }
   return all
-}
-
-async function fetchStyles() {
-  const rows = await fetchPaged(() => supabase.from('program_recruiting_style')
-    .select('school_id,build_band,reach_band,abroad_band,stability_band').order('school_id'))
-  return styleMap(rows)
-}
-
-// The club's teams in every season (for lineages), the seasons, and the active season.
-async function fetchClubTeams() {
-  const [activeId, seasons] = await Promise.all([getActiveSeasonId(), listSeasons()])
-  if (!activeId) return null
-  const teams = await fetchPaged(() => supabase.from('teams')
-    .select('id,name,slug,gender,season_id,program_id,active,age_groups(name)').order('id'))
-  return { activeId, seasons, teams }
-}
-
-// Every attendance row at the lineage's games, with the coach's program and the game date.
-async function fetchWatched(teamIds) {
-  const rows = await fetchPaged(() => supabase.from('attendance')
-    .select('id,coach_id,game_id,coaches!inner(school_id),games!inner(team_id,game_date)')
-    .in('games.team_id', teamIds).order('id'))
-  return summarizeAttendance(rows)
-}
-
-async function fetchCatalog() {
-  const { data, error } = await supabase.from('college_major_catalog')
-    .select('cip_code,title,family_code,family_title,colleges_bachelors,colleges_associate').limit(PAGE)
-  if (error) throw error
-  return buildCatalog(data || [])
 }
 
 // Programs and majors for one choice: who offers it.
