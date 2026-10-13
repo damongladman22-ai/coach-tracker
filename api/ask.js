@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr } from '../src/lib/findPrograms.js'
 import { expandTerms, scoreSchool, setAliasIndex } from '../src/lib/schoolMatch.js'
 import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel } from '../src/lib/majorFilter.js'
-import { lineage, defaultTeamId, summarizeAttendance } from '../src/lib/attendanceSignal.js'
+import { lineage, defaultTeamId, summarizeAttendance, teamAge } from '../src/lib/attendanceSignal.js'
 import { parseNear, placeKey, milesBetween } from '../src/lib/geo.js'
 
 /**
@@ -571,12 +571,20 @@ function buildTools(db, log, ctx = {}) {
         const active = seasons.find(s => s.is_active) || null
         const current = teams.filter(t => active && String(t.season_id) === String(active.id))
         const lineIds = t => lineage(t, teams, seasons).map(l => String(l.team.id))
+        // Teams move up an age group every season; the birth year stays with the players.
+        // Season starting in Y (e.g. Aug 2026) ends in Y+1, and U17 that season = born (Y+1)-17.
+        const seasonById = new Map(seasons.map(x => [String(x.id), x]))
+        const birthYear = t => {
+          const y = Number(String(seasonById.get(String(t.season_id))?.start_date || '').slice(0, 4)), age = teamAge(t)
+          return y && age ? y + 1 - age : null
+        }
+        const label = t => (birthYear(t) ? `${t.name} (${birthYear(t)}s)` : t.name)
         // Every current team that has college coaches logged at its games (this season or its earlier seasons).
         const gamesOf = ids => new Set(att.filter(r => ids.includes(String(r.games?.team_id))).map(r => r.game_id)).size
-        const visited = current.map(t => ({ team: t.name, games: gamesOf(lineIds(t)) }))
+        const visited = current.map(t => ({ t, games: gamesOf(lineIds(t)) }))
           .filter(x => x.games > 0).sort((a, b) => b.games - a.games)
-          .map(x => `${x.team} (${x.games} ${x.games === 1 ? 'game' : 'games'} with college coaches logged)`)
-        const allNames = current.map(t => t.name).slice(0, 40)
+          .map(x => `${label(x.t)}: ${x.games} ${x.games === 1 ? 'game' : 'games'} with college coaches logged, this season and earlier seasons`)
+        const allNames = current.map(label).slice(0, 40)
 
         let chosen = null
         if (team) {
@@ -586,9 +594,14 @@ function buildTools(db, log, ctx = {}) {
             .map(w => ({ girl: 'girls', women: 'girls', womens: 'girls', boy: 'boys', men: 'boys', mens: 'boys' }[w] || w))
           const vocab = new Set(teams.flatMap(t => tok(t.name)))
           const words = tok(team).filter(w => vocab.has(w))
-          const pool = current.length ? current : teams
-          const cand = words.length ? pool.filter(t => { const n = tok(t.name); return words.every(w => n.includes(w)) }) : []
-          const exact = cand.filter(t => tok(t.name).length === words.length)
+          // A birth year ("2010s", "2010 girls", "the '10s") picks the current team those players are on.
+          const ym = String(team).match(/\b(20[0-2]\d)s?\b/) || String(team).match(/['’](\d\d)s?\b/)
+          const by = ym ? (ym[1].length === 2 ? 2000 + Number(ym[1]) : Number(ym[1])) : null
+          let pool = current.length ? current : teams
+          if (by) pool = pool.filter(t => birthYear(t) === by)
+          const nameWords = t => tok(t.name).filter(w => !(by && /^u\d+$/.test(w)))
+          const cand = (words.length || by) ? pool.filter(t => { const n = tok(t.name); return words.every(w => n.includes(w)) }) : []
+          const exact = cand.filter(t => nameWords(t).length === words.filter(w => !(by && /^u\d+$/.test(w))).length)
           chosen = cand.length === 1 ? cand[0] : exact.length === 1 ? exact[0] : null
           if (!chosen) {
             return {
@@ -596,7 +609,7 @@ function buildTools(db, log, ctx = {}) {
               note: cand.length > 1
                 ? `Several club teams match "${team}". Ask which one, offering these options.`
                 : `No club team matched "${team}". Team names in PitchSide are age group + gender + league (e.g. "U16 Girls ECNL"), not the club name.`,
-              matching_teams: cand.map(t => t.name).slice(0, 12),
+              matching_teams: cand.map(label).slice(0, 12),
               teams_with_coach_visits: visited,
               all_teams: cand.length ? undefined : allNames,
             }
@@ -614,15 +627,19 @@ function buildTools(db, log, ctx = {}) {
             }
           }
         }
-        const line = lineIds(chosen)
+        const chain = lineage(chosen, teams, seasons)
+        const line = chain.map(l => String(l.team.id))
         const sig = summarizeAttendance(att.filter(r => line.includes(String(r.games?.team_id))))
+        const bySeason = chain.map(l => ({ season: l.season?.name || null, team: l.team.name, games_with_coaches: gamesOf([String(l.team.id)]) }))
         const ref = await refData(db)
         const list = [...sig.entries()].map(([sid, v]) => ({ sid, v, s: ref.byId.get(sid) }))
           .filter(x => x.s)
           .sort((x, y) => y.v.games - x.v.games || String(y.v.latest || '').localeCompare(String(x.v.latest || '')))
         return {
           team: chosen.name,
-          seasons_included: line.length,
+          birth_year: birthYear(chosen) ?? undefined,
+          seasons: bySeason,
+          seasons_note: 'Teams move up an age group each season. The visits include the same players\' earlier seasons, listed in "seasons" with the team name they had then.',
           matched: list.length,
           note: list.length ? undefined : 'No college coaches logged at this team\'s games yet. Mention the teams_with_coach_visits if any.',
           teams_with_coach_visits: list.length ? undefined : visited,
@@ -655,6 +672,7 @@ function instructions() {
     '- Academic fit: use find_programs filters (admission rate, average SAT, graduation rate, net price, size, public/private, setting, major) and program_majors. PitchSide has no GPA data; say so if asked, and use admission rate and average SAT instead. A program whose average SAT is near the student\'s score is a typical academic match.',
     '- Judgment questions ("is X a good fit", "D2 or D3", "should she…"): do not decide for them. Lay out the relevant facts side by side (results and RPI, openings, roster stability, academics, cost) and name the trade-offs to weigh.',
     '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place is shared by several states, ask which. If they say "close to home" without a place, ask for their town or ZIP code.',
+    '- Club teams move up an age group each season (this season\'s U17 were last season\'s U16), so families often name a team by birth year ("the 2010s"); pass that as the team. When describing a team, give its age group and birth year, and say which seasons the coach visits came from (the seasons list).',
     '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',

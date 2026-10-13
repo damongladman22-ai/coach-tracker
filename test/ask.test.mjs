@@ -121,16 +121,19 @@ async function run(tool, input) {
 // programs_watching_team: club names and filler are ignored; ambiguous names ask
 {
   const W = { ...tables,
-    seasons: [{ id: 's26', name: '2026-27', start_date: '2026-08-01', is_active: true }],
+    seasons: [{ id: 's25', name: '2025-26', start_date: '2025-08-01', is_active: false },
+      { id: 's26', name: '2026-27', start_date: '2026-08-01', is_active: true }],
     teams: [
       { id: 1, name: 'U16 Girls ECNL', gender: 'Girls', season_id: 's26', program_id: 9, age_groups: { name: 'U16' } },
       { id: 2, name: 'U16 Girls ECNL RL', gender: 'Girls', season_id: 's26', program_id: 9, age_groups: { name: 'U16' } },
       { id: 3, name: 'U17 Girls ECNL', gender: 'Girls', season_id: 's26', program_id: 9, age_groups: { name: 'U17' } },
+      { id: 4, name: 'U16 Girls ECNL', gender: 'Girls', season_id: 's25', program_id: 9, age_groups: { name: 'U16' } },
     ],
     attendance: [
       { id: 1, coach_id: 11, game_id: 100, coaches: { school_id: 'den-w' }, games: { team_id: 1, game_date: '2026-09-01' } },
       { id: 2, coach_id: 12, game_id: 101, coaches: { school_id: 'den-w' }, games: { team_id: 1, game_date: '2026-09-08' } },
       { id: 3, coach_id: 13, game_id: 101, coaches: { school_id: 'ken-w' }, games: { team_id: 1, game_date: '2026-09-08' } },
+      { id: 4, coach_id: 14, game_id: 90, coaches: { school_id: 'osu-w' }, games: { team_id: 4, game_date: '2026-07-12' } },
     ],
   }
   const go = async (input, ctx = {}) => { T.resetCache(); return T.buildTools(fakeDb(W), [], ctx).programs_watching_team.execute(input, { toolCallId: 't', messages: [] }) }
@@ -140,16 +143,24 @@ async function run(tool, input) {
   assert.equal(r.programs[0].games, 2)
   r = await go({ team: 'u-16 girl' })
   assert.equal(r.programs.length, 0)
-  assert.deepEqual(r.matching_teams, ['U16 Girls ECNL', 'U16 Girls ECNL RL'], 'ambiguous asks')
+  assert.deepEqual(r.matching_teams, ['U16 Girls ECNL (2011s)', 'U16 Girls ECNL RL (2011s)'], 'ambiguous asks')
   r = await go({ team: 'Ohio Premier girls' })
   assert.equal(r.matching_teams.length, 3)
-  assert.ok(r.teams_with_coach_visits[0].startsWith('U16 Girls ECNL (2 games'), 'offers teams with visits')
+  assert.ok(r.teams_with_coach_visits[0].startsWith('U16 Girls ECNL (2011s): 2 games'), 'offers teams with visits, with birth year')
   r = await go({})
   assert.ok(/No starred team/.test(r.note))
   r = await go({}, { favoriteTeamIds: [3] })
   assert.equal(r.team, 'U17 Girls ECNL')
-  assert.equal(r.programs.length, 0)
-  assert.equal(r.teams_with_coach_visits.length, 1)
+  assert.equal(r.birth_year, 2010)
+  assert.deepEqual(r.seasons, [
+    { season: '2026-27', team: 'U17 Girls ECNL', games_with_coaches: 0 },
+    { season: '2025-26', team: 'U16 Girls ECNL', games_with_coaches: 1 },
+  ], 'same players, last season as U16')
+  assert.equal(r.programs[0].school_id, 'osu-w')
+  r = await go({ team: 'the 2010s girls ECNL' })
+  assert.equal(r.team, 'U17 Girls ECNL', 'birth year picks this season\'s team')
+  r = await go({ team: "our '11s" })
+  assert.deepEqual(r.matching_teams, ['U16 Girls ECNL (2011s)', 'U16 Girls ECNL RL (2011s)'])
 }
 
 
