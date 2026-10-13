@@ -182,9 +182,11 @@ function buildTools(db, log) {
       execute: run('rank_by_results', async ({ gender, season, sort, division, conference, states, limit }) => {
         const rows = await allRows(() => {
           let q = db.from('program_results')
-            .select('school_id, season, division, conference, wins, losses, ties, win_pct, rpi_rank, schools!inner(school, program_gender, state, is_active)')
+            .select('school_id, season, conference, wins, losses, ties, win_pct, rpi_rank, schools!inner(school, program_gender, state, is_active, division)')
             .eq('season', season).eq('schools.program_gender', gender)
-          if (division) q = q.eq('division', division)
+          // schools.division holds 'NCAA D1' etc.; program_results.division uses
+          // its own labels, so filtering on it matched nothing (bake-off, 2026-10-13).
+          if (division) q = q.eq('schools.division', division)
           if (sort === 'rpi') q = q.not('rpi_rank', 'is', null)
           return q.order('school_id', { ascending: true })
         })
@@ -199,7 +201,7 @@ function buildTools(db, log) {
         return {
           matched: kept.length,
           note: sort === 'win_pct' ? 'Programmes with fewer than 5 games are left out.' : undefined,
-          programs: kept.slice(0, n).map(r => ({ school_id: r.school_id, school: r.schools.school, division: r.division,
+          programs: kept.slice(0, n).map(r => ({ school_id: r.school_id, school: r.schools.school, division: r.schools.division,
             conference: r.conference, state: stateAbbr(r.schools.state), record: `${r.wins}-${r.losses}-${r.ties}`,
             win_pct: round(r.win_pct, 3), rpi_rank: r.rpi_rank })),
         }
