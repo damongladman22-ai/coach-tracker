@@ -1,6 +1,7 @@
 import { Outlet, useLocation, Link } from 'react-router-dom'
 import OPLogo from './OPLogo'
 import HamburgerMenu from './HamburgerMenu'
+import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
 
 /**
  * CsipShell — shared chrome for every CSIP surface (Explore index, program
@@ -19,10 +20,13 @@ function tabCls(active) {
   ].join(' ')
 }
 
-export default function CsipShell() {
+export default function CsipShell({ session }) {
   const { pathname } = useLocation()
   const onLandscape = pathname.startsWith('/landscape')
   const onFind = pathname.startsWith('/find')
+  const onAsk = pathname.startsWith('/ask')
+  // Ask PitchSide (backlog F2) is owner-only while in preview.
+  const showAsk = useIsSuperAdmin(session) === 'allowed'
 
   return (
     <>
@@ -36,9 +40,10 @@ export default function CsipShell() {
             <HamburgerMenu />
           </div>
           <nav className="flex gap-6 border-t border-[#22314e]" aria-label="College Soccer Intelligence">
-            <Link to="/schools" className={tabCls(!onLandscape && !onFind)}>Explore</Link>
+            <Link to="/schools" className={tabCls(!onLandscape && !onFind && !onAsk)}>Explore</Link>
             <Link to="/find" className={tabCls(onFind)}>Find programs</Link>
             <Link to="/landscape" className={tabCls(onLandscape)}>Landscape</Link>
+            {showAsk && <Link to="/ask" className={tabCls(onAsk)}>Ask</Link>}
           </nav>
         </div>
       </header>

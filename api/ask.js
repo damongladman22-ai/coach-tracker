@@ -1,5 +1,6 @@
+/* global process */
 import { createClient } from '@supabase/supabase-js'
-import { generateText, tool, stepCountIs, gateway } from 'ai'
+import { generateText, streamText, tool, stepCountIs, gateway } from 'ai'
 import { z } from 'zod'
 import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr } from '../src/lib/findPrograms.js'
 
@@ -69,7 +70,6 @@ async function allRows(build) {
 }
 
 const norm = s => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
-const genderCode = g => (/^w/i.test(g || '') ? 'W' : /^m/i.test(g || '') ? 'M' : null)
 const round = (x, d = 1) => (x == null || isNaN(Number(x)) ? null : Math.round(Number(x) * 10 ** d) / 10 ** d)
 
 // ── the look-ups ────────────────────────────────────────────────────────────
@@ -276,15 +276,44 @@ function buildTools(db, log) {
 function instructions() {
   const today = new Date().toISOString().slice(0, 10)
   return [
-    `You are the PitchSide college soccer assistant. Today is ${today}.`,
-    'Answer ONLY from the results of the look-up tools. Never use outside knowledge for numbers, names, records, rankings or coaches.',
-    'If the look-ups do not hold what was asked, say plainly that PitchSide does not have it. Do not guess.',
-    'Always resolve a college name with find_school first, then pass its school_id to the other tools. If both a men\'s and a women\'s programme match and the question does not say which, ask or answer for both.',
-    'Openings are ESTIMATES (graduations, expected early departures, usual freshman intake); incoming commits are not known. Say "estimated".',
-    'Give the numbers you used (seasons, records, counts) so the reader can check them. Keep answers short: a few sentences or a short list.',
-    'Do not give advice on NCAA recruiting rules or contact dates, and do not discuss individual players.',
-    `Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
+    `You are Ask PitchSide, the college soccer assistant inside PitchSide's College Soccer Intelligence. Today is ${today}.`,
+    'The people asking are families of club players looking at college soccer. Be warm, clear and direct.',
+    '',
+    'FACTS',
+    '- Answer ONLY from the results of the look-up tools. Never use outside knowledge for numbers, names, records, rankings or coaches.',
+    '- If the look-ups do not hold what was asked, say plainly that PitchSide does not have it, and suggest what it can answer instead. Do not guess.',
+    '- Always resolve a college name with find_school first, then pass its school_id to the other tools. If both a men\'s and a women\'s programme match and the question does not say which, answer for the one the conversation is about, or ask.',
+    '- Openings are ESTIMATES (graduations, expected early departures, usual freshman intake); incoming commits are not known. Say "estimated".',
+    '- Do not give advice on NCAA recruiting rules or contact dates, and do not discuss or rank individual players.',
+    `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
+    '',
+    'FORMAT (Markdown; it is rendered for the reader)',
+    '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
+    '- Then structure: short bullet lists for a few facts; a Markdown table when comparing programmes or seasons (3 to 10 rows, clear column headers); **bold** for the key number or name.',
+    '- Link every programme you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
+    '- When find_programs or rank_by_results returns a list, the app shows those programmes as cards under your answer. Summarise the top 3 to 5 in prose or a compact table; do not repeat the whole list.',
+    '- Use a short ### heading only when an answer has two or more distinct parts.',
+    '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
+    '- Write in American English, with no em dashes. Keep the whole answer under about 200 words unless a table needs more.',
+    '- After the answer, on the very last line, write exactly: FOLLOW-UPS: question one | question two | question three',
+    '  These are three short follow-up questions the reader might ask next that the look-ups can answer. The app turns them into buttons and hides this line.',
   ].join('\n')
+}
+
+function gatewayOptions(model, email) {
+  return { gateway: {
+    disallowPromptTraining: true, caching: 'auto', tags: ['pitchside-ask'], user: email,
+    ...(model === DEFAULT_MODEL ? { models: [FALLBACK_MODEL] } : {}),
+  } }
+}
+
+// Conversation turns from the page: [{ role: 'user'|'assistant', content }].
+// Only text is kept; the last 12 turns; each capped in length.
+function cleanMessages(list) {
+  return (Array.isArray(list) ? list : [])
+    .filter(m => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-12)
+    .map(m => ({ role: m.role, content: m.content.slice(0, m.role === 'user' ? 1000 : 4000) }))
 }
 
 // ── handler ─────────────────────────────────────────────────────────────────
@@ -310,26 +339,58 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST or GET only' })
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
-  const question = String(body.question || '').trim().slice(0, 1000)
   const model = String(body.model || DEFAULT_MODEL)
-  if (!question) return res.status(400).json({ error: 'question required' })
   if (!MODEL_RE.test(model)) return res.status(400).json({ error: 'bad model id' })
+  const messages = cleanMessages(body.messages)
+  const question = String(body.question || '').trim().slice(0, 1000)
+  if (!messages.length && !question) return res.status(400).json({ error: 'question required' })
+  if (messages.length && messages[messages.length - 1].role !== 'user') return res.status(400).json({ error: 'last message must be the question' })
+  const prompt = messages.length ? { messages } : { prompt: question }
 
   const log = []
   const t0 = Date.now()
+  const common = {
+    model,
+    instructions: instructions(),
+    ...prompt,
+    tools: buildTools(readClient(), log),
+    stopWhen: stepCountIs(6),
+    maxOutputTokens: 1500,
+    providerOptions: gatewayOptions(model, who.email),
+  }
+
+  // Streaming (the consumer page): newline-delimited JSON events.
+  //   {t:'text', d}                 a piece of the answer
+  //   {t:'lookup', tool, input}      a look-up started
+  //   {t:'data', tool, input, output} a look-up finished, with its rows
+  //   {t:'done', model, ms, usage}   finished
+  //   {t:'error', error}             failed
+  if (body.stream) {
+    res.statusCode = 200
+    res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8')
+    res.setHeader('Cache-Control', 'no-cache, no-transform')
+    res.setHeader('X-Accel-Buffering', 'no')
+    const send = obj => res.write(JSON.stringify(obj) + '\n')
+    try {
+      const result = streamText(common)
+      for await (const part of result.fullStream) {
+        if (part.type === 'text-delta') send({ t: 'text', d: part.text })
+        else if (part.type === 'tool-call') send({ t: 'lookup', tool: part.toolName, input: part.input })
+        else if (part.type === 'tool-result') send({ t: 'data', tool: part.toolName, input: part.input, output: part.output })
+        else if (part.type === 'error') send({ t: 'error', error: String(part.error?.message || part.error) })
+      }
+      const usage = (await result.totalUsage) || {}
+      send({ t: 'done', model, ms: Date.now() - t0,
+        usage: { input_tokens: usage.inputTokens ?? null, output_tokens: usage.outputTokens ?? null } })
+    } catch (e) {
+      send({ t: 'error', error: e.message || String(e) })
+    }
+    return res.end()
+  }
+
+  // One-shot JSON (the owner test bench).
   try {
-    const result = await generateText({
-      model,
-      instructions: instructions(),
-      prompt: question,
-      tools: buildTools(readClient(), log),
-      stopWhen: stepCountIs(6),
-      maxOutputTokens: 1200,
-      providerOptions: { gateway: {
-        disallowPromptTraining: true, caching: 'auto', tags: ['pitchside-ask'], user: who.email,
-        ...(model === DEFAULT_MODEL ? { models: [FALLBACK_MODEL] } : {}),
-      } },
-    })
+    const result = await generateText(common)
     const usage = result.totalUsage || result.usage || {}
     const gw = result.providerMetadata?.gateway || null
     return res.status(200).json({

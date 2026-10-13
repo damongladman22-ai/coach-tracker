@@ -47,6 +47,8 @@ const ManageAdmins = lazy(() => import('./pages/ManageAdmins'))
 const Feedback = lazy(() => import('./pages/Feedback'))
 const OwnerCoachReview = lazy(() => import('./pages/OwnerCoachReview'))
 const OwnerAsk = lazy(() => import('./pages/OwnerAsk'))
+// Ask PitchSide — consumer chat for the AI assistant (backlog F2); owner-only in preview.
+const AskPitchSide = lazy(() => import('./pages/AskPitchSide'))
 
 // CsipGate — shared passcode fence wrapping all CSIP routes (owner bypasses).
 // Eager (small) so it can wrap the lazy CSIP pages as a layout route.
@@ -152,11 +154,12 @@ function App() {
                 shared passcode fence (CsipGate); the platform owner bypasses it.
                 Each host page still runs its own kill-switch gate inside. */}
             <Route element={<CsipGate session={session} />}>
-              <Route element={<CsipShell />}>
+              <Route element={<CsipShell session={session} />}>
                 <Route path="/schools" element={<CollegeExplore session={session} />} />
                 <Route path="/find" element={<FindPrograms session={session} />} />
                 <Route path="/school/:schoolId" element={<SchoolProfile session={session} />} />
                 <Route path="/landscape" element={<Landscape session={session} />} />
+                <Route path="/ask" element={<AskPitchSide session={session} />} />
               </Route>
             </Route>
           
