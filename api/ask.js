@@ -37,8 +37,10 @@ const DEFAULT_MODEL = 'anthropic/claude-haiku-5.5'
 // How long the model thinks before answering. Timed live on 2026-10-13: with
 // the provider default, about 500 of ~800 output tokens were hidden thinking,
 // 2 to 3.5 s before the first word. The bench can pass another level to compare.
+// Bake-off of the 19 test questions, same day: 'none' 19/19 right look-ups,
+// 3.7 s average; 'low' 19/19, 4.3 s; honesty answers unchanged. So: none.
 const REASONING_LEVELS = ['provider-default', 'none', 'minimal', 'low', 'medium']
-const DEFAULT_REASONING = 'low'
+const DEFAULT_REASONING = 'none'
 const FALLBACK_MODEL = 'openai/gpt-5.6-luna'
 const MODEL_RE = /^[a-z0-9-]+\/[a-z0-9.\-:]+$/i
 const MAX_ROWS = 40
@@ -782,14 +784,14 @@ function instructions() {
     '- Judgment questions ("is X a good fit", "D2 or D3", "should she…"): do not decide for them. Lay out the relevant facts side by side (results and RPI, openings, roster stability, academics, cost) and name the trade-offs to weigh.',
     '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place is shared by several states, ask which. If they say "close to home" without a place, ask for their town or ZIP code.',
     '- Club teams move up an age group each season (this season\'s U17 were last season\'s U16), so families often name a team by birth year ("the 2010s"); pass that as the team. When describing a team, give its age group and birth year, and say which seasons the coach visits came from (the seasons list).',
-    '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. PitchSide logs WHICH coaches attended: name them from coaches_seen (name, title, games attended, latest game). For one college, pass school. Never say names are not logged. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
+    '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. PitchSide logs WHICH coaches attended: name them from coaches_seen (name, title, games attended, latest game). For each program you show, list EVERY coach in its coaches_seen, in the order given, with their games; add "(no longer on staff)" exactly when still_on_staff is false, and never otherwise. Show at most 5 programs and offer more. For one college, pass school. Never say names are not logged. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
     '- Then structure: short bullet lists for a few facts; a Markdown table when comparing programs or seasons (3 to 10 rows, clear column headers); **bold** for the key number or name.',
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
-    '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count.',
+    '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count. The cards under the answer show at most 40 programs; never say the cards hold all of a longer list.',
     '- When find_programs or rank_by_results returns a list, the app shows those programs as cards under your answer. Summarise the top 3 to 5 in prose or a compact table; do not repeat the whole list.',
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for). Keep that order and lead with the freshman figure; the total can go in a second column.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
