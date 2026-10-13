@@ -138,6 +138,7 @@ async function run(tool, input) {
     attendance: [
       { id: 1, coach_id: 11, game_id: 100, coaches: { school_id: 'den-w', first_name: 'Ann', last_name: 'Lee', title: 'Head Coach', is_active: true }, games: { team_id: 1, game_date: '2026-09-01' } },
       { id: 2, coach_id: 11, game_id: 101, coaches: { school_id: 'den-w', first_name: 'Ann', last_name: 'Lee', title: 'Head Coach', is_active: true }, games: { team_id: 1, game_date: '2026-09-08' } },
+      { id: 6, coach_id: 15, game_id: 100, coaches: { school_id: 'den-w', first_name: 'Bo', last_name: 'Diaz', title: 'Associate Head Coach', is_active: true }, games: { team_id: 1, game_date: '2026-09-01' } },
       { id: 5, coach_id: 12, game_id: 101, coaches: { school_id: 'den-w', first_name: 'Bo', last_name: 'Diaz', title: 'Assistant Coach', is_active: false }, games: { team_id: 1, game_date: '2026-09-08' } },
       { id: 3, coach_id: 13, game_id: 101, coaches: { school_id: 'ken-w' }, games: { team_id: 1, game_date: '2026-09-08' } },
       { id: 4, coach_id: 14, game_id: 90, coaches: { school_id: 'osu-w' }, games: { team_id: 4, game_date: '2026-07-12' } },
@@ -150,8 +151,9 @@ async function run(tool, input) {
   assert.equal(r.programs[0].games, 2)
   assert.deepEqual(r.programs[0].coaches_seen, [
     { name: 'Ann Lee', title: 'Head Coach', games: 2, latest: '2026-09-08', still_on_staff: undefined },
-    { name: 'Bo Diaz', title: 'Assistant Coach', games: 1, latest: '2026-09-08', still_on_staff: false },
-  ], 'names who came, with games; flags a coach no longer on staff')
+    { name: 'Bo Diaz', title: 'Associate Head Coach', games: 2, latest: '2026-09-08', still_on_staff: undefined },
+  ], 'names who came, with games; two records for one person merge, current one wins')
+  assert.equal(r.current_season, '2026-27')
   let one = await go({ team: 'U16 Girls ECNL', school: 'Kenyon' })
   assert.deepEqual(one.programs.map(p => p.school_id), ['ken-w'], 'one college only')
   one = await go({ team: 'U16 Girls ECNL', school: 'Vanderbilt' })

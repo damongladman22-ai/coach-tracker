@@ -724,9 +724,14 @@ function buildToolSet(db, log, ctx) {
           const sid = r.coaches?.school_id
           if (!sid || r.coach_id == null) continue
           let m = who.get(sid); if (!m) who.set(sid, (m = new Map()))
-          let c = m.get(r.coach_id)
-          if (!c) m.set(r.coach_id, (c = { name: `${r.coaches.first_name || ''} ${r.coaches.last_name || ''}`.trim() || null,
-            title: r.coaches.title || null, still_on_staff: r.coaches.is_active !== false, games: new Set(), latest: null }))
+          // One person can have two coach records at a school (an old inactive
+          // row and a current one); merge them by name so they show once.
+          const name = `${r.coaches.first_name || ''} ${r.coaches.last_name || ''}`.trim() || null
+          const key = name ? norm(name) : 'id:' + r.coach_id
+          const onStaff = r.coaches.is_active !== false
+          let c = m.get(key)
+          if (!c) m.set(key, (c = { name, title: r.coaches.title || null, still_on_staff: onStaff, games: new Set(), latest: null }))
+          else if (onStaff && !c.still_on_staff) { c.still_on_staff = true; c.title = r.coaches.title || c.title }
           if (r.game_id != null) c.games.add(r.game_id)
           const d = r.games?.game_date || null
           if (d && (!c.latest || d > c.latest)) c.latest = d
@@ -746,6 +751,7 @@ function buildToolSet(db, log, ctx) {
           .sort((x, y) => y.v.games - x.v.games || String(y.v.latest || '').localeCompare(String(x.v.latest || '')))
         return {
           team: chosen.name,
+          current_season: active?.name ?? undefined,
           birth_year: birthYear(chosen) ?? undefined,
           seasons: bySeason,
           seasons_note: 'Teams move up an age group each season. The visits include the same players\' earlier seasons, listed in "seasons" with the team name they had then.',
