@@ -383,6 +383,7 @@ function buildTools(db, log, ctx = {}) {
         const n = Math.min(a.limit || 12, MAX_ROWS)
         return {
           matched: out.length,
+          showing: out.length > n ? `the first ${n} of ${out.length} in this order` : undefined,
           ranked_by: sort === 'openings'
             ? 'estimated openings for incoming freshmen (est_freshman_openings), then total; the same order as the Find programs page'
             : sort,
@@ -581,9 +582,15 @@ function buildTools(db, log, ctx = {}) {
         const label = t => (birthYear(t) ? `${t.name} (${birthYear(t)}s)` : t.name)
         // Every current team that has college coaches logged at its games (this season or its earlier seasons).
         const gamesOf = ids => new Set(att.filter(r => ids.includes(String(r.games?.team_id))).map(r => r.game_id)).size
+        const plural = n => `${n} ${n === 1 ? 'game' : 'games'}`
         const visited = current.map(t => ({ t, games: gamesOf(lineIds(t)) }))
           .filter(x => x.games > 0).sort((a, b) => b.games - a.games)
-          .map(x => `${label(x.t)}: ${x.games} ${x.games === 1 ? 'game' : 'games'} with college coaches logged, this season and earlier seasons`)
+          .map(x => {
+            const parts = lineage(x.t, teams, seasons)
+              .map(l => ({ n: gamesOf([String(l.team.id)]), season: l.season?.name, team: l.team.name }))
+              .filter(p => p.n > 0).map(p => `${plural(p.n)} in ${p.season} as ${p.team}`)
+            return `${label(x.t)}: ${plural(x.games)} with college coaches logged (${parts.join('; ')})`
+          })
         const allNames = current.map(label).slice(0, 40)
 
         let chosen = null
@@ -641,6 +648,7 @@ function buildTools(db, log, ctx = {}) {
           seasons: bySeason,
           seasons_note: 'Teams move up an age group each season. The visits include the same players\' earlier seasons, listed in "seasons" with the team name they had then.',
           matched: list.length,
+          showing: list.length > MAX_ROWS ? `the ${MAX_ROWS} programs with the most games watched, of ${list.length} in all` : undefined,
           note: list.length ? undefined : 'No college coaches logged at this team\'s games yet. Mention the teams_with_coach_visits if any.',
           teams_with_coach_visits: list.length ? undefined : visited,
           programs: list.slice(0, MAX_ROWS).map(({ sid, v, s }) => ({
@@ -680,6 +688,7 @@ function instructions() {
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
     '- Then structure: short bullet lists for a few facts; a Markdown table when comparing programs or seasons (3 to 10 rows, clear column headers); **bold** for the key number or name.',
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
+    '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count.',
     '- When find_programs or rank_by_results returns a list, the app shows those programs as cards under your answer. Summarise the top 3 to 5 in prose or a compact table; do not repeat the whole list.',
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for). Keep that order and lead with the freshman figure; the total can go in a second column.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
@@ -719,8 +728,9 @@ function readStatus(text) {
 }
 // What the page shows: everything before the STATUS / FOLLOW-UPS lines.
 function visibleAnswer(text) {
-  const m = /\n?[ \t]*\**(STATUS|FOLLOW-?UPS):?/i.exec(text || '')
-  return (m ? text.slice(0, m.index) : text || '').trim()
+  const t = text || ''
+  const f = /\n?[ \t]*\**FOLLOW-?UPS\b/i.exec(t)
+  return (f ? t.slice(0, f.index) : t).replace(/^[ \t]*\**STATUS\b[^\n]*(\n|$)/gim, '').trim()
 }
 function lookupSummary(log) {
   return log.map(l => {

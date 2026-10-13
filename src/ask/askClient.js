@@ -42,16 +42,7 @@ export async function streamAsk(messages, { signal, onEvent, context }) {
 /** Split the model's text into the visible answer and its FOLLOW-UPS line.
  *  The STATUS line (answered / partial / unavailable, for the question log)
  *  and the FOLLOW-UPS line are never shown as text. */
-export function splitAnswer(text) {
-  const t = text || ''
-  const cut = /\n?[ \t]*\**(STATUS|FOLLOW-?UPS):?/i.exec(t)
-  const body = (cut ? t.slice(0, cut.index) : t).trimEnd()
-  const m = /\**FOLLOW-?UPS:?\**:?/i.exec(t)
-  if (!m) return { body, followups: [] }
-  const followups = t.slice(m.index + m[0].length).split('|')
-    .map(s => s.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s+/, '').trim()).filter(s => s.length > 3).slice(0, 3)
-  return { body, followups }
-}
+export { stripMeta, splitAnswer } from './answerText.js'
 
 const LOOKUP_LABEL = {
   find_school: i => `Finding ${i?.name || 'the program'}`,
