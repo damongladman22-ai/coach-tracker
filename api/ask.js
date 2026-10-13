@@ -25,7 +25,11 @@ import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr } from '../src/l
 
 export const config = { maxDuration: 60 }
 
-const DEFAULT_MODEL = 'openai/gpt-5.6-luna'
+// Default and fallback chosen from the bake-off (Damon, 2026-10-13): Claude Haiku
+// 5.5 (20/20, cheapest reliable, fastest); if it fails or its provider is down,
+// the gateway retries the same request on GPT-5.6 Luna (also 20/20).
+const DEFAULT_MODEL = 'anthropic/claude-haiku-5.5'
+const FALLBACK_MODEL = 'openai/gpt-5.6-luna'
 const MODEL_RE = /^[a-z0-9-]+\/[a-z0-9.\-:]+$/i
 const MAX_ROWS = 25
 const PAGE = 1000
@@ -321,7 +325,10 @@ export default async function handler(req, res) {
       tools: buildTools(readClient(), log),
       stopWhen: stepCountIs(6),
       maxOutputTokens: 1200,
-      providerOptions: { gateway: { disallowPromptTraining: true, caching: 'auto', tags: ['pitchside-ask'], user: who.email } },
+      providerOptions: { gateway: {
+        disallowPromptTraining: true, caching: 'auto', tags: ['pitchside-ask'], user: who.email,
+        ...(model === DEFAULT_MODEL ? { models: [FALLBACK_MODEL] } : {}),
+      } },
     })
     const usage = result.totalUsage || result.usage || {}
     const gw = result.providerMetadata?.gateway || null
