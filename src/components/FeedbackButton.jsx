@@ -22,10 +22,21 @@ import { supabase } from '../lib/supabase';
  * sticks to the bottom of the scrollable content instead of floating
  * above the viewport. The portal escapes the transform tree entirely.
  *
+ * Room at the bottom of the page: the button floats over the page, so
+ * without extra room the last row of a list ends up underneath it and the
+ * page cannot scroll any further (Coach Directory, 13 Oct 2026). A blank
+ * spacer is rendered IN the page, where <FeedbackButton /> is placed (the end
+ * of each page's root div), so it takes the page's own background colour. It
+ * is as tall as the button plus its margins, so the last row can always be
+ * scrolled clear of the button.
+ *
  * Props:
  * - position: 'bottom-left' (default) or 'bottom-right'
  * - offset: additional bottom offset in pixels (for pages with bottom nav)
  */
+
+// Button: 16px from the bottom edge + about 40px tall. 16px clearance above.
+const BUTTON_CLEARANCE_PX = 72;
 export default function FeedbackButton({ position = 'bottom-left', offset = 0 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -112,137 +123,143 @@ export default function FeedbackButton({ position = 'bottom-left', offset = 0 })
     return null;
   }
 
-  return createPortal(
+  return (
     <>
-      {/* Floating Button */}
-      <button
-        onClick={handleOpen}
-        style={{ bottom: `${16 + offset}px` }}
-        className={`fixed ${positionClasses} z-40 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-200 hover:scale-105 flex items-center gap-2 px-4 py-2 text-sm font-medium`}
-        aria-label="Send feedback"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-        </svg>
-        <span className="hidden sm:inline">Feedback</span>
-      </button>
-
-      {/* Modal Overlay */}
-      {isOpen && (
-        <div 
-          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-4"
-          onClick={handleClose}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="feedback-modal-title"
-        >
-          {/* Modal Content */}
-          <div 
-            className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl"
-            onClick={e => e.stopPropagation()}
+      {/* In-page spacer so the last row can scroll clear of the button. */}
+      <div aria-hidden="true" style={{ height: `${BUTTON_CLEARANCE_PX + offset}px` }} />
+      {createPortal(
+        <>
+          {/* Floating Button */}
+          <button
+            onClick={handleOpen}
+            style={{ bottom: `${16 + offset}px` }}
+            className={`fixed ${positionClasses} z-40 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg transition-all duration-200 hover:scale-105 flex items-center gap-2 px-4 py-2 text-sm font-medium`}
+            aria-label="Send feedback"
           >
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <h2 id="feedback-modal-title" className="text-lg font-semibold text-gray-900">Send Feedback</h2>
-              <button 
-                onClick={handleClose}
-                className="text-gray-400 hover:text-gray-600 p-2 -m-2"
-                aria-label="Close feedback modal"
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span className="hidden sm:inline">Feedback</span>
+          </button>
+
+          {/* Modal Overlay */}
+          {isOpen && (
+            <div 
+              className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-end sm:items-center justify-center p-4"
+              onClick={handleClose}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="feedback-modal-title"
+            >
+              {/* Modal Content */}
+              <div 
+                className="bg-white rounded-t-2xl sm:rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto shadow-xl"
+                onClick={e => e.stopPropagation()}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-4">
-              {submitted ? (
-                <div className="text-center py-8">
-                  <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Thank You!</h3>
-                  <p className="text-gray-600">Your feedback has been submitted.</p>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {/* Feedback Type */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Type of Feedback
-                    </label>
-                    <select
-                      value={feedbackType}
-                      onChange={e => setFeedbackType(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="suggestion">💡 Suggestion</option>
-                      <option value="bug">🐛 Report a Bug</option>
-                    </select>
-                  </div>
-
-                  {/* Message */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Your Feedback <span className="text-red-500">*</span>
-                    </label>
-                    <textarea
-                      value={message}
-                      onChange={e => setMessage(e.target.value)}
-                      placeholder="Tell us what's on your mind..."
-                      rows={4}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                      required
-                    />
-                  </div>
-
-                  {/* Error Message */}
-                  {error && (
-                    <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-                      {error}
-                    </div>
-                  )}
-
-                  {/* Submit Button */}
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                {/* Header */}
+                <div className="flex items-center justify-between p-4 border-b">
+                  <h2 id="feedback-modal-title" className="text-lg font-semibold text-gray-900">Send Feedback</h2>
+                  <button 
+                    onClick={handleClose}
+                    className="text-gray-400 hover:text-gray-600 p-2 -m-2"
+                    aria-label="Close feedback modal"
                   >
-                    {submitting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                        </svg>
-                        Send Feedback
-                      </>
-                    )}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
                   </button>
-                </form>
-              )}
-            </div>
+                </div>
 
-            {/* Footer */}
-            <div className="px-4 pb-4">
-              <p className="text-xs text-gray-400 text-center">
-                Your feedback helps us improve the app for everyone
-              </p>
-            </div>
+                {/* Body */}
+                <div className="p-4">
+                  {submitted ? (
+                    <div className="text-center py-8">
+                      <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Thank You!</h3>
+                      <p className="text-gray-600">Your feedback has been submitted.</p>
+                    </div>
+                  ) : (
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                      {/* Feedback Type */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Type of Feedback
+                        </label>
+                        <select
+                          value={feedbackType}
+                          onChange={e => setFeedbackType(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="suggestion">💡 Suggestion</option>
+                          <option value="bug">🐛 Report a Bug</option>
+                        </select>
+                      </div>
+
+                      {/* Message */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Your Feedback <span className="text-red-500">*</span>
+                        </label>
+                        <textarea
+                          value={message}
+                          onChange={e => setMessage(e.target.value)}
+                          placeholder="Tell us what's on your mind..."
+                          rows={4}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                          required
+                        />
+                      </div>
+
+                      {/* Error Message */}
+                      {error && (
+                        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                          {error}
+                        </div>
+                      )}
+
+                      {/* Submit Button */}
+                      <button
+                        type="submit"
+                        disabled={submitting}
+                        className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors flex items-center justify-center gap-2"
+                      >
+                        {submitting ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            Sending...
+                          </>
+                        ) : (
+                          <>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                            </svg>
+                            Send Feedback
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-4 pb-4">
+                  <p className="text-xs text-gray-400 text-center">
+                    Your feedback helps us improve the app for everyone
+                  </p>
+                </div>
             
-            {/* Spacer for mobile keyboard */}
-            <div className="h-32 sm:h-0"></div>
-          </div>
-        </div>
+                {/* Spacer for mobile keyboard */}
+                <div className="h-32 sm:h-0"></div>
+              </div>
+            </div>
+          )}
+        </>,
+        document.body
       )}
-    </>,
-    document.body
+    </>
   );
 }
