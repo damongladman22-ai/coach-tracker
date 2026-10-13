@@ -204,8 +204,76 @@ function cardMetric(sort, row, openings) {
   return { value: pct(row.admission_rate), label: 'admitted' }
 }
 
+// ── matching a college name (find_school, and the program look-ups) ─────────
+function matchSchools(ref, name, gender) {
+  // Words people add that are not part of any name: "the Buckeyes",
+  // "Penn State women's soccer team".
+  const cleaned = String(name || '').replace(/\b(the|team|teams|soccer|program|programs|women'?s|men'?s|womens|mens|girls|boys)\b/gi, ' ')
+    .replace(/\s+/g, ' ').trim() || String(name || '')
+  const terms = expandTerms(cleaned)
+  if (!terms.length) return []
+  const scored = []
+  for (const s of ref.schools) {
+    if (gender && s.program_gender !== gender) continue
+    const score = scoreSchool(s, terms, { query: cleaned, fields: ['name', 'city', 'state'] })
+    if (score > 0) scored.push({ s, score })
+  }
+  scored.sort((a, b) => b.score - a.score || String(a.s.school).localeCompare(String(b.s.school)))
+  const top = scored.length ? scored[0].score : 0
+  return scored.filter(x => x.score >= top * 0.6).slice(0, 10).map(x => x.s)
+}
+const matchRow = s => ({ school_id: s.id, school: s.school, gender: s.program_gender,
+  division: s.division, conference: s.conference, city: s.city, state: s.state })
+
+// The model may name the college instead of passing a school_id, which saves a
+// find_school round trip. Returns { s } or { result } (no match / several).
+async function pickSchool(db, { school_id, school, gender }) {
+  const ref = await refData(db)
+  if (school_id && ref.byId.has(school_id)) return { s: ref.byId.get(school_id) }
+  if (!school) return { result: { error: 'Give school (the college name) or a school_id from find_school.' } }
+  const found = matchSchools(ref, school, gender)
+  if (found.length === 1) return { s: found[0] }
+  if (!found.length) return { result: { matches: [], note: `No program matched "${school}", even allowing for typos. It may have closed, or PitchSide may not track it.` } }
+  return { result: { matches: found.map(matchRow), note: 'Several programs match. Call again with the school_id of the one the person means (or ask, if it is unclear, e.g. men\'s or women\'s).' } }
+}
+const programHead = s => ({ school_id: s.id, school: s.school, gender: s.program_gender, division: s.division, conference: s.conference })
+const SCHOOL_INPUT = {
+  school: z.string().optional().describe('College name as the person wrote it (typos fine); use this OR school_id'),
+  gender: z.enum(['M', 'W']).optional().describe('M = men\'s program, W = women\'s program'),
+  school_id: z.string().optional().describe('From find_school or an earlier look-up'),
+}
+
+// What the model reads from a look-up: no empty fields, no UI-only card data,
+// and at most 15 programs (the cards under the answer show every row). Less to
+// read means a faster answer; the browser still gets the full output.
+const MODEL_ROWS = 15
+function lean(v) {
+  if (Array.isArray(v)) return v.map(lean)
+  if (v && typeof v === 'object') {
+    const o = {}
+    for (const [k, x] of Object.entries(v)) { if (x == null || x === '' || k === 'card') continue; o[k] = lean(x) }
+    return o
+  }
+  return v
+}
+function modelView({ output }) {
+  let o = output
+  for (const key of ['programs', 'majors']) {
+    if (o && Array.isArray(o[key]) && o[key].length > MODEL_ROWS) {
+      const total = o.matched ?? o[key].length
+      o = { ...o, [key]: o[key].slice(0, MODEL_ROWS), showing: `the first ${MODEL_ROWS} of ${total}, in order; the app shows all ${Math.min(total, o[key].length)} returned as cards` }
+    }
+  }
+  return { type: 'json', value: lean(o) }
+}
+
 // ── the look-ups ────────────────────────────────────────────────────────────
 function buildTools(db, log, ctx = {}) {
+  const tools = buildToolSet(db, log, ctx)
+  for (const t of Object.values(tools)) t.toModelOutput = modelView
+  return tools
+}
+function buildToolSet(db, log, ctx) {
   const run = (name, fn) => async (input) => {
     const t0 = Date.now()
     try {
@@ -230,25 +298,11 @@ function buildTools(db, log, ctx = {}) {
       }),
       execute: run('find_school', async ({ name, gender }) => {
         const ref = await refData(db)
-        // Words people add that are not part of any name: "the Buckeyes",
-        // "Penn State women's soccer team".
-        const cleaned = String(name || '').replace(/\b(the|team|teams|soccer|program|programs|women'?s|men'?s|womens|mens|girls|boys)\b/gi, ' ')
-          .replace(/\s+/g, ' ').trim() || String(name || '')
-        const terms = expandTerms(cleaned)
-        if (!terms.length) return { matches: [], note: 'No name given.' }
-        const scored = []
-        for (const s of ref.schools) {
-          if (gender && s.program_gender !== gender) continue
-          const score = scoreSchool(s, terms, { query: cleaned, fields: ['name', 'city', 'state'] })
-          if (score > 0) scored.push({ s, score })
-        }
-        scored.sort((a, b) => b.score - a.score || String(a.s.school).localeCompare(String(b.s.school)))
-        const top = scored.length ? scored[0].score : 0
-        const keep = scored.filter(x => x.score >= top * 0.6).slice(0, 10)
+        if (!String(name || '').trim()) return { matches: [], note: 'No name given.' }
+        const keep = matchSchools(ref, name, gender)
         if (!keep.length) return { matches: [], note: 'No program matched that name, even allowing for typos. It may have closed, or PitchSide may not track it.' }
         return {
-          matches: keep.map(({ s }) => ({ school_id: s.id, school: s.school, gender: s.program_gender,
-            division: s.division, conference: s.conference, city: s.city, state: s.state })),
+          matches: keep.map(matchRow),
           note: keep.length > 1 ? 'Several programs match; pick the one the person means, or ask if it is unclear.' : undefined,
         }
       }),
@@ -420,13 +474,16 @@ function buildTools(db, log, ctx = {}) {
     program_majors: tool({
       description: 'Majors one college awarded in the last two years (U.S. College Scorecard), optionally searched, e.g. "does Denison offer nursing", "what engineering majors does Purdue have".',
       inputSchema: z.object({
-        school_id: z.string(),
+        ...SCHOOL_INPUT,
         search: z.string().optional().describe('Words to look for in the major titles, e.g. "nursing", "business"'),
       }),
-      execute: run('program_majors', async ({ school_id, search }) => {
+      execute: run('program_majors', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const school_id = p.s.id, search = a.search
         const ref = await refData(db)
         const unitid = ref.unitOf.get(school_id)
-        if (!unitid) return { majors: [], note: 'PitchSide has no federal college record linked to this program.' }
+        if (!unitid) return { program: programHead(p.s), majors: [], note: 'PitchSide has no federal college record linked to this program.' }
         const { data, error } = await db.from('college_majors')
           .select('title, family_title, credential_level, graduates_2yr').eq('unitid', unitid).in('credential_level', [2, 3]).limit(1000)
         if (error) throw new Error(error.message)
@@ -437,6 +494,7 @@ function buildTools(db, log, ctx = {}) {
         }
         rows.sort((x, y) => (y.graduates_2yr || 0) - (x.graduates_2yr || 0))
         return {
+          program: programHead(p.s),
           total_majors_awarded: (data || []).length,
           matched: rows.length,
           majors: rows.slice(0, 40).map(m => ({ major: m.title, field: m.family_title,
@@ -447,13 +505,16 @@ function buildTools(db, log, ctx = {}) {
 
     program_results: tool({
       description: 'Season-by-season record for one program: wins, losses, ties, conference record and RPI rank (D-I) where known.',
-      inputSchema: z.object({ school_id: z.string() }),
-      execute: run('program_results', async ({ school_id }) => {
+      inputSchema: z.object(SCHOOL_INPUT),
+      execute: run('program_results', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const school_id = p.s.id
         const { data, error } = await db.from('program_results')
           .select('season, division, conference, wins, losses, ties, win_pct, conf_wins, conf_losses, conf_ties, rpi_rank')
           .eq('school_id', school_id).order('season', { ascending: false }).limit(10)
         if (error) throw new Error(error.message)
-        return { seasons: data || [] }
+        return { program: programHead(p.s), seasons: data || [] }
       }),
     }),
 
@@ -500,8 +561,11 @@ function buildTools(db, log, ctx = {}) {
     program_transfers: tool({
       description: 'Transfers into and out of one program by roster season: how many players arrived from (in) or left for (out) ' +
         'other college programs, by the other program\'s division and whether the move was up, down or lateral.',
-      inputSchema: z.object({ school_id: z.string() }),
-      execute: run('program_transfers', async ({ school_id }) => {
+      inputSchema: z.object(SCHOOL_INPUT),
+      execute: run('program_transfers', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const school_id = p.s.id
         const { data, error } = await db.from('program_transfer_summary')
           .select('roster_season, direction, counterpart_division, move, n').eq('school_id', school_id)
         if (error) throw new Error(error.message)
@@ -512,19 +576,22 @@ function buildTools(db, log, ctx = {}) {
           by[k].total += r.n
           by[k].by_division[r.counterpart_division || 'unknown'] = (by[k].by_division[r.counterpart_division || 'unknown'] || 0) + r.n
         }
-        return { note: 'Counts only transfers PitchSide could trace between two college rosters.',
+        return { program: programHead(p.s), note: 'Counts only transfers PitchSide could trace between two college rosters.',
           seasons: Object.values(by).sort((a, b) => b.roster_season - a.roster_season || a.direction.localeCompare(b.direction)) }
       }),
     }),
 
     program_coaches: tool({
       description: 'The current coaching staff of one program, with titles and published email addresses.',
-      inputSchema: z.object({ school_id: z.string() }),
-      execute: run('program_coaches', async ({ school_id }) => {
+      inputSchema: z.object(SCHOOL_INPUT),
+      execute: run('program_coaches', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const school_id = p.s.id
         const { data, error } = await db.from('coaches').select('first_name, last_name, title, email')
           .eq('school_id', school_id).eq('is_active', true)
         if (error) throw new Error(error.message)
-        return { coaches: (data || []).map(c => ({ name: `${c.first_name} ${c.last_name}`.trim(), title: c.title, email: c.email })) }
+        return { program: programHead(p.s), coaches: (data || []).map(c => ({ name: `${c.first_name} ${c.last_name}`.trim(), title: c.title, email: c.email })) }
       }),
     }),
 
@@ -532,8 +599,11 @@ function buildTools(db, log, ctx = {}) {
       description: 'Profile facts for one program: location and division, recruiting style (freshmen vs transfers, in-state reach, ' +
         'international share, roster stability, each read against similar programs), expected early-departure rate, ' +
         'and campus facts from the U.S. College Scorecard (undergraduates, average net price, admission rate, graduation rate).',
-      inputSchema: z.object({ school_id: z.string() }),
-      execute: run('program_profile', async ({ school_id }) => {
+      inputSchema: z.object(SCHOOL_INPUT),
+      execute: run('program_profile', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const school_id = p.s.id
         const [s, style, dep, link] = await Promise.all([
           db.from('schools').select('school, program_gender, division, conference, city, state').eq('id', school_id).maybeSingle(),
           db.from('program_recruiting_style').select('build_band, reach_band, abroad_band, stability_band').eq('school_id', school_id).maybeSingle(),
@@ -543,7 +613,7 @@ function buildTools(db, log, ctx = {}) {
         ])
         if (!s.data) return { error: 'No program with that id.' }
         return {
-          program: s.data,
+          program: { school_id, ...s.data },
           recruiting_style: style.data ? {
             builds_with: { low: 'mostly freshmen', typical: 'a typical mix', high: 'more transfers than peers' }[style.data.build_band] || null,
             in_state_reach: style.data.reach_band, international_share: style.data.abroad_band, roster_stability: style.data.stability_band,
@@ -672,7 +742,7 @@ function instructions() {
     'FACTS',
     '- Answer ONLY from the results of the look-up tools. Never use outside knowledge for numbers, names, records, rankings or coaches.',
     '- If the look-ups do not hold what was asked, say plainly that PitchSide does not have it, and suggest what it can answer instead. Do not guess.',
-    '- Always resolve a college name with find_school first, then pass its school_id to the other tools. If both a men\'s and a women\'s program match and the question does not say which, answer for the one the conversation is about, or ask.',
+    '- The program look-ups (program_results, program_coaches, program_profile, program_transfers, program_majors) take the college name directly (school, plus gender when known); call them straight away, several at once when the question needs several. Use find_school only to search for a college, or when a look-up returns several matches. If both a men\'s and a women\'s program match and the question does not say which, answer for the one the conversation is about, or ask.',
     '- Openings are ESTIMATES (graduations, expected early departures, usual freshman intake); incoming commits are not known. Say "estimated".',
     '- Do not give advice on NCAA recruiting rules or contact dates, and do not discuss or rank individual players.',
     '- People write in every way: typos, slang ("keeper", "D1", "class of \'28", "the Buckeyes"), half sentences. Work out what they mean and use the look-ups; find_school tolerates typos and nicknames.',
@@ -693,7 +763,7 @@ function instructions() {
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for). Keep that order and lead with the freshman figure; the total can go in a second column.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
-    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 200 words unless a table needs more.',
+    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words. Tables: at most 5 rows; the cards under the answer show the full list.',
     '- After the answer, on its own line, write: STATUS: answered | partial | unavailable | clarify, followed by " - " and the missing topic in a few words when not fully answered (for example "STATUS: unavailable - ID camps"). The app hides this line and logs it so PitchSide can fill data gaps.',
     '- Then, on the very last line, write exactly: FOLLOW-UPS: question one | question two | question three',
     '  These are three short follow-up questions the reader might ask next that the look-ups can answer. The app turns them into buttons and hides this line.',
@@ -884,4 +954,4 @@ export default async function handler(req, res) {
 }
 
 // For test/ask.test.mjs only (no network): the pieces that can be checked offline.
-export const _internals = { buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; CATALOG = null } }
+export const _internals = { modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; CATALOG = null } }

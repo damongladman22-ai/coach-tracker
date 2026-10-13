@@ -205,4 +205,26 @@ async function run(tool, input) {
   assert.ok(/could not find/.test(r.note))
 }
 
+
+// speed: program look-ups take a college name; the model reads a trimmed copy
+{
+  let r = await run('program_majors', { school: 'Wisconson', search: 'engineering' })
+  assert.equal(r.program.school_id, 'wis-w', 'name instead of school_id, typo and all')
+  assert.equal(r.matched, 1)
+  r = await run('program_coaches', { school: 'Siena Heights' })
+  assert.equal(r.matches.length, 0)
+  r = await run('program_results', { school: 'University', gender: 'W' })
+  assert.ok(r.matches.length > 1 && /Several programs/.test(r.note), 'several matches: asks for a school_id')
+  r = await run('program_results', {})
+  assert.ok(r.error)
+  const big = { matched: 226, programs: Array.from({ length: 40 }, (_, i) => ({ school_id: 's' + i, school: 'S' + i, coaches: null, games: 40 - i, card: { value: 1, label: 'x' } })) }
+  const v = T.modelView({ output: big }).value
+  assert.equal(v.programs.length, 15)
+  assert.equal(v.matched, 226)
+  assert.ok(/first 15 of 226/.test(v.showing))
+  assert.equal(v.programs[0].card, undefined, 'card data is for the app only')
+  assert.ok(!('coaches' in v.programs[0]), 'empty fields dropped')
+  assert.equal(big.programs.length, 40, 'the full output is untouched for the cards')
+}
+
 console.log('ask.test.mjs: all assertions passed')

@@ -47,6 +47,9 @@ const secs = ms => (ms == null ? '—' : `${(ms / 1000).toFixed(1)}s`)
 
 function checkLookups(test, res) {
   const used = new Set((res?.lookups || []).map(l => l.tool))
+  // Program look-ups can take the college name directly (2026-10-13), which
+  // replaces the find_school step.
+  if ((res?.lookups || []).some(l => l.input?.school)) used.add('find_school')
   if (res?.error) return { ok: false, text: 'error' }
   if (test.none) return used.size === 0 ? { ok: true, text: 'no look-ups (expected)' } : { ok: null, text: `used ${[...used].join(', ')}` }
   const missing = test.expect.filter(t => !used.has(t))
