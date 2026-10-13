@@ -104,7 +104,9 @@ function ProgramCards({ items, logosEnabled }) {
           const big = openings
             ? (p.est_freshman_openings ?? p.est_total_openings)
             : (p.rpi_rank != null ? `#${p.rpi_rank}` : p.record)
-          const small = openings ? 'est. openings' : (p.rpi_rank != null ? `RPI · ${p.record}` : 'record')
+          const small = openings
+            ? (p.est_freshman_openings != null ? 'est. freshman openings' : 'est. openings')
+            : (p.rpi_rank != null ? `RPI · ${p.record}` : 'record')
           return (
             <Link key={p.school_id} to={`/school/${p.school_id}`}
               className="flex items-center gap-3 bg-white border border-[#E5E8EB] rounded-xl px-3 py-2.5 hover:border-gray-400 hover:shadow-sm transition">
@@ -214,7 +216,7 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, busy }) {
         {!streaming && m.status === 'done' && (
           <>
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-              {sources.length > 0 && <span>Based on: {sources.join(' · ')}</span>}
+              {sources.length > 0 && <span>Sources: {sources.join(' · ')}</span>}
               {m.lookups?.some(l => l.tool !== 'find_school') && (
                 <button type="button" onClick={() => setShowData(s => !s)} className="text-[#1d4ed8] hover:underline">
                   {showData ? 'Hide the data' : 'Show the data'}
@@ -254,7 +256,7 @@ function EmptyState({ onPick }) {
       <div className="mt-8 grid sm:grid-cols-2 gap-3 text-left">
         {SUGGESTIONS.map(s => (
           <button key={s.q} type="button" onClick={() => onPick(s.q)}
-            className="bg-white border border-[#E5E8EB] rounded-xl px-4 py-3 hover:border-gray-400 hover:shadow-sm transition">
+            className="text-left bg-white border border-[#E5E8EB] rounded-xl px-4 py-3 hover:border-gray-400 hover:shadow-sm transition">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{s.label}</div>
             <div className="mt-1 text-sm text-gray-800">{s.q}</div>
           </button>
@@ -361,7 +363,7 @@ export default function AskPitchSide({ session }) {
                     <div className="max-w-[85%] bg-[#0a1628] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] whitespace-pre-wrap">{m.content}</div>
                   </div>)
                 : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={send} busy={busy} />))}
-              <div ref={endRef} />
+              <div ref={endRef} style={{ scrollMarginBottom: 150 }} />
             </div>
           )}
       </div>

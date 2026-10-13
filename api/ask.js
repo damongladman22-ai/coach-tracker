@@ -89,11 +89,11 @@ function buildTools(db, log) {
 
   return {
     find_school: tool({
-      description: 'Find college soccer programmes by name, nickname or short name (e.g. "Ohio State", "Pitt", "UConn"). ' +
-        'Returns programme ids for the other look-ups. Each college has a separate men\'s and women\'s programme.',
+      description: 'Find college soccer programs by name, nickname or short name (e.g. "Ohio State", "Pitt", "UConn"). ' +
+        'Returns program ids for the other look-ups. Each college has a separate men\'s and women\'s program.',
       inputSchema: z.object({
         name: z.string().describe('College name, short name or nickname'),
-        gender: z.enum(['M', 'W']).optional().describe('M = men\'s programme, W = women\'s programme'),
+        gender: z.enum(['M', 'W']).optional().describe('M = men\'s program, W = women\'s program'),
       }),
       execute: run('find_school', async ({ name, gender }) => {
         const q = norm(name)
@@ -103,7 +103,7 @@ function buildTools(db, log) {
         let byName = db.from('schools').select('id').ilike('school', `%${name.trim()}%`).neq('is_active', false).limit(20)
         const { data: nm } = await byName
         for (const r of nm || []) ids.add(r.id)
-        if (!ids.size) return { matches: [], note: 'No programme matched that name.' }
+        if (!ids.size) return { matches: [], note: 'No program matched that name.' }
         let sq = db.from('schools').select('id, school, program_gender, division, conference, city, state')
           .in('id', [...ids]).neq('is_active', false)
         if (gender) sq = sq.eq('program_gender', gender)
@@ -115,9 +115,9 @@ function buildTools(db, log) {
     }),
 
     find_programs: tool({
-      description: 'Rank programmes by ESTIMATED roster openings for one position and one high-school graduating class ' +
+      description: 'Rank programs by ESTIMATED roster openings for one position and one high-school graduating class ' +
         '(the same numbers as the Find programs page). Optional filters: divisions, states, conference. ' +
-        'Openings are an estimate from graduations plus expected early departures and how many freshmen the programme usually signs; ' +
+        'Openings are an estimate from graduations plus expected early departures and how many freshmen the program usually signs; ' +
         'incoming commits are NOT known.',
       inputSchema: z.object({
         gender: z.enum(['M', 'W']),
@@ -161,7 +161,7 @@ function buildTools(db, log) {
     }),
 
     program_results: tool({
-      description: 'Season-by-season record for one programme: wins, losses, ties, conference record and RPI rank (D-I) where known.',
+      description: 'Season-by-season record for one program: wins, losses, ties, conference record and RPI rank (D-I) where known.',
       inputSchema: z.object({ school_id: z.string() }),
       execute: run('program_results', async ({ school_id }) => {
         const { data, error } = await db.from('program_results')
@@ -173,7 +173,7 @@ function buildTools(db, log) {
     }),
 
     rank_by_results: tool({
-      description: 'Rank programmes by RPI rank (NCAA D-I only) or by win percentage for one season, with optional division, conference and state filters.',
+      description: 'Rank programs by RPI rank (NCAA D-I only) or by win percentage for one season, with optional division, conference and state filters.',
       inputSchema: z.object({
         gender: z.enum(['M', 'W']),
         season: z.number().int().describe('Season year, e.g. 2026 (in progress) or 2025'),
@@ -204,7 +204,7 @@ function buildTools(db, log) {
         const n = Math.min(limit || 10, MAX_ROWS)
         return {
           matched: kept.length,
-          note: sort === 'win_pct' ? 'Programmes with fewer than 5 games are left out.' : undefined,
+          note: sort === 'win_pct' ? 'Programs with fewer than 5 games are left out.' : undefined,
           programs: kept.slice(0, n).map(r => ({ school_id: r.school_id, school: r.schools.school, division: r.schools.division,
             conference: r.conference, state: stateAbbr(r.schools.state), record: `${r.wins}-${r.losses}-${r.ties}`,
             win_pct: round(r.win_pct, 3), rpi_rank: r.rpi_rank })),
@@ -213,8 +213,8 @@ function buildTools(db, log) {
     }),
 
     program_transfers: tool({
-      description: 'Transfers into and out of one programme by roster season: how many players arrived from (in) or left for (out) ' +
-        'other college programmes, by the other programme\'s division and whether the move was up, down or lateral.',
+      description: 'Transfers into and out of one program by roster season: how many players arrived from (in) or left for (out) ' +
+        'other college programs, by the other program\'s division and whether the move was up, down or lateral.',
       inputSchema: z.object({ school_id: z.string() }),
       execute: run('program_transfers', async ({ school_id }) => {
         const { data, error } = await db.from('program_transfer_summary')
@@ -233,7 +233,7 @@ function buildTools(db, log) {
     }),
 
     program_coaches: tool({
-      description: 'The current coaching staff of one programme, with titles and published email addresses.',
+      description: 'The current coaching staff of one program, with titles and published email addresses.',
       inputSchema: z.object({ school_id: z.string() }),
       execute: run('program_coaches', async ({ school_id }) => {
         const { data, error } = await db.from('coaches').select('first_name, last_name, title, email')
@@ -244,8 +244,8 @@ function buildTools(db, log) {
     }),
 
     program_profile: tool({
-      description: 'Profile facts for one programme: location and division, recruiting style (freshmen vs transfers, in-state reach, ' +
-        'international share, roster stability, each read against similar programmes), expected early-departure rate, ' +
+      description: 'Profile facts for one program: location and division, recruiting style (freshmen vs transfers, in-state reach, ' +
+        'international share, roster stability, each read against similar programs), expected early-departure rate, ' +
         'and campus facts from the U.S. College Scorecard (undergraduates, average net price, admission rate, graduation rate).',
       inputSchema: z.object({ school_id: z.string() }),
       execute: run('program_profile', async ({ school_id }) => {
@@ -256,13 +256,13 @@ function buildTools(db, log) {
           db.from('school_federal_college').select('unitid, college_facts(federal_name, undergrad_enrollment, avg_net_price, cost_of_attendance, admission_rate, graduation_rate, locale, control)')
             .eq('school_id', school_id).maybeSingle(),
         ])
-        if (!s.data) return { error: 'No programme with that id.' }
+        if (!s.data) return { error: 'No program with that id.' }
         return {
-          programme: s.data,
+          program: s.data,
           recruiting_style: style.data ? {
             builds_with: { low: 'mostly freshmen', typical: 'a typical mix', high: 'more transfers than peers' }[style.data.build_band] || null,
             in_state_reach: style.data.reach_band, international_share: style.data.abroad_band, roster_stability: style.data.stability_band,
-            note: 'Bands are low / typical / high against similar programmes.',
+            note: 'Bands are low / typical / high against similar programs.',
           } : null,
           expected_early_departure_rate: dep.data ? { rate: round(dep.data.outlook_rate, 3), seasons_tracked: dep.data.transitions, basis: dep.data.basis } : null,
           college_facts: link.data?.college_facts || null,
@@ -282,19 +282,19 @@ function instructions() {
     'FACTS',
     '- Answer ONLY from the results of the look-up tools. Never use outside knowledge for numbers, names, records, rankings or coaches.',
     '- If the look-ups do not hold what was asked, say plainly that PitchSide does not have it, and suggest what it can answer instead. Do not guess.',
-    '- Always resolve a college name with find_school first, then pass its school_id to the other tools. If both a men\'s and a women\'s programme match and the question does not say which, answer for the one the conversation is about, or ask.',
+    '- Always resolve a college name with find_school first, then pass its school_id to the other tools. If both a men\'s and a women\'s program match and the question does not say which, answer for the one the conversation is about, or ask.',
     '- Openings are ESTIMATES (graduations, expected early departures, usual freshman intake); incoming commits are not known. Say "estimated".',
     '- Do not give advice on NCAA recruiting rules or contact dates, and do not discuss or rank individual players.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
-    '- Then structure: short bullet lists for a few facts; a Markdown table when comparing programmes or seasons (3 to 10 rows, clear column headers); **bold** for the key number or name.',
-    '- Link every programme you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
-    '- When find_programs or rank_by_results returns a list, the app shows those programmes as cards under your answer. Summarise the top 3 to 5 in prose or a compact table; do not repeat the whole list.',
+    '- Then structure: short bullet lists for a few facts; a Markdown table when comparing programs or seasons (3 to 10 rows, clear column headers); **bold** for the key number or name.',
+    '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
+    '- When find_programs or rank_by_results returns a list, the app shows those programs as cards under your answer. Summarise the top 3 to 5 in prose or a compact table; do not repeat the whole list.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
-    '- Write in American English, with no em dashes. Keep the whole answer under about 200 words unless a table needs more.',
+    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 200 words unless a table needs more.',
     '- After the answer, on the very last line, write exactly: FOLLOW-UPS: question one | question two | question three',
     '  These are three short follow-up questions the reader might ask next that the look-ups can answer. The app turns them into buttons and hides this line.',
   ].join('\n')
