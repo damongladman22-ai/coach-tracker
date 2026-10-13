@@ -9,6 +9,7 @@ import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { PageLoader } from '../components/LoadingStates'
 import OPLogo from '../components/OPLogo'
 import { streamAsk, splitAnswer, lookupLabel, sourceLabels, programCards } from '../ask/askClient'
+import { getFavorites } from '../hooks/useFavorite'
 
 /**
  * Ask PitchSide — the consumer chat experience for the AI assistant (backlog F2).
@@ -31,11 +32,11 @@ import { streamAsk, splitAnswer, lookupLabel, sourceLabels, programCards } from 
 const STORE_KEY = 'ask-pitchside-thread-v1'
 const SUGGESTIONS = [
   { label: 'Openings', q: "Which Big Ten women's programs have the most estimated goalkeeper openings for the class of 2027?" },
-  { label: 'Find a fit', q: "Show NCAA D3 men's programs in Ohio with the most defender openings for the class of 2028." },
+  { label: 'Academic fit', q: "Women's D3 programs in Ohio or Pennsylvania with an average SAT around 1300 that offer nursing" },
+  { label: 'Your team', q: 'Which college programs have watched our team play?' },
   { label: 'Results', q: "What are the top 10 NCAA D1 women's teams by RPI right now?" },
-  { label: 'A program', q: "How has Ohio State women's soccer done over the last three seasons?" },
-  { label: 'Coaches', q: "Who coaches the Penn State women's soccer team?" },
-  { label: 'Transfers', q: "Where did UCLA women's transfers come from this season?" },
+  { label: 'A program', q: "How has Ohio State women's soccer done over the last three seasons, and who coaches them?" },
+  { label: 'Compare', q: 'Compare Kenyon and Denison for a student who wants to study biology and play soccer' },
 ]
 
 const newId = () => Math.random().toString(36).slice(2, 10)
@@ -100,13 +101,8 @@ function ProgramCards({ items, logosEnabled }) {
     <div className="mt-3">
       <div className="grid sm:grid-cols-2 gap-2">
         {shown.map(p => {
-          const openings = p.kind === 'find_programs'
-          const big = openings
-            ? (p.est_freshman_openings ?? p.est_total_openings)
-            : (p.rpi_rank != null ? `#${p.rpi_rank}` : p.record)
-          const small = openings
-            ? (p.est_freshman_openings != null ? 'for freshmen' : 'est. openings')
-            : (p.rpi_rank != null ? `RPI · ${p.record}` : 'record')
+          const big = p.card ? p.card.value : (p.rpi_rank != null ? `#${p.rpi_rank}` : p.record)
+          const small = p.card ? p.card.label : (p.rpi_rank != null ? `RPI · ${p.record}` : 'record')
           return (
             <Link key={p.school_id} to={`/school/${p.school_id}`}
               className="flex items-center gap-3 bg-white border border-[#E5E8EB] rounded-xl px-3 py-2.5 hover:border-gray-400 hover:shadow-sm transition">
@@ -190,7 +186,19 @@ function Thinking({ lookups }) {
   )
 }
 
-function AssistantMessage({ m, logosEnabled, onFollowUp, busy }) {
+function Thumb({ up, on, onClick }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={up ? 'Good answer' : 'Bad answer'} aria-pressed={on}
+      className={'p-0.5 rounded hover:text-gray-800 ' + (on ? 'text-gray-900' : '')}>
+      <svg viewBox="0 0 24 24" className="w-4 h-4" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        style={up ? undefined : { transform: 'scaleY(-1)' }}>
+        <path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3zm0 0 4-7a2 2 0 0 1 3 2l-1 5h6a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 17.6 21H7" />
+      </svg>
+    </button>
+  )
+}
+
+function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
   const [showData, setShowData] = useState(false)
   const [copied, setCopied] = useState(false)
   const { body, followups } = splitAnswer(m.content)
@@ -226,6 +234,12 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, busy }) {
                 onClick={() => { navigator.clipboard?.writeText(body); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>
                 {copied ? 'Copied' : 'Copy'}
               </button>
+              {m.logId && (
+                <span className="inline-flex items-center gap-1">
+                  <Thumb up on={m.rating === 1} onClick={() => onRate(m, m.rating === 1 ? 0 : 1)} />
+                  <Thumb on={m.rating === -1} onClick={() => onRate(m, m.rating === -1 ? 0 : -1)} />
+                </span>
+              )}
             </div>
             {showData && <DataPanel lookups={m.lookups} />}
             {followups.length > 0 && (
@@ -313,6 +327,7 @@ export default function AskPitchSide({ session }) {
     try {
       await streamAsk(history, {
         signal: ctrl.signal,
+        context: { favoriteTeamIds: getFavorites() },
         onEvent: ev => {
           if (ev.t === 'text') update(bot.id, m => ({ ...m, content: m.content + ev.d }))
           else if (ev.t === 'lookup') update(bot.id, m => ({ ...m, lookups: [...m.lookups, { tool: ev.tool, input: ev.input }] }))
@@ -324,7 +339,7 @@ export default function AskPitchSide({ session }) {
             return { ...m, lookups: ls }
           })
           else if (ev.t === 'error') update(bot.id, m => ({ ...m, status: 'error', error: ev.error }))
-          else if (ev.t === 'done') update(bot.id, m => (m.status === 'error' ? m : { ...m, status: 'done' }))
+          else if (ev.t === 'done') update(bot.id, m => ({ ...m, logId: ev.log_id || null, status: m.status === 'error' ? 'error' : 'done' }))
         },
       })
       update(bot.id, m => (m.status === 'streaming' ? { ...m, status: m.content ? 'done' : 'error' } : m))
@@ -335,6 +350,19 @@ export default function AskPitchSide({ session }) {
       setBusy(false)
       abortRef.current = null
     }
+  }
+
+  async function rate(m, rating) {
+    update(m.id, x => ({ ...x, rating }))
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data?.session?.access_token
+      await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ feedback: { log_id: m.logId, rating } }),
+      })
+    } catch { /* the rating is a nicety; never interrupt the chat for it */ }
   }
 
   const onKey = e => {
@@ -362,7 +390,7 @@ export default function AskPitchSide({ session }) {
                   <div key={m.id} className="flex justify-end">
                     <div className="max-w-[85%] bg-[#0a1628] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] whitespace-pre-wrap">{m.content}</div>
                   </div>)
-                : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={send} busy={busy} />))}
+                : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={send} onRate={rate} busy={busy} />))}
               <div ref={endRef} style={{ scrollMarginBottom: 150 }} />
             </div>
           )}

@@ -70,6 +70,104 @@ function Lookups({ lookups }) {
   )
 }
 
+// ── Question log (every question asked in /ask, newest first) ─────────────
+const LOG_FILTERS = [
+  ['', 'All'], ['unavailable', 'Not answerable'], ['partial', 'Partial'],
+  ['clarify', 'Clarifying'], ['error', 'Errors'], ['down', 'Thumbs down'],
+]
+const STATUS_STYLE = {
+  answered: 'bg-green-100 text-green-800', partial: 'bg-amber-100 text-amber-800',
+  unavailable: 'bg-red-100 text-red-800', clarify: 'bg-blue-100 text-blue-800',
+  error: 'bg-gray-200 text-gray-800',
+}
+
+function QuestionLog() {
+  const [rows, setRows] = useState(null)
+  const [err, setErr] = useState(null)
+  const [filter, setFilter] = useState('')
+
+  async function load() {
+    setErr(null)
+    try {
+      const r = await fetch('/api/ask?log=1', { headers: await authHeaders() })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setRows(j.rows || [])
+    } catch (e) {
+      setErr(e.message || String(e))
+    }
+  }
+  useEffect(() => { load() }, [])
+
+  const all = rows || []
+  const counts = all.reduce((c, r) => { c[r.status || 'unknown'] = (c[r.status || 'unknown'] || 0) + 1; return c }, {})
+  const gaps = Object.entries(all.filter(r => r.gap && (r.status === 'unavailable' || r.status === 'partial'))
+    .reduce((c, r) => { const g = r.gap.toLowerCase(); c[g] = (c[g] || 0) + 1; return c }, {}))
+    .sort((a, b) => b[1] - a[1]).slice(0, 12)
+  const shown = all.filter(r => !filter || (filter === 'down' ? r.rating === -1 : r.status === filter))
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-800">Question log</h2>
+        <button onClick={load} className="text-sm text-blue-600 hover:underline">Refresh</button>
+      </div>
+      {err && <div className="text-sm text-red-600">Could not load the log: {err}</div>}
+      {rows && (
+        <>
+          <div className="text-sm text-gray-600">
+            Last {all.length} questions ·{' '}
+            {Object.entries(counts).map(([k, v]) => `${k} ${v}`).join(' · ')}
+            {' '}· thumbs up {all.filter(r => r.rating === 1).length} · thumbs down {all.filter(r => r.rating === -1).length}
+          </div>
+          {gaps.length > 0 && (
+            <div className="text-sm">
+              <div className="font-medium text-gray-700 mb-1">Data gaps named by the assistant</div>
+              <div className="flex flex-wrap gap-2">
+                {gaps.map(([g, n]) => (
+                  <span key={g} className="px-2 py-0.5 rounded bg-red-50 text-red-800 border border-red-200">{g} · {n}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            {LOG_FILTERS.map(([k, label]) => (
+              <button key={k || 'all'} onClick={() => setFilter(k)}
+                className={`px-2 py-1 rounded text-sm border ${filter === k ? 'bg-gray-800 text-white' : 'bg-white text-gray-700'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {shown.length === 0 ? <div className="text-sm text-gray-500">Nothing here yet.</div> : (
+            <div className="divide-y border rounded">
+              {shown.map(r => (
+                <details key={r.id} className="p-2 text-sm">
+                  <summary className="cursor-pointer flex flex-wrap items-center gap-2">
+                    <span className="text-gray-400 font-mono text-xs">{new Date(r.created_at).toLocaleString()}</span>
+                    <span className={`px-1.5 rounded text-xs ${STATUS_STYLE[r.status] || 'bg-gray-100'}`}>{r.status || '?'}</span>
+                    {r.rating === 1 && <span title="Thumbs up">👍</span>}
+                    {r.rating === -1 && <span title="Thumbs down">👎</span>}
+                    <span className="text-gray-800">{r.question}</span>
+                    {r.gap && <span className="text-gray-500">— {r.gap}</span>}
+                  </summary>
+                  <div className="mt-2 space-y-2 pl-2">
+                    <div className="text-xs text-gray-500">
+                      {r.user_email} · {r.surface} · turn {r.turn} · {r.model} · {secs(r.ms)}
+                      {' '}· look-ups: {(r.lookups || []).map(l => l.tool).join(', ') || 'none'}
+                    </div>
+                    {r.error ? <div className="text-red-600">Error: {r.error}</div>
+                      : <div className="whitespace-pre-wrap text-gray-700">{r.answer}</div>}
+                  </div>
+                </details>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 export default function OwnerAsk({ session }) {
   const [models, setModels] = useState([])
   const [modelsError, setModelsError] = useState(null)
@@ -152,6 +250,8 @@ export default function OwnerAsk({ session }) {
           Vercel AI Gateway{credits ? <> · gateway credit balance ${Number(credits.balance).toFixed(2)}</> : null}.
           {modelsError && <div className="mt-2 text-red-600">Could not load the model list: {modelsError}</div>}
         </div>
+
+        <QuestionLog />
 
         {/* ── Ask ─────────────────────────────────────────────── */}
         <form onSubmit={onAsk} className="bg-white rounded-lg shadow p-4 space-y-3">

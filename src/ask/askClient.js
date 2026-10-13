@@ -8,14 +8,14 @@ import { supabase } from '../lib/supabase'
  *   {t:'done', model, ms, usage}  {t:'error', error}
  * streamAsk() calls onEvent for each one, in order, as it arrives.
  */
-export async function streamAsk(messages, { signal, onEvent }) {
+export async function streamAsk(messages, { signal, onEvent, context }) {
   const { data } = await supabase.auth.getSession()
   const token = data?.session?.access_token
   const r = await fetch('/api/ask', {
     method: 'POST',
     signal,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-    body: JSON.stringify({ messages, stream: true }),
+    body: JSON.stringify({ messages, stream: true, context }),
   })
   if (!r.ok || !r.body) {
     let msg = `HTTP ${r.status}`
@@ -39,24 +39,30 @@ export async function streamAsk(messages, { signal, onEvent }) {
   if (buf.trim()) { try { onEvent(JSON.parse(buf)) } catch { /* ignore */ } }
 }
 
-/** Split the model's text into the visible answer and its FOLLOW-UPS line. */
+/** Split the model's text into the visible answer and its FOLLOW-UPS line.
+ *  The STATUS line (answered / partial / unavailable, for the question log)
+ *  and the FOLLOW-UPS line are never shown as text. */
 export function splitAnswer(text) {
-  const m = /\n?[ \t]*\**FOLLOW-?UPS:?\**:?/i.exec(text || '')
-  if (!m) return { body: text || '', followups: [] }
-  const body = text.slice(0, m.index).trimEnd()
-  const followups = text.slice(m.index + m[0].length).split('|')
+  const t = text || ''
+  const cut = /\n?[ \t]*\**(STATUS|FOLLOW-?UPS):?/i.exec(t)
+  const body = (cut ? t.slice(0, cut.index) : t).trimEnd()
+  const m = /\**FOLLOW-?UPS:?\**:?/i.exec(t)
+  if (!m) return { body, followups: [] }
+  const followups = t.slice(m.index + m[0].length).split('|')
     .map(s => s.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s+/, '').trim()).filter(s => s.length > 3).slice(0, 3)
   return { body, followups }
 }
 
 const LOOKUP_LABEL = {
   find_school: i => `Finding ${i?.name || 'the program'}`,
-  find_programs: () => 'Ranking programs by estimated openings',
+  find_programs: i => (i?.position && i?.hs_class ? 'Ranking programs by estimated openings' : 'Searching programs'),
   program_results: () => 'Checking season records',
   rank_by_results: i => (i?.sort === 'rpi' ? 'Ranking programs by RPI' : 'Ranking programs by record'),
   program_transfers: () => 'Checking transfers in and out',
   program_coaches: () => 'Looking up the coaching staff',
   program_profile: () => 'Reading the program profile',
+  program_majors: i => (i?.search ? `Checking majors for "${i.search}"` : 'Checking majors offered'),
+  programs_watching_team: () => 'Checking which college coaches watched your team',
 }
 export const lookupLabel = (tool, input) => (LOOKUP_LABEL[tool] ? LOOKUP_LABEL[tool](input) : 'Looking that up')
 
@@ -67,9 +73,22 @@ const SOURCE_LABEL = {
   program_transfers: 'Transfers traced between college rosters',
   program_coaches: 'PitchSide coach directory',
   program_profile: 'Program profile and U.S. College Scorecard',
+  program_majors: 'U.S. College Scorecard majors',
+  programs_watching_team: 'Coach attendance logged at your games',
 }
 export function sourceLabels(lookups) {
-  return [...new Set((lookups || []).map(l => SOURCE_LABEL[l.tool]).filter(Boolean))]
+  const out = []
+  for (const l of lookups || []) {
+    if (l.tool === 'find_programs') {
+      if (l.input?.position && l.input?.hs_class) out.push(SOURCE_LABEL.find_programs)
+      const i = l.input || {}
+      if (i.major || ['sat_min', 'sat_max', 'admission_rate_max', 'admission_rate_min', 'graduation_rate_min', 'net_price_max',
+        'undergrads_min', 'undergrads_max', 'type', 'setting'].some(k => i[k] != null) || (i.sort && i.sort !== 'openings')) {
+        out.push('U.S. College Scorecard')
+      }
+    } else if (SOURCE_LABEL[l.tool]) out.push(SOURCE_LABEL[l.tool])
+  }
+  return [...new Set(out)]
 }
 
 /** Programs to show as cards: from ranked lists, in the order returned. */
@@ -78,7 +97,7 @@ export function programCards(lookups) {
   const seen = new Set()
   for (const l of lookups || []) {
     const list = l.output?.programs
-    if (!Array.isArray(list) || !(l.tool === 'find_programs' || l.tool === 'rank_by_results')) continue
+    if (!Array.isArray(list) || !['find_programs', 'rank_by_results', 'programs_watching_team'].includes(l.tool)) continue
     for (const p of list) {
       if (!p?.school_id || seen.has(p.school_id)) continue
       seen.add(p.school_id)
