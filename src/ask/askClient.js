@@ -55,7 +55,7 @@ export function splitAnswer(text) {
 
 const LOOKUP_LABEL = {
   find_school: i => `Finding ${i?.name || 'the program'}`,
-  find_programs: i => (i?.position && i?.hs_class ? 'Ranking programs by estimated openings' : 'Searching programs'),
+  find_programs: i => (i?.position && i?.hs_class ? 'Ranking programs by estimated openings' : i?.near ? `Searching programs near ${i.near}` : 'Searching programs'),
   program_results: () => 'Checking season records',
   rank_by_results: i => (i?.sort === 'rpi' ? 'Ranking programs by RPI' : 'Ranking programs by record'),
   program_transfers: () => 'Checking transfers in and out',
@@ -83,9 +83,10 @@ export function sourceLabels(lookups) {
       if (l.input?.position && l.input?.hs_class) out.push(SOURCE_LABEL.find_programs)
       const i = l.input || {}
       if (i.major || ['sat_min', 'sat_max', 'admission_rate_max', 'admission_rate_min', 'graduation_rate_min', 'net_price_max',
-        'undergrads_min', 'undergrads_max', 'type', 'setting'].some(k => i[k] != null) || (i.sort && i.sort !== 'openings')) {
+        'undergrads_min', 'undergrads_max', 'type', 'setting'].some(k => i[k] != null) || (i.sort && !['openings', 'distance'].includes(i.sort))) {
         out.push('U.S. College Scorecard')
       }
+      if (i.near) out.push('U.S. Census locations')
     } else if (SOURCE_LABEL[l.tool]) out.push(SOURCE_LABEL[l.tool])
   }
   return [...new Set(out)]

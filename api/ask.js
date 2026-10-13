@@ -6,6 +6,7 @@ import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr } from '../src/l
 import { expandTerms, scoreSchool, setAliasIndex } from '../src/lib/schoolMatch.js'
 import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel } from '../src/lib/majorFilter.js'
 import { lineage, defaultTeamId, summarizeAttendance } from '../src/lib/attendanceSignal.js'
+import { parseNear, placeKey, milesBetween } from '../src/lib/geo.js'
 
 /**
  * POST /api/ask  { question, model }      -> answer + every look-up it used
@@ -86,7 +87,7 @@ async function refData(db) {
     allRows(() => db.from('schools').select('id,school,program_gender,division,conference,city,state').neq('is_active', false).order('id')),
     allRows(() => db.from('school_aliases').select('id,school_id,alias_norm,kind').order('id')),
     allRows(() => db.from('school_federal_college')
-      .select('school_id,unitid,college_facts(undergrad_enrollment,avg_net_price,admission_rate,sat_average,graduation_rate,locale,control)')
+      .select('school_id,unitid,college_facts(undergrad_enrollment,avg_net_price,admission_rate,sat_average,graduation_rate,locale,control,latitude,longitude)')
       .order('school_id')),
   ])
   const index = new Map(), common = new Map(), names = new Map()
@@ -116,6 +117,48 @@ async function majorCatalog(db) {
   if (error) throw new Error(error.message)
   CATALOG = buildCatalog(data || [])
   return CATALOG
+}
+
+// ── distance search ─────────────────────────────────────────────────────────
+// Where each program is: the College Scorecard point of its college, else its
+// own city found in geo_points (U.S. Census towns). Cached with REF.
+async function programPoints(db, ref) {
+  if (ref.points) return ref.points
+  const pts = new Map(), want = new Map()
+  for (const s of ref.schools) {
+    const f = ref.facts.get(s.id)
+    if (f?.latitude != null && f?.longitude != null) { pts.set(s.id, { lat: f.latitude, lon: f.longitude }); continue }
+    const st = stateAbbr(s.state), k = placeKey(s.city)
+    if (st && k) want.set(s.id, [st, k])
+  }
+  const keys = [...new Set([...want.values()].map(([, k]) => k))]
+  const found = new Map()
+  for (let i = 0; i < keys.length; i += 150) {
+    const { data, error } = await db.from('geo_points').select('state,key,lat,lon').eq('kind', 'place').in('key', keys.slice(i, i + 150))
+    if (error) throw new Error(error.message)
+    for (const g of data || []) found.set(g.state + '|' + g.key, { lat: g.lat, lon: g.lon })
+  }
+  for (const [id, [st, k]] of want) { const g = found.get(st + '|' + k); if (g) pts.set(id, g) }
+  ref.points = pts
+  return pts
+}
+
+// "Dublin, OH" / "43017" -> { point } | { ambiguous: [names] } | { error }
+async function locate(db, near) {
+  const p = parseNear(near)
+  if (p.zip) {
+    const { data, error } = await db.from('geo_points').select('name,state,lat,lon').eq('kind', 'zip').eq('key', p.zip).limit(1)
+    if (error) throw new Error(error.message)
+    return data?.[0] ? { point: data[0] } : { error: `PitchSide has no location for ZIP code ${p.zip}. Ask for the town and state instead.` }
+  }
+  if (!p.city) return { error: 'No place given. Ask for a town and state, or a ZIP code.' }
+  let q = db.from('geo_points').select('name,state,lat,lon,land_sqmi').eq('kind', 'place').eq('key', p.city)
+  if (p.state) q = q.eq('state', p.state)
+  const { data, error } = await q.order('land_sqmi', { ascending: false }).limit(12)
+  if (error) throw new Error(error.message)
+  if (!data?.length) return { error: `PitchSide could not find "${near}"${p.state ? '' : ' (no state given)'}. Ask for a ZIP code, or a nearby larger town with its state.` }
+  if (data.length > 1 && !p.state) return { ambiguous: data.map(d => d.name) }
+  return { point: data[0] }
 }
 
 const LOCALE = {
@@ -153,6 +196,7 @@ function confMatcher(q) {
 function cardMetric(sort, row, openings) {
   const pct = x => (x == null ? null : Math.round(x * 100) + '%')
   if (openings) return { value: row.est_freshman_openings ?? row.est_total_openings, label: 'for freshmen' }
+  if (sort === 'distance') return { value: row.distance_miles == null ? null : row.distance_miles + ' mi', label: 'away' }
   if (sort === 'sat') return { value: row.sat_average, label: 'avg SAT' }
   if (sort === 'net_price') return { value: row.avg_net_price == null ? null : '$' + Math.round(row.avg_net_price / 1000) + 'k', label: 'avg net price' }
   if (sort === 'graduation_rate') return { value: pct(row.graduation_rate), label: 'graduate' }
@@ -215,7 +259,8 @@ function buildTools(db, log, ctx = {}) {
         'With position + hs_class it estimates roster OPENINGS for that recruit (the Find programs page); results are ranked by estimated freshman openings. ' +
         'Academic and campus filters come from the U.S. College Scorecard: admission rate, average SAT, graduation rate, average net price per year, ' +
         'undergraduate size, public or private, setting. "major" keeps colleges that awarded that major or field in the last two years. ' +
-        'GPA is NOT available; use admission rate and average SAT as the measure of academic selectivity.',
+        'GPA is NOT available; use admission rate and average SAT as the measure of academic selectivity. ' +
+        '"near" + "radius_miles" keeps programs within that many miles (straight line) of a town or ZIP code and adds distance_miles.',
       inputSchema: z.object({
         gender: z.enum(['M', 'W']),
         position: z.enum(['GK', 'D', 'M', 'F']).optional().describe('GK goalkeeper, D defender, M midfielder, F forward'),
@@ -234,12 +279,23 @@ function buildTools(db, log, ctx = {}) {
         undergrads_max: z.number().int().optional(),
         type: z.enum(['public', 'private']).optional(),
         setting: z.enum(['city', 'suburb', 'town', 'rural']).optional(),
-        sort: z.enum(['openings', 'selectivity', 'sat', 'net_price', 'graduation_rate', 'size', 'name']).optional()
-          .describe('Default: openings when position and hs_class are given, otherwise selectivity'),
+        near: z.string().optional().describe('A town with its state ("Dublin, OH") or a 5-digit ZIP code'),
+        radius_miles: z.number().min(1).max(1500).optional().describe('Straight-line miles from "near"; default 100'),
+        sort: z.enum(['openings', 'distance', 'selectivity', 'sat', 'net_price', 'graduation_rate', 'size', 'name']).optional()
+          .describe('Default: openings when position and hs_class are given, else distance when near is given, else selectivity'),
         limit: z.number().int().min(1).max(MAX_ROWS).optional(),
       }),
       execute: run('find_programs', async (a) => {
         const ref = await refData(db)
+        let center = null, radius = null, points = null, noLocation = 0
+        if (a.near) {
+          const loc = await locate(db, a.near)
+          if (loc.error) return { programs: [], note: loc.error }
+          if (loc.ambiguous) return { programs: [], note: `Several places are called "${a.near}". Ask which one (or for a ZIP code).`, places: loc.ambiguous }
+          center = loc.point
+          radius = a.radius_miles || 100
+          points = await programPoints(db, ref)
+        }
         const openings = !!(a.position && a.hs_class)
         let latest = null
         let base
@@ -294,19 +350,27 @@ function buildTools(db, log, ctx = {}) {
           if (a.undergrads_max != null && !(f.undergrad_enrollment != null && f.undergrad_enrollment <= a.undergrads_max)) continue
           if (a.type && controlWord(f.control) !== a.type) continue
           if (a.setting && settingWord(f.locale) !== a.setting) continue
+          let dist = null
+          if (center) {
+            const pt = points.get(r.school_id)
+            if (!pt) { noLocation++; continue }
+            dist = milesBetween(center, pt)
+            if (dist > radius) continue
+          }
           let majorNote = null
           if (offerings) {
             const o = offeringFor(offerings, r.school_id, s.division)
             if (!o) continue
             majorNote = majorReason(o, majorChoice)
           }
-          out.push({ r, s, f, majorNote })
+          out.push({ r, s, f, majorNote, dist })
         }
 
-        const sort = a.sort || (openings ? 'openings' : 'selectivity')
+        const sort = (a.sort === 'distance' && !center) ? 'selectivity' : a.sort || (openings ? 'openings' : center ? 'distance' : 'selectivity')
         const num = (x, dflt) => (x == null ? dflt : Number(x))
         const cmp = {
           openings: () => 0,
+          distance: (x, y) => x.dist - y.dist,
           selectivity: (x, y) => num(x.f?.admission_rate, 2) - num(y.f?.admission_rate, 2),
           sat: (x, y) => num(y.f?.sat_average, -1) - num(x.f?.sat_average, -1),
           net_price: (x, y) => num(x.f?.avg_net_price, 1e9) - num(y.f?.avg_net_price, 1e9),
@@ -324,14 +388,19 @@ function buildTools(db, log, ctx = {}) {
             : sort,
           major: majorChoice ? choiceLabel(majorChoice) : undefined,
           latest_roster_season: latest ?? undefined,
+          near: center ? center.name : undefined,
+          radius_miles: center ? radius : undefined,
+          distance_note: center ? 'Straight-line miles from the place named, to the college campus (driving distance is longer).' : undefined,
+          without_location: center && noLocation ? noLocation : undefined,
           academics_note: 'Admission rate, average SAT, graduation rate and net price are from the U.S. College Scorecard (2026 release). GPA is not available.',
-          programs: out.slice(0, n).map(({ r, s, f, majorNote }) => {
+          programs: out.slice(0, n).map(({ r, s, f, majorNote, dist }) => {
             const row = {
               school_id: r.school_id, school: s.school, division: s.division, conference: s.conference, state: stateAbbr(s.state),
               admission_rate: f?.admission_rate ?? null, sat_average: f?.sat_average ?? null,
               graduation_rate: f?.graduation_rate ?? null, avg_net_price: f?.avg_net_price ?? null,
               undergrads: f?.undergrad_enrollment ?? null, type: f ? controlLabel(f.control) : null, setting: f ? LOCALE[f.locale] || null : null,
             }
+            if (dist != null) row.distance_miles = Math.round(dist)
             if (majorNote) row.major = majorNote
             if (openings) {
               Object.assign(row, {
@@ -585,6 +654,7 @@ function instructions() {
     '- Openings questions need gender, position and graduating class. If any is missing and the conversation does not already say it, ask for the missing pieces in ONE short question with the likely options, and stop. Searches that do not need them (majors, academics, results) run without them.',
     '- Academic fit: use find_programs filters (admission rate, average SAT, graduation rate, net price, size, public/private, setting, major) and program_majors. PitchSide has no GPA data; say so if asked, and use admission rate and average SAT instead. A program whose average SAT is near the student\'s score is a typical academic match.',
     '- Judgment questions ("is X a good fit", "D2 or D3", "should she…"): do not decide for them. Lay out the relevant facts side by side (results and RPI, openings, roster stability, academics, cost) and name the trade-offs to weigh.',
+    '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place is shared by several states, ask which. If they say "close to home" without a place, ask for their town or ZIP code.',
     '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',

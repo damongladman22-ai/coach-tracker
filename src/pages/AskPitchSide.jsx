@@ -35,7 +35,7 @@ const SUGGESTIONS = [
   { label: 'Academic fit', q: "Women's D3 programs in Ohio or Pennsylvania with an average SAT around 1300 that offer nursing" },
   { label: 'Your team', q: 'Which college programs have watched our team play?' },
   { label: 'Results', q: "What are the top 10 NCAA D1 women's teams by RPI right now?" },
-  { label: 'A program', q: "How has Ohio State women's soccer done over the last three seasons, and who coaches them?" },
+  { label: 'Near home', q: "Women's D2 and D3 programs within 100 miles of Columbus, Ohio" },
   { label: 'Compare', q: 'Compare Kenyon and Denison for a student who wants to study biology and play soccer' },
 ]
 

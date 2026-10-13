@@ -152,4 +152,39 @@ async function run(tool, input) {
   assert.equal(r.teams_with_coach_visits.length, 1)
 }
 
+
+// distance search: town or ZIP, radius, city fallback for colleges without Scorecard points
+{
+  const { parseNear, placeKey } = await import('../src/lib/geo.js')
+  assert.deepEqual(parseNear('Dublin, Ohio'), { city: 'dublin', state: 'OH' })
+  assert.deepEqual(parseNear('zip 43017-1234'), { zip: '43017' })
+  assert.deepEqual(parseNear('Columbus'), { city: 'columbus', state: null })
+  assert.equal(placeKey('St. Marys'), 'saint marys')
+  const LL = { 'osu-w': [40.0, -83.03], 'wis-w': [43.07, -89.4], 'den-w': [40.07, -82.52], 'ken-w': [40.37, -82.40], 'van-w': [36.14, -86.80] }
+  const D = { ...tables,
+    schools: [...schools, S('ott-w', 'Otterbein University', 'W', 'NCAA D3', 'Ohio Athletic Conference', 'Westerville', 'Ohio')],
+    school_federal_college: schools.map((s, i) => ({ school_id: s.id, unitid: 100 + i,
+      college_facts: { ...facts[s.id], latitude: LL[s.id][0], longitude: LL[s.id][1] } })),
+    geo_points: [
+      { kind: 'place', state: 'OH', key: 'columbus', name: 'Columbus, OH', lat: 39.98, lon: -82.98, land_sqmi: 220 },
+      { kind: 'place', state: 'GA', key: 'columbus', name: 'Columbus, GA', lat: 32.51, lon: -84.87, land_sqmi: 216 },
+      { kind: 'place', state: 'OH', key: 'westerville', name: 'Westerville, OH', lat: 40.12, lon: -82.92, land_sqmi: 12 },
+      { kind: 'zip', state: 'OH', key: '43017', name: 'ZIP 43017 (Dublin, OH)', lat: 40.12, lon: -83.13, land_sqmi: 30 },
+    ],
+  }
+  const go = async input => { T.resetCache(); return T.buildTools(fakeDb(D), [], {}).find_programs.execute(input, { toolCallId: 't', messages: [] }) }
+  let r = await go({ gender: 'W', near: 'Columbus, OH', radius_miles: 60 })
+  assert.deepEqual(r.programs.map(p => p.school_id), ['osu-w', 'ott-w', 'den-w', 'ken-w'], 'nearest first, Otterbein placed by its city')
+  assert.equal(r.ranked_by, 'distance')
+  assert.equal(r.near, 'Columbus, OH')
+  assert.equal(r.programs[0].card.label, 'away')
+  assert.ok(r.programs.every(p => p.distance_miles <= 60))
+  r = await go({ gender: 'W', near: '43017', radius_miles: 500, divisions: ['NCAA D1'] })
+  assert.deepEqual(r.programs.map(p => p.school_id), ['osu-w', 'van-w', 'wis-w'])
+  r = await go({ gender: 'W', near: 'Columbus' })
+  assert.deepEqual(r.places, ['Columbus, OH', 'Columbus, GA'], 'asks which Columbus')
+  r = await go({ gender: 'W', near: 'Nowhere, OH' })
+  assert.ok(/could not find/.test(r.note))
+}
+
 console.log('ask.test.mjs: all assertions passed')
