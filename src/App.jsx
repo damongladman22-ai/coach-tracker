@@ -46,6 +46,7 @@ const DedupSchools = lazy(() => import('./pages/DedupSchools'))
 const ManageAdmins = lazy(() => import('./pages/ManageAdmins'))
 const Feedback = lazy(() => import('./pages/Feedback'))
 const OwnerCoachReview = lazy(() => import('./pages/OwnerCoachReview'))
+const OwnerAsk = lazy(() => import('./pages/OwnerAsk'))
 
 // CsipGate — shared passcode fence wrapping all CSIP routes (owner bypasses).
 // Eager (small) so it can wrap the lazy CSIP pages as a layout route.
@@ -133,6 +134,7 @@ function App() {
             <Route path="/owner/import" element={session ? <ImportCoaches session={session} /> : <AdminLogin />} />
             <Route path="/owner/dedup" element={session ? <DedupCoaches session={session} /> : <AdminLogin />} />
             <Route path="/owner/dedup-schools" element={session ? <DedupSchools session={session} /> : <AdminLogin />} />
+            <Route path="/owner/ask" element={session ? <OwnerAsk session={session} /> : <AdminLogin />} />
           
             {/* Parent Routes (no auth required) */}
             <Route path="/home" element={<ClubDashboard />} />

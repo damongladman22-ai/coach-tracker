@@ -56,6 +56,7 @@ const OWNER_GROUP = {
     { to: '/owner/import', label: 'Import Coaches', icon: 'upload' },
     { to: '/owner/dedup', label: 'Dedup Coaches', icon: 'layers' },
     { to: '/owner/dedup-schools', label: 'Dedup Schools', icon: 'layers' },
+    { to: '/owner/ask', label: 'Ask PitchSide (beta)', icon: 'clipboard' },
   ],
 }
 
