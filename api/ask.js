@@ -492,30 +492,61 @@ function buildTools(db, log, ctx = {}) {
         team: z.string().optional().describe('Club team name as the person wrote it, e.g. "2009 Girls ECNL"; leave out for their starred team'),
       }),
       execute: run('programs_watching_team', async ({ team }) => {
-        const [teams, seasonsRes] = await Promise.all([
+        const [teams, seasonsRes, att] = await Promise.all([
           allRows(() => db.from('teams').select('id,name,gender,season_id,program_id,active,age_groups(name)').order('id')),
           db.from('seasons').select('id,name,start_date,is_active'),
+          allRows(() => db.from('attendance')
+            .select('id,coach_id,game_id,coaches!inner(school_id),games!inner(team_id,game_date)').order('id')),
         ])
         const seasons = seasonsRes.data || []
         const active = seasons.find(s => s.is_active) || null
+        const current = teams.filter(t => active && String(t.season_id) === String(active.id))
+        const lineIds = t => lineage(t, teams, seasons).map(l => String(l.team.id))
+        // Every current team that has college coaches logged at its games (this season or its earlier seasons).
+        const gamesOf = ids => new Set(att.filter(r => ids.includes(String(r.games?.team_id))).map(r => r.game_id)).size
+        const visited = current.map(t => ({ team: t.name, games: gamesOf(lineIds(t)) }))
+          .filter(x => x.games > 0).sort((a, b) => b.games - a.games)
+          .map(x => `${x.team} (${x.games} ${x.games === 1 ? 'game' : 'games'} with college coaches logged)`)
+        const allNames = current.map(t => t.name).slice(0, 40)
+
         let chosen = null
         if (team) {
-          const q = norm(team)
-          const cand = teams.filter(t => norm(t.name).includes(q) || q.split(' ').every(w => norm(t.name).includes(w)))
-          chosen = cand.find(t => active && String(t.season_id) === String(active.id)) || cand[0] || null
-          if (!chosen) return { programs: [], note: `No club team matched "${team}".`, teams: teams.filter(t => active && String(t.season_id) === String(active.id)).map(t => t.name).slice(0, 40) }
+          // Keep only the words that appear in some team name, so club names and
+          // filler ("Ohio Premier", "team", "play") do not block a match.
+          const tok = x => norm(x).replace(/\bu\s+(\d{1,2})\b/g, 'u$1').split(' ').filter(Boolean)
+            .map(w => ({ girl: 'girls', women: 'girls', womens: 'girls', boy: 'boys', men: 'boys', mens: 'boys' }[w] || w))
+          const vocab = new Set(teams.flatMap(t => tok(t.name)))
+          const words = tok(team).filter(w => vocab.has(w))
+          const pool = current.length ? current : teams
+          const cand = words.length ? pool.filter(t => { const n = tok(t.name); return words.every(w => n.includes(w)) }) : []
+          const exact = cand.filter(t => tok(t.name).length === words.length)
+          chosen = cand.length === 1 ? cand[0] : exact.length === 1 ? exact[0] : null
+          if (!chosen) {
+            return {
+              programs: [],
+              note: cand.length > 1
+                ? `Several club teams match "${team}". Ask which one, offering these options.`
+                : `No club team matched "${team}". Team names in PitchSide are age group + gender + league (e.g. "U16 Girls ECNL"), not the club name.`,
+              matching_teams: cand.map(t => t.name).slice(0, 12),
+              teams_with_coach_visits: visited,
+              all_teams: cand.length ? undefined : allNames,
+            }
+          }
         } else {
           const fav = new Set((ctx.favoriteTeamIds || []).map(String))
-          const current = teams.filter(t => active && String(t.season_id) === String(active.id))
           const id = defaultTeamId(current, [...fav], teams, seasons)
           chosen = teams.find(t => String(t.id) === String(id)) || teams.find(t => fav.has(String(t.id))) || null
-          if (!chosen) return { programs: [], note: 'No starred team. Ask which club team they mean.', teams: current.map(t => t.name).slice(0, 40) }
+          if (!chosen) {
+            return {
+              programs: [],
+              note: 'No starred team. Ask which club team they mean, offering the teams_with_coach_visits as options. They can also star their team on its page in PitchSide.',
+              teams_with_coach_visits: visited,
+              all_teams: allNames,
+            }
+          }
         }
-        const line = lineage(chosen, teams, seasons).map(l => l.team.id)
-        const rows = await allRows(() => db.from('attendance')
-          .select('id,coach_id,game_id,coaches!inner(school_id),games!inner(team_id,game_date)')
-          .in('games.team_id', line).order('id'))
-        const sig = summarizeAttendance(rows)
+        const line = lineIds(chosen)
+        const sig = summarizeAttendance(att.filter(r => line.includes(String(r.games?.team_id))))
         const ref = await refData(db)
         const list = [...sig.entries()].map(([sid, v]) => ({ sid, v, s: ref.byId.get(sid) }))
           .filter(x => x.s)
@@ -524,6 +555,8 @@ function buildTools(db, log, ctx = {}) {
           team: chosen.name,
           seasons_included: line.length,
           matched: list.length,
+          note: list.length ? undefined : 'No college coaches logged at this team\'s games yet. Mention the teams_with_coach_visits if any.',
+          teams_with_coach_visits: list.length ? undefined : visited,
           programs: list.slice(0, MAX_ROWS).map(({ sid, v, s }) => ({
             school_id: sid, school: s.school, gender: s.program_gender, division: s.division, conference: s.conference, state: stateAbbr(s.state),
             coaches: v.coaches, games: v.games, latest: v.latest,
@@ -552,7 +585,7 @@ function instructions() {
     '- Openings questions need gender, position and graduating class. If any is missing and the conversation does not already say it, ask for the missing pieces in ONE short question with the likely options, and stop. Searches that do not need them (majors, academics, results) run without them.',
     '- Academic fit: use find_programs filters (admission rate, average SAT, graduation rate, net price, size, public/private, setting, major) and program_majors. PitchSide has no GPA data; say so if asked, and use admission rate and average SAT instead. A program whose average SAT is near the student\'s score is a typical academic match.',
     '- Judgment questions ("is X a good fit", "D2 or D3", "should she…"): do not decide for them. Lay out the relevant facts side by side (results and RPI, openings, roster stability, academics, cost) and name the trade-offs to weigh.',
-    '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team.',
+    '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
