@@ -148,6 +148,7 @@ function buildTools(db, log) {
         const n = Math.min(limit || 10, MAX_ROWS)
         return {
           matched: ranked.length,
+          ranked_by: 'estimated openings for incoming freshmen (est_freshman_openings), then total; the same order as the Find programs page',
           latest_roster_season: latest,
           programs: ranked.slice(0, n).map(r => ({
             school_id: r.school_id, school: r.schools.school, division: r.schools.division,
@@ -292,6 +293,7 @@ function instructions() {
     '- Then structure: short bullet lists for a few facts; a Markdown table when comparing programs or seasons (3 to 10 rows, clear column headers); **bold** for the key number or name.',
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
     '- When find_programs or rank_by_results returns a list, the app shows those programs as cards under your answer. Summarise the top 3 to 5 in prose or a compact table; do not repeat the whole list.',
+    '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for). Keep that order and lead with the freshman figure; the total can go in a second column.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
     '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 200 words unless a table needs more.',

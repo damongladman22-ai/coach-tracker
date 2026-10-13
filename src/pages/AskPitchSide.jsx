@@ -105,14 +105,14 @@ function ProgramCards({ items, logosEnabled }) {
             ? (p.est_freshman_openings ?? p.est_total_openings)
             : (p.rpi_rank != null ? `#${p.rpi_rank}` : p.record)
           const small = openings
-            ? (p.est_freshman_openings != null ? 'est. freshman openings' : 'est. openings')
+            ? (p.est_freshman_openings != null ? 'for freshmen' : 'est. openings')
             : (p.rpi_rank != null ? `RPI · ${p.record}` : 'record')
           return (
             <Link key={p.school_id} to={`/school/${p.school_id}`}
               className="flex items-center gap-3 bg-white border border-[#E5E8EB] rounded-xl px-3 py-2.5 hover:border-gray-400 hover:shadow-sm transition">
               <Crest id={p.school_id} name={p.school} logosEnabled={logosEnabled} />
               <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-gray-900 truncate">{p.school}</div>
+                <div className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{p.school}</div>
                 <div className="text-xs text-gray-500 truncate">{[p.division, p.conference, p.state].filter(Boolean).join(' · ')}</div>
               </div>
               <div className="text-right flex-shrink-0">
