@@ -136,8 +136,9 @@ async function run(tool, input) {
       { id: 4, name: 'U16 Girls ECNL', gender: 'Girls', season_id: 's25', program_id: 9, age_groups: { name: 'U16' } },
     ],
     attendance: [
-      { id: 1, coach_id: 11, game_id: 100, coaches: { school_id: 'den-w' }, games: { team_id: 1, game_date: '2026-09-01' } },
-      { id: 2, coach_id: 12, game_id: 101, coaches: { school_id: 'den-w' }, games: { team_id: 1, game_date: '2026-09-08' } },
+      { id: 1, coach_id: 11, game_id: 100, coaches: { school_id: 'den-w', first_name: 'Ann', last_name: 'Lee', title: 'Head Coach', is_active: true }, games: { team_id: 1, game_date: '2026-09-01' } },
+      { id: 2, coach_id: 11, game_id: 101, coaches: { school_id: 'den-w', first_name: 'Ann', last_name: 'Lee', title: 'Head Coach', is_active: true }, games: { team_id: 1, game_date: '2026-09-08' } },
+      { id: 5, coach_id: 12, game_id: 101, coaches: { school_id: 'den-w', first_name: 'Bo', last_name: 'Diaz', title: 'Assistant Coach', is_active: false }, games: { team_id: 1, game_date: '2026-09-08' } },
       { id: 3, coach_id: 13, game_id: 101, coaches: { school_id: 'ken-w' }, games: { team_id: 1, game_date: '2026-09-08' } },
       { id: 4, coach_id: 14, game_id: 90, coaches: { school_id: 'osu-w' }, games: { team_id: 4, game_date: '2026-07-12' } },
     ],
@@ -147,6 +148,14 @@ async function run(tool, input) {
   assert.equal(r.team, 'U16 Girls ECNL', 'club name ignored, exact over RL')
   assert.equal(r.programs[0].school_id, 'den-w')
   assert.equal(r.programs[0].games, 2)
+  assert.deepEqual(r.programs[0].coaches_seen, [
+    { name: 'Ann Lee', title: 'Head Coach', games: 2, latest: '2026-09-08', still_on_staff: undefined },
+    { name: 'Bo Diaz', title: 'Assistant Coach', games: 1, latest: '2026-09-08', still_on_staff: false },
+  ], 'names who came, with games; flags a coach no longer on staff')
+  let one = await go({ team: 'U16 Girls ECNL', school: 'Kenyon' })
+  assert.deepEqual(one.programs.map(p => p.school_id), ['ken-w'], 'one college only')
+  one = await go({ team: 'U16 Girls ECNL', school: 'Vanderbilt' })
+  assert.ok(/No coaches from/.test(one.note))
   r = await go({ team: 'u-16 girl' })
   assert.equal(r.programs.length, 0)
   assert.deepEqual(r.matching_teams, ['U16 Girls ECNL (2011s)', 'U16 Girls ECNL RL (2011s)'], 'ambiguous asks')

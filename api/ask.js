@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr } from '../src/lib/findPrograms.js'
 import { expandTerms, scoreSchool, setAliasIndex } from '../src/lib/schoolMatch.js'
 import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel } from '../src/lib/majorFilter.js'
-import { lineage, defaultTeamId, summarizeAttendance, teamAge } from '../src/lib/attendanceSignal.js'
+import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender } from '../src/lib/attendanceSignal.js'
 import { parseNear, placeKey, milesBetween } from '../src/lib/geo.js'
 
 /**
@@ -34,6 +34,11 @@ export const config = { maxDuration: 60 }
 // 5.5 (20/20, cheapest reliable, fastest); if it fails or its provider is down,
 // the gateway retries the same request on GPT-5.6 Luna (also 20/20).
 const DEFAULT_MODEL = 'anthropic/claude-haiku-5.5'
+// How long the model thinks before answering. Timed live on 2026-10-13: with
+// the provider default, about 500 of ~800 output tokens were hidden thinking,
+// 2 to 3.5 s before the first word. The bench can pass another level to compare.
+const REASONING_LEVELS = ['provider-default', 'none', 'minimal', 'low', 'medium']
+const DEFAULT_REASONING = 'low'
 const FALLBACK_MODEL = 'openai/gpt-5.6-luna'
 const MODEL_RE = /^[a-z0-9-]+\/[a-z0-9.\-:]+$/i
 const MAX_ROWS = 40
@@ -626,17 +631,20 @@ function buildToolSet(db, log, ctx) {
     }),
 
     programs_watching_team: tool({
-      description: 'Which college programs\' coaches have attended a club team\'s games, logged in PitchSide (the family\'s own club data). ' +
-        'With no team given it uses the team the person has starred in PitchSide, including that team\'s earlier seasons.',
+      description: 'Which college programs\' coaches have attended a club team\'s games, logged in PitchSide (the family\'s own club data), ' +
+        'and WHICH coaches: each program lists coaches_seen with each coach\'s name, title, games attended and latest game. ' +
+        'With no team given it uses the team the person has starred in PitchSide, including that team\'s earlier seasons. ' +
+        'Give "school" to see only one college\'s coaches (e.g. "which Iowa coaches came").',
       inputSchema: z.object({
         team: z.string().optional().describe('Club team name as the person wrote it, e.g. "2009 Girls ECNL"; leave out for their starred team'),
+        school: z.string().optional().describe('Only this college (name as written, typos fine)'),
       }),
-      execute: run('programs_watching_team', async ({ team }) => {
+      execute: run('programs_watching_team', async ({ team, school }) => {
         const [teams, seasonsRes, att] = await Promise.all([
           allRows(() => db.from('teams').select('id,name,gender,season_id,program_id,active,age_groups(name)').order('id')),
           db.from('seasons').select('id,name,start_date,is_active'),
           allRows(() => db.from('attendance')
-            .select('id,coach_id,game_id,coaches!inner(school_id),games!inner(team_id,game_date)').order('id')),
+            .select('id,coach_id,game_id,coaches!inner(school_id,first_name,last_name,title,is_active),games!inner(team_id,game_date)').order('id')),
         ])
         const seasons = seasonsRes.data || []
         const active = seasons.find(s => s.is_active) || null
@@ -706,11 +714,33 @@ function buildToolSet(db, log, ctx) {
         }
         const chain = lineage(chosen, teams, seasons)
         const line = chain.map(l => String(l.team.id))
-        const sig = summarizeAttendance(att.filter(r => line.includes(String(r.games?.team_id))))
+        const mine = att.filter(r => line.includes(String(r.games?.team_id)))
+        const sig = summarizeAttendance(mine)
+        // Who came: per program, each coach with the games they attended.
+        const who = new Map()
+        for (const r of mine) {
+          const sid = r.coaches?.school_id
+          if (!sid || r.coach_id == null) continue
+          let m = who.get(sid); if (!m) who.set(sid, (m = new Map()))
+          let c = m.get(r.coach_id)
+          if (!c) m.set(r.coach_id, (c = { name: `${r.coaches.first_name || ''} ${r.coaches.last_name || ''}`.trim() || null,
+            title: r.coaches.title || null, still_on_staff: r.coaches.is_active !== false, games: new Set(), latest: null }))
+          if (r.game_id != null) c.games.add(r.game_id)
+          const d = r.games?.game_date || null
+          if (d && (!c.latest || d > c.latest)) c.latest = d
+        }
+        const coachesSeen = sid => [...(who.get(sid)?.values() || [])]
+          .map(c => ({ name: c.name, title: c.title, games: c.games.size, latest: c.latest, still_on_staff: c.still_on_staff ? undefined : false }))
+          .sort((a, b) => b.games - a.games || String(a.name).localeCompare(String(b.name)))
         const bySeason = chain.map(l => ({ season: l.season?.name || null, team: l.team.name, games_with_coaches: gamesOf([String(l.team.id)]) }))
         const ref = await refData(db)
+        let only = null
+        if (school) {
+          only = new Set(matchSchools(ref, school, teamProgramGender(chosen.gender)).map(x => x.id))
+          if (!only.size) return { team: chosen.name, birth_year: birthYear(chosen) ?? undefined, programs: [], note: `No program matched "${school}".` }
+        }
         const list = [...sig.entries()].map(([sid, v]) => ({ sid, v, s: ref.byId.get(sid) }))
-          .filter(x => x.s)
+          .filter(x => x.s && (!only || only.has(x.sid)))
           .sort((x, y) => y.v.games - x.v.games || String(y.v.latest || '').localeCompare(String(x.v.latest || '')))
         return {
           team: chosen.name,
@@ -719,11 +749,12 @@ function buildToolSet(db, log, ctx) {
           seasons_note: 'Teams move up an age group each season. The visits include the same players\' earlier seasons, listed in "seasons" with the team name they had then.',
           matched: list.length,
           showing: list.length > MAX_ROWS ? `the ${MAX_ROWS} programs with the most games watched, of ${list.length} in all` : undefined,
-          note: list.length ? undefined : 'No college coaches logged at this team\'s games yet. Mention the teams_with_coach_visits if any.',
-          teams_with_coach_visits: list.length ? undefined : visited,
+          note: list.length ? undefined : only ? `No coaches from "${school}" are logged at this team's games.`
+            : 'No college coaches logged at this team\'s games yet. Mention the teams_with_coach_visits if any.',
+          teams_with_coach_visits: list.length || only ? undefined : visited,
           programs: list.slice(0, MAX_ROWS).map(({ sid, v, s }) => ({
             school_id: sid, school: s.school, gender: s.program_gender, division: s.division, conference: s.conference, state: stateAbbr(s.state),
-            coaches: v.coaches, games: v.games, latest: v.latest,
+            coaches: v.coaches, games: v.games, latest: v.latest, coaches_seen: coachesSeen(sid),
             card: { value: v.games, label: v.games === 1 ? 'game watched' : 'games watched' },
           })),
         }
@@ -751,7 +782,7 @@ function instructions() {
     '- Judgment questions ("is X a good fit", "D2 or D3", "should she…"): do not decide for them. Lay out the relevant facts side by side (results and RPI, openings, roster stability, academics, cost) and name the trade-offs to weigh.',
     '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place is shared by several states, ask which. If they say "close to home" without a place, ask for their town or ZIP code.',
     '- Club teams move up an age group each season (this season\'s U17 were last season\'s U16), so families often name a team by birth year ("the 2010s"); pass that as the team. When describing a team, give its age group and birth year, and say which seasons the coach visits came from (the seasons list).',
-    '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
+    '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. PitchSide logs WHICH coaches attended: name them from coaches_seen (name, title, games attended, latest game). For one college, pass school. Never say names are not logged. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
@@ -875,6 +906,7 @@ export default async function handler(req, res) {
       .map(Number).filter(Number.isFinite).slice(0, 20),
   }
 
+  const reasoning = REASONING_LEVELS.includes(body.reasoning) ? body.reasoning : DEFAULT_REASONING
   const log = []
   const t0 = Date.now()
   const common = {
@@ -884,6 +916,7 @@ export default async function handler(req, res) {
     tools: buildTools(readClient(), log, ctx),
     stopWhen: stepCountIs(8),
     maxOutputTokens: 1800,
+    reasoning,
     providerOptions: gatewayOptions(model, who.email),
   }
   const record = (text, usage, err) => {
@@ -925,8 +958,9 @@ export default async function handler(req, res) {
       send({ t: 'error', error: err })
     }
     const logId = await record(text, usage, err)
-    send({ t: 'done', model, ms: Date.now() - t0, log_id: logId,
-      usage: { input_tokens: usage.inputTokens ?? null, output_tokens: usage.outputTokens ?? null } })
+    send({ t: 'done', model, reasoning, ms: Date.now() - t0, log_id: logId,
+      usage: { input_tokens: usage.inputTokens ?? null, output_tokens: usage.outputTokens ?? null,
+        reasoning_tokens: usage.outputTokenDetails?.reasoningTokens ?? usage.reasoningTokens ?? null } })
     return res.end()
   }
 
@@ -942,7 +976,9 @@ export default async function handler(req, res) {
       lookups: log,
       log_id: logId,
       steps: result.steps?.length ?? null,
+      reasoning,
       usage: { input_tokens: usage.inputTokens ?? null, output_tokens: usage.outputTokens ?? null,
+        reasoning_tokens: usage.outputTokenDetails?.reasoningTokens ?? usage.reasoningTokens ?? null,
         cached_input_tokens: usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? null },
       gateway_cost: gw?.cost ?? null,
       ms: Date.now() - t0,
