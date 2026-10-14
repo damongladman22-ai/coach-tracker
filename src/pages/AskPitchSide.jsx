@@ -10,6 +10,7 @@ import { PageLoader } from '../components/LoadingStates'
 import OPLogo from '../components/OPLogo'
 import { streamAsk, splitAnswer, lookupLabel, sourceLabels, programCards } from '../ask/askClient'
 import { getFavorites } from '../hooks/useFavorite'
+import { loadChats, saveChats, putChat, dropChat, newChatId, whenLabel } from '../ask/chatStore'
 
 /**
  * Ask PitchSide — the consumer chat experience for the AI assistant (backlog F2).
@@ -23,16 +24,14 @@ import { getFavorites } from '../hooks/useFavorite'
  *    numbers never depend on the model's wording;
  *  - "Based on" names the data behind every answer, and "Show the data" opens
  *    the rows; three follow-up suggestions follow each answer;
- *  - the conversation is kept in this browser and can be started over.
+ *  - conversations are kept in this browser: up to 30, listed under "Chats"
+ *    with their first question and date, each reopened or deleted there
+ *    (Damon 2026-10-14; src/ask/chatStore.js).
  *
  * Owner-only while in preview (Damon, 2026-10-13). /owner/ask stays as the
  * model test bench.
  */
 
-const STORE_KEY = 'ask-pitchside-thread-v1'
-// The program a conversation is about, when opened with "Ask about this
-// program" on a College Profile (/ask?program=<school_id>).
-const PROGRAM_KEY = 'ask-pitchside-program-v1'
 const SUGGESTIONS = [
   { label: 'Openings', q: "Which Big Ten women's programs have the most estimated goalkeeper openings for the class of 2027?" },
   { label: 'Academic fit', q: "Women's D3 programs in Ohio or Pennsylvania with an average SAT around 1300 that offer nursing" },
@@ -44,18 +43,6 @@ const SUGGESTIONS = [
 
 const newId = () => Math.random().toString(36).slice(2, 10)
 
-function loadThread() {
-  try { const v = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); return Array.isArray(v) ? v : [] } catch { return [] }
-}
-function saveThread(msgs) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(msgs.slice(-30))) } catch { /* storage full or blocked */ }
-}
-function loadProgram() {
-  try { const v = JSON.parse(localStorage.getItem(PROGRAM_KEY) || 'null'); return v && v.id ? v : null } catch { return null }
-}
-function saveProgram(p) {
-  try { if (p) localStorage.setItem(PROGRAM_KEY, JSON.stringify(p)); else localStorage.removeItem(PROGRAM_KEY) } catch { /* blocked */ }
-}
 const genderWord = g => (g === 'M' ? "men's" : "women's")
 function programSuggestions(p) {
   const n = p.school
@@ -292,6 +279,40 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
   )
 }
 
+function ChatsPanel({ chats, activeId, onOpen, onDelete, onNew, onClose, busy }) {
+  return (
+    <div className="fixed inset-0 z-40 flex" role="dialog" aria-label="Your chats">
+      <div className="w-[min(22rem,88vw)] h-full bg-white shadow-xl flex flex-col">
+        <div className="flex items-center justify-between px-4 h-14 border-b border-[#E5E8EB]">
+          <span className="font-semibold text-gray-900">Your chats</span>
+          <button type="button" onClick={onClose} aria-label="Close" className="h-8 w-8 rounded-full grid place-items-center text-gray-500 hover:bg-gray-100">×</button>
+        </div>
+        <div className="p-3 border-b border-[#E5E8EB]">
+          <button type="button" disabled={busy} onClick={onNew}
+            className="w-full text-sm font-semibold text-white bg-[#0a1628] rounded-lg px-3 py-2 hover:bg-[#1c2c48] disabled:opacity-50">+ New chat</button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          {chats.length === 0 && <p className="px-4 py-6 text-sm text-gray-500">No saved chats yet. Your conversations are kept in this browser.</p>}
+          {chats.map(c => (
+            <div key={c.id} className={`group flex items-start gap-2 px-4 py-3 border-b border-[#F0F2F4] ${c.id === activeId ? 'bg-[#F2F3F5]' : 'hover:bg-gray-50'}`}>
+              <button type="button" disabled={busy} onClick={() => onOpen(c)} className="flex-1 min-w-0 text-left disabled:opacity-50">
+                <div className="text-sm text-gray-900 leading-snug line-clamp-2">{c.title}</div>
+                <div className="mt-0.5 text-[11px] text-gray-500">
+                  {whenLabel(c.updatedAt)}{c.program ? <> · {c.program.school}</> : null}
+                </div>
+              </button>
+              <button type="button" disabled={busy} onClick={() => onDelete(c)} aria-label={`Delete chat: ${c.title}`}
+                className="flex-shrink-0 h-7 w-7 rounded-full grid place-items-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 disabled:opacity-50">×</button>
+            </div>
+          ))}
+        </div>
+        <p className="px-4 py-3 text-[11px] text-gray-400 border-t border-[#E5E8EB]">Kept in this browser only: up to 30 chats.</p>
+      </div>
+      <button type="button" aria-label="Close" onClick={onClose} className="flex-1 bg-black/30" />
+    </div>
+  )
+}
+
 function EmptyState({ onPick, program, onClearProgram }) {
   const list = program ? programSuggestions(program) : SUGGESTIONS
   return (
@@ -324,8 +345,14 @@ function EmptyState({ onPick, program, onClearProgram }) {
 export default function AskPitchSide({ session }) {
   const owner = useIsSuperAdmin(session)
   const logosEnabled = useCollegeProfileLogos(supabase)
-  const [msgs, setMsgs] = useState(loadThread)
-  const [program, setProgram] = useState(loadProgram)
+  // Saved chats (this browser). The open chat is the first one, if any.
+  const [chats, setChats] = useState(() => loadChats(window.localStorage))
+  const [activeId, setActiveId] = useState(() => chats[0]?.id || null)
+  const [msgs, setMsgs] = useState(() => chats[0]?.msgs || [])
+  const [program, setProgram] = useState(() => chats[0]?.program || null)
+  const [showChats, setShowChats] = useState(false)
+  // The messages last saved (or just opened), so viewing a chat does not move it to the top.
+  const savedRef = useRef(msgs)
   const [params, setParams] = useSearchParams()
   const askedFor = params.get('program')
   const [input, setInput] = useState('')
@@ -334,8 +361,24 @@ export default function AskPitchSide({ session }) {
   const endRef = useRef(null)
   const boxRef = useRef(null)
 
-  useEffect(() => { if (!busy) saveThread(msgs) }, [msgs, busy])
-  useEffect(() => { saveProgram(program) }, [program])
+  // Save the open chat when a reply finishes (and on rating changes).
+  useEffect(() => {
+    if (busy || !activeId || !msgs.length || savedRef.current === msgs) return
+    savedRef.current = msgs
+    setChats(list => saveChats(window.localStorage, putChat(list, { id: activeId, program, msgs })))
+  }, [msgs, busy, activeId, program])
+
+  function startNew(p = null) {
+    setActiveId(null); setMsgs([]); setProgram(p); setShowChats(false)
+  }
+  function openChat(c) {
+    savedRef.current = c.msgs
+    setActiveId(c.id); setMsgs(c.msgs); setProgram(c.program || null); setShowChats(false)
+  }
+  function deleteChat(c) {
+    setChats(list => saveChats(window.localStorage, dropChat(list, c.id)))
+    if (c.id === activeId) startNew()
+  }
   // Arriving from "Ask about this program": a fresh conversation about it.
   useEffect(() => {
     if (!askedFor || owner !== 'allowed') return
@@ -344,8 +387,7 @@ export default function AskPitchSide({ session }) {
       .then(({ data }) => {
         if (cancelled) return
         if (data) {
-          if (data.id !== program?.id || msgs.length) { setMsgs([]); saveThread([]) }
-          setProgram({ id: data.id, school: data.school, gender: data.program_gender })
+          startNew({ id: data.id, school: data.school, gender: data.program_gender })
         }
         setParams({}, { replace: true })
       })
@@ -374,6 +416,7 @@ export default function AskPitchSide({ session }) {
   async function send(text) {
     const q = String(text || '').trim()
     if (!q || busy) return
+    if (!activeId) setActiveId(newChatId())
     const user = { id: newId(), role: 'user', content: q }
     const bot = { id: newId(), role: 'assistant', content: '', lookups: [], status: 'streaming' }
     const history = [...msgs.filter(m => m.status !== 'error'), user]
@@ -432,15 +475,25 @@ export default function AskPitchSide({ session }) {
   return (
     <div className="min-h-[calc(100vh-6.5rem)] bg-[#F2F3F5] flex flex-col">
       <div className="flex-1 w-full max-w-3xl mx-auto px-4">
-        {msgs.length > 0 && (
-          <div className="flex items-center justify-between gap-2 pt-3">
-            <div>{program && <ProgramChip p={program} />}</div>
+        <div className="flex items-center justify-between gap-2 pt-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <button type="button" onClick={() => setShowChats(true)}
+              className="text-sm text-gray-600 border border-[#D9DEE3] bg-white rounded-full px-3 py-1 hover:border-gray-500">
+              Chats{chats.length ? ` (${chats.length})` : ''}
+            </button>
+            {msgs.length > 0 && program && <ProgramChip p={program} />}
+          </div>
+          {msgs.length > 0 && (
             <button type="button" disabled={busy}
-              onClick={() => { setMsgs([]); saveThread([]); setProgram(null) }}
+              onClick={() => startNew()}
               className="text-sm text-gray-600 border border-[#D9DEE3] bg-white rounded-full px-3 py-1 hover:border-gray-500 disabled:opacity-50">
               New chat
             </button>
-          </div>
+          )}
+        </div>
+        {showChats && (
+          <ChatsPanel chats={chats} activeId={activeId} busy={busy}
+            onOpen={openChat} onDelete={deleteChat} onNew={() => startNew()} onClose={() => setShowChats(false)} />
         )}
         {msgs.length === 0
           ? <EmptyState onPick={send} program={program} onClearProgram={() => setProgram(null)} />
