@@ -75,7 +75,7 @@ function Lookups({ lookups }) {
 
 // ── Pilot usage: trends and real-world use (server/ask/usage.js) ───────────
 const usd = x => (x == null ? '—' : x < 0.01 ? `$${x.toFixed(4)}` : `$${x.toFixed(2)}`)
-const SOURCE_LABEL = { typed: 'Typed', suggestion: 'Suggested question', followup: 'Follow-up chip', 'not recorded': 'Not recorded (before 14 Oct)' }
+const SOURCE_LABEL = { typed: 'Typed', suggestion: 'Suggested question', followup: 'Follow-up chip', quiz: 'Quick quiz', 'not recorded': 'Not recorded (before 14 Oct)' }
 
 function Tile({ label, value, sub }) {
   return (

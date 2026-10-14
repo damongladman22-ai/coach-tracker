@@ -11,6 +11,7 @@ import OPLogo from '../components/OPLogo'
 import { streamAsk, splitAnswer, historyContent, lookupLabel, sourceLabels, programCards } from '../ask/askClient'
 import { getFavorites } from '../hooks/useFavorite'
 import { loadChats, saveChats, putChat, dropChat, newChatId, whenLabel } from '../ask/chatStore'
+import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
 
 /**
  * Ask PitchSide — the consumer chat experience for the AI assistant (backlog F2).
@@ -317,7 +318,105 @@ function ChatsPanel({ chats, activeId, onOpen, onDelete, onNew, onClose, busy })
   )
 }
 
-function EmptyState({ onPick, program, onClearProgram, pilot }) {
+// ── quick quiz (Chad Prickett's pilot idea, Damon 2026-10-14) ──────────────
+// One question at a time; a choice moves straight on. The answers become one
+// message to the assistant (src/ask/quiz.js), which replies with a shortlist.
+function QuizPanel({ onDone, onCancel }) {
+  const questions = useMemo(() => quizQuestions(), [])
+  const [i, setI] = useState(0)
+  const [answers, setAnswers] = useState({})
+  const [text, setText] = useState('')
+  const q = questions[i]
+  const last = i === questions.length - 1
+
+  function next(patch) {
+    const merged = { ...answers, ...patch }
+    setAnswers(merged)
+    if (last) { onDone(merged); return }
+    const nq = questions[i + 1]
+    setText(nq.input ? String(merged[nq.id] || '') : nq.score ? String(merged.score || '') : '')
+    setI(i + 1)
+  }
+  function back() {
+    if (i === 0) { onCancel(); return }
+    const pq = questions[i - 1]
+    setText(pq.input ? String(answers[pq.id] || '') : pq.score ? String(answers.score || '') : '')
+    setI(i - 1)
+  }
+
+  const scoreTest = q.score ? answers.test : null
+  const scoreOk = q.score && (scoreTest === 'SAT' || scoreTest === 'ACT') ? cleanScore(scoreTest, text) != null : false
+  const choice = (o, picked) => (
+    <button key={o.value} type="button" onClick={picked}
+      className={`text-left bg-white border rounded-xl px-4 py-3 text-[15px] hover:border-gray-500 transition ${
+        answers[q.id] === o.value ? 'border-[#0a1628] ring-1 ring-[#0a1628]' : 'border-[#E5E8EB]'}`}>
+      {o.label}
+    </button>)
+
+  return (
+    <div className="pt-8 sm:pt-12 pb-6">
+      <div className="flex items-center justify-between text-sm text-gray-500">
+        <button type="button" onClick={back} className="hover:text-gray-800">{i === 0 ? 'Cancel' : '\u2190 Back'}</button>
+        <span>{i + 1} of {questions.length}</span>
+      </div>
+      <div className="mt-2 h-1.5 bg-white rounded-full overflow-hidden">
+        <div className="h-full bg-[#0a1628] transition-all" style={{ width: `${((i + 1) / questions.length) * 100}%` }} />
+      </div>
+      <h2 className="mt-6 text-xl sm:text-2xl font-semibold text-gray-900">{q.q}</h2>
+
+      {q.options && !q.score && (
+        <div className="mt-4 grid sm:grid-cols-2 gap-2">
+          {q.options.map(o => choice(o, () => next({ [q.id]: o.value })))}
+        </div>
+      )}
+
+      {q.score && (
+        <>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {q.options.map(o => choice(o, () => {
+              if (o.value === 'none') next({ test: 'none', score: '' })
+              else { setAnswers(a => ({ ...a, test: o.value })); setText('') }
+            }))}
+          </div>
+          {(scoreTest === 'SAT' || scoreTest === 'ACT') && (
+            <div className="mt-3 flex gap-2">
+              <input type="number" inputMode="numeric" value={text} onChange={e => setText(e.target.value)} autoFocus
+                placeholder={scoreTest === 'SAT' ? 'SAT total, 400 to 1600' : 'ACT composite, 1 to 36'}
+                onKeyDown={e => { if (e.key === 'Enter' && scoreOk) next({ score: text }) }}
+                className="flex-1 bg-white border border-[#D9DEE3] rounded-xl px-4 py-2.5 text-[15px] outline-none focus:border-gray-500" />
+              <button type="button" disabled={!scoreOk} onClick={() => next({ score: text })}
+                className="px-5 rounded-xl bg-[#0a1628] text-white text-sm font-medium disabled:bg-gray-300">Next</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {q.input && (
+        <div className="mt-4 space-y-2">
+          <div className="flex gap-2">
+            <input type="text" value={text} onChange={e => setText(e.target.value)} autoFocus placeholder={q.input.placeholder}
+              onKeyDown={e => { if (e.key === 'Enter' && (text.trim() || !q.input.required)) next({ [q.id]: text.trim() }) }}
+              className="flex-1 bg-white border border-[#D9DEE3] rounded-xl px-4 py-2.5 text-[15px] outline-none focus:border-gray-500" />
+            <button type="button" disabled={q.input.required && !text.trim()} onClick={() => next({ [q.id]: text.trim() })}
+              className="px-5 rounded-xl bg-[#0a1628] text-white text-sm font-medium disabled:bg-gray-300">{last ? 'Finish' : 'Next'}</button>
+          </div>
+          {q.options && (
+            <div className="flex flex-wrap gap-2">
+              {q.options.map(o => (
+                <button key={o.value} type="button" onClick={() => next({ [q.id]: o.value })}
+                  className="text-sm bg-white border border-[#E5E8EB] rounded-full px-3 py-1 hover:border-gray-500">{o.label}</button>))}
+            </div>
+          )}
+        </div>
+      )}
+      <p className="mt-6 text-xs text-gray-500">
+        Your answers go to the assistant as one message, and it replies with a shortlist. GPA is not used: PitchSide has test-score averages, not GPA data.
+      </p>
+    </div>
+  )
+}
+
+function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz }) {
   const list = program ? programSuggestions(program) : SUGGESTIONS
   return (
     <div className="pt-10 sm:pt-16 pb-6 text-center">
@@ -336,7 +435,15 @@ function EmptyState({ onPick, program, onClearProgram, pilot }) {
           Pilot preview for {pilot.name}. Please use the thumbs up and down under each answer to tell us how it did.
         </p>
       )}
-      <div className="mt-8 grid sm:grid-cols-2 gap-3 text-left">
+      {!program && onQuiz && (
+        <button type="button" onClick={onQuiz}
+          className="mt-8 w-full text-left bg-[#0a1628] text-white rounded-xl px-5 py-4 hover:bg-[#13233d] transition">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-white/60">New to the search?</div>
+          <div className="mt-1 text-base font-semibold">Take the quick quiz</div>
+          <div className="mt-0.5 text-sm text-white/80">13 quick questions about the player and what matters to you, then a shortlist of programs that fit.</div>
+        </button>
+      )}
+      <div className={`${!program && onQuiz ? 'mt-4' : 'mt-8'} grid sm:grid-cols-2 gap-3 text-left`}>
         {list.map(s => (
           <button key={s.q} type="button" onClick={() => onPick(s.q)}
             className="text-left bg-white border border-[#E5E8EB] rounded-xl px-4 py-3 hover:border-gray-400 hover:shadow-sm transition">
@@ -361,6 +468,7 @@ export default function AskPitchSide({ session }) {
   const [msgs, setMsgs] = useState(() => chats[0]?.msgs || [])
   const [program, setProgram] = useState(() => chats[0]?.program || null)
   const [showChats, setShowChats] = useState(false)
+  const [quiz, setQuiz] = useState(false)
   // The messages last saved (or just opened), so viewing a chat does not move it to the top.
   const savedRef = useRef(msgs)
   const [params, setParams] = useSearchParams()
@@ -379,7 +487,7 @@ export default function AskPitchSide({ session }) {
   }, [msgs, busy, activeId, program])
 
   function startNew(p = null) {
-    setActiveId(null); setMsgs([]); setProgram(p); setShowChats(false)
+    setActiveId(null); setMsgs([]); setProgram(p); setShowChats(false); setQuiz(false)
   }
   function openChat(c) {
     savedRef.current = c.msgs
@@ -505,8 +613,11 @@ export default function AskPitchSide({ session }) {
           <ChatsPanel chats={chats} activeId={activeId} busy={busy}
             onOpen={openChat} onDelete={deleteChat} onNew={() => startNew()} onClose={() => setShowChats(false)} />
         )}
-        {msgs.length === 0
-          ? <EmptyState onPick={q => send(q, 'suggestion')} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot} />
+        {msgs.length === 0 && quiz
+          ? <QuizPanel onCancel={() => setQuiz(false)} onDone={a => { setQuiz(false); send(quizMessage(a), 'quiz') }} />
+          : msgs.length === 0
+          ? <EmptyState onPick={q => send(q, 'suggestion')} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot}
+              onQuiz={() => setQuiz(true)} />
           : (
             <div className="py-4 space-y-6">
               {msgs.map(m => (m.role === 'user'
