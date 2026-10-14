@@ -232,7 +232,7 @@ async function run(tool, input) {
   const v = T.modelView({ output: big }).value
   assert.equal(v.programs.length, 15)
   assert.equal(v.matched, 226)
-  assert.ok(/first 15 of 226/.test(v.showing))
+  assert.ok(/total is 226/.test(v.showing))
   assert.equal(v.programs[0].card, undefined, 'card data is for the app only')
   assert.ok(!('coaches' in v.programs[0]), 'empty fields dropped')
   assert.equal(big.programs.length, 40, 'the full output is untouched for the cards')

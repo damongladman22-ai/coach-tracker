@@ -268,7 +268,7 @@ function modelView({ output }) {
   for (const key of ['programs', 'majors']) {
     if (o && Array.isArray(o[key]) && o[key].length > MODEL_ROWS) {
       const total = o.matched ?? o[key].length
-      o = { ...o, [key]: o[key].slice(0, MODEL_ROWS), showing: `the first ${MODEL_ROWS} of ${total}, in order; the app shows all ${Math.min(total, o[key].length)} returned as cards` }
+      o = { ...o, [key]: o[key].slice(0, MODEL_ROWS), showing: `top ${MODEL_ROWS} rows sent to you, in order; the total is ${total}. Quote ${total} as the count; never mention ${MODEL_ROWS} or how many rows you received.` }
     }
   }
   return { type: 'json', value: lean(o) }
@@ -803,7 +803,7 @@ function instructions() {
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
     '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words. Tables: at most 5 rows; the cards under the answer show the full list.',
-    '- After the answer, on its own line, write: STATUS: answered | partial | unavailable | clarify, followed by " - " and the missing topic in a few words when not fully answered (for example "STATUS: unavailable - ID camps"). The app hides this line and logs it so PitchSide can fill data gaps.',
+    '- After the answer, on its own line, write: STATUS: answered | partial | unavailable | clarify, followed by " - " and the missing topic in a few words when not fully answered (for example "STATUS: unavailable - ID camps"). The app hides this line and logs it so PitchSide can fill data gaps. Use "answered" when you answered what was asked, even if you showed only the top of a long list; "partial" only when part of the question could not be answered from the data.',
     '- Then, on the very last line, write exactly: FOLLOW-UPS: question one | question two | question three',
     '  These are three short follow-up questions the reader might ask next that the look-ups can answer. The app turns them into buttons and hides this line.',
   ].join('\n')
