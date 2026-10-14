@@ -2,6 +2,13 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import OwnerLayout from '../components/OwnerLayout'
 
+// How a record reads on its "Keep" button, so two people with the same name
+// can still be told apart (14 Oct 2026: both buttons used to read "Keep Hogan").
+function recordSummary(c, games) {
+  return [c.is_active === false ? 'Inactive' : 'Active', c.title || 'no title',
+    `${games} attendance record${games === 1 ? '' : 's'}`].join(' · ')
+}
+
 export default function DedupCoaches({ session }) {
   const [coaches, setCoaches] = useState([])
   const [duplicates, setDuplicates] = useState([])
@@ -568,23 +575,32 @@ export default function DedupCoaches({ session }) {
                 ) : (
                   <div className="space-y-2">
                     <p className="text-sm text-gray-600 text-center mb-2">
-                      Choose which coach to keep. Missing contact info will be auto-filled from the other record:
+                      Choose which record to keep: the button under each record keeps that record.
+                      The other record is deleted, its attendance moves to the one you keep, and a missing
+                      title, email or phone is filled in from it.
                     </p>
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => mergeCoaches(coach1, coach2)}
-                        disabled={isMerging}
-                        className="py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300"
-                      >
-                        {isMerging ? 'Merging...' : `Keep "${coach1.first_name}"`}
-                      </button>
-                      <button
-                        onClick={() => mergeCoaches(coach2, coach1)}
-                        disabled={isMerging}
-                        className="py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300"
-                      >
-                        {isMerging ? 'Merging...' : `Keep "${coach2.first_name}"`}
-                      </button>
+                      {[[coach1, coach2, count1], [coach2, coach1, count2]].map(([keep, drop, games], side) => {
+                        // When exactly one record is active, keeping it is recommended (green);
+                        // otherwise both buttons look the same.
+                        const onlyActive = (keep.is_active !== false) && (drop.is_active === false)
+                        const otherOnlyActive = (drop.is_active !== false) && (keep.is_active === false)
+                        return (
+                          <button
+                            key={keep.id}
+                            onClick={() => mergeCoaches(keep, drop)}
+                            disabled={isMerging}
+                            className={`py-2 px-2 rounded-lg text-white disabled:bg-gray-300 ${otherOnlyActive ? 'bg-gray-500 hover:bg-gray-600' : 'bg-green-600 hover:bg-green-700'}`}
+                          >
+                            {isMerging ? 'Merging...' : (
+                              <>
+                                <span className="block font-medium">Keep {side === 0 ? 'left' : 'right'} record{onlyActive ? ' (recommended)' : ''}</span>
+                                <span className="block text-xs opacity-90">{recordSummary(keep, games)}</span>
+                              </>
+                            )}
+                          </button>
+                        )
+                      })}
                     </div>
                     <button
                       onClick={() => setSelectedPair(null)}
