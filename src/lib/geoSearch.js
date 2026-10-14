@@ -43,8 +43,12 @@ export async function programPoints(client, schools, facts) {
   }
   const keys = [...new Set([...want.values()].map(([, k]) => k))]
   const found = new Map()
-  for (let i = 0; i < keys.length; i += 150) {
-    const { data, error } = await client.from('geo_points').select('state,key,lat,lon').eq('kind', 'place').in('key', keys.slice(i, i + 150))
+  const chunks = []
+  for (let i = 0; i < keys.length; i += 150) chunks.push(keys.slice(i, i + 150))
+  // All chunks at once rather than one after another.
+  const results = await Promise.all(chunks.map(c =>
+    client.from('geo_points').select('state,key,lat,lon').eq('kind', 'place').in('key', c)))
+  for (const { data, error } of results) {
     if (error) throw new Error(error.message)
     for (const g of data || []) found.set(g.state + '|' + g.key, { lat: g.lat, lon: g.lon })
   }

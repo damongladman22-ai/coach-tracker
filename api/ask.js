@@ -72,14 +72,23 @@ function readClient() {
     { auth: { persistSession: false } })
 }
 
-async function allRows(build) {
-  let from = 0, out = []
-  for (;;) {
+// Every row of a query, PAGE rows at a time. The first page is read alone
+// (most look-ups fit in one); after that, pages are read four at a time
+// instead of one after another, which is what made a fresh server slow.
+async function allRows(build, batch = 4) {
+  const page = async from => {
     const { data, error } = await build().range(from, from + PAGE - 1)
     if (error) throw new Error(error.message)
-    out = out.concat(data || [])
-    if (!data || data.length < PAGE) return out
-    from += PAGE
+    return data || []
+  }
+  let out = await page(0)
+  if (out.length < PAGE) return out
+  for (let from = PAGE; ; from += batch * PAGE) {
+    const pages = await Promise.all(Array.from({ length: batch }, (_, i) => page(from + i * PAGE)))
+    for (const p of pages) {
+      out = out.concat(p)
+      if (p.length < PAGE) return out
+    }
   }
 }
 
@@ -90,9 +99,17 @@ const round = (x, d = 1) => (x == null || isNaN(Number(x)) ? null : Math.round(N
 // Every active program, the alias table (nicknames, short names), and each
 // program's College Scorecard facts. Loaded once and reused, so fuzzy name
 // matching and academic filters cost no extra queries per question.
-let REF = null
-async function refData(db) {
-  if (REF && Date.now() - REF.at < 15 * 60 * 1000) return REF
+// A load already under way is shared, so two look-ups at once (or the
+// warm-up started when a question arrives) never load it twice.
+let REF = null, REF_LOADING = null
+function refData(db) {
+  if (REF && Date.now() - REF.at < 15 * 60 * 1000) return Promise.resolve(REF)
+  if (!REF_LOADING) {
+    REF_LOADING = loadRefData(db).then(r => { REF = r; return r }).finally(() => { REF_LOADING = null })
+  }
+  return REF_LOADING
+}
+async function loadRefData(db) {
   const [schools, aliases, links] = await Promise.all([
     allRows(() => db.from('schools').select('id,school,program_gender,division,conference,city,state').neq('is_active', false).order('id')),
     allRows(() => db.from('school_aliases').select('id,school_id,alias_norm,kind').order('id')),
@@ -115,27 +132,44 @@ async function refData(db) {
     unitOf.set(l.school_id, l.unitid)
     if (l.college_facts) facts.set(l.school_id, l.college_facts)
   }
-  REF = { at: Date.now(), schools, byId, facts, unitOf, links: links.map(l => ({ school_id: l.school_id, unitid: l.unitid })) }
-  return REF
+  return { at: Date.now(), schools, byId, facts, unitOf, links: links.map(l => ({ school_id: l.school_id, unitid: l.unitid })) }
 }
 
 let CATALOG = null
-async function majorCatalog(db) {
-  if (CATALOG) return CATALOG
+function majorCatalog(db) {
+  if (!CATALOG) {
+    CATALOG = loadMajorCatalog(db)
+    CATALOG.catch(() => { CATALOG = null })
+  }
+  return CATALOG
+}
+async function loadMajorCatalog(db) {
   const { data, error } = await db.from('college_major_catalog')
     .select('cip_code,title,family_code,family_title,colleges_bachelors,colleges_associate').limit(PAGE)
   if (error) throw new Error(error.message)
-  CATALOG = buildCatalog(data || [])
-  return CATALOG
+  return buildCatalog(data || [])
 }
 
 // ── distance search ─────────────────────────────────────────────────────────
 // Where each program is: the College Scorecard point of its college, else its
 // own city found in geo_points (U.S. Census towns). Cached with REF.
-async function programPointsFor(db, ref) {
-  if (!ref.points) ref.points = await programPoints(db, ref.schools, ref.facts)
+function programPointsFor(db, ref) {
+  if (!ref.points) {
+    ref.points = programPoints(db, ref.schools, ref.facts)
+    ref.points.catch(() => { ref.points = null })
+  }
   return ref.points
 }
+
+// Loads every question's search may need, started as soon as a question
+// arrives so they run while the model is still planning its first step.
+// Best effort: a failure here is retried by the look-up that needs it.
+function warmUp(db) {
+  refData(db).then(ref => programPointsFor(db, ref)).catch(() => {})
+  majorCatalog(db).catch(() => {})
+}
+// A promise whose failure is reported only where it is awaited.
+const quiet = p => { p.catch(() => {}); return p }
 const locate = (db, near) => locatePlace(db, near)
 
 const LOCALE = {
@@ -356,28 +390,45 @@ function buildToolSet(db, log, ctx) {
         limit: z.number().int().min(1).max(MAX_ROWS).optional(),
       }),
       execute: run('find_programs', async (a) => {
-        const ref = await refData(db)
+        // Start every read this search needs at once; each is awaited where used.
+        const openings = !!(a.position && a.hs_class)
+        const refP = quiet(refData(db))
+        const locP = a.near ? quiet(locate(db, a.near)) : null
+        const latestP = openings ? quiet((async () => {
+          const { data: lat } = await db.from('program_openings_outlook').select('current_season')
+            .order('current_season', { ascending: false }).limit(1)
+          return lat?.[0]?.current_season ?? null
+        })()) : null
+        const outlookP = openings ? quiet(allRows(() => db.from('program_openings_outlook')
+          .select('school_id,entry_season,position,current_season,graduating,continuing,early_rate,transitions,' +
+            'fresh_share,est_spots,est_freshman,schools!inner(school,program_gender,division,conference,city,state)')
+          .eq('entry_season', a.hs_class).eq('position', a.position).eq('schools.program_gender', a.gender)
+          .order('school_id', { ascending: true }))) : null
+        const majorP = a.major ? quiet((async () => {
+          const choice = searchMajors(await majorCatalog(db), a.major, 1)[0] || null
+          if (!choice) return { choice: null, rows: [] }
+          const rows = await allRows(() => db.from('college_majors')
+            .select('unitid,cip_code,title,credential_level,graduates_2yr')
+            .eq(choice.kind === 'area' ? 'family_code' : 'cip_code', choice.code)
+            .in('credential_level', [2, 3]).order('unitid').order('cip_code').order('credential_level'))
+          return { choice, rows }
+        })()) : null
+
+        const ref = await refP
         let center = null, radius = null, points = null, noLocation = 0
         if (a.near) {
-          const loc = await locate(db, a.near)
+          const loc = await locP
           if (loc.error) return { programs: [], note: loc.error }
           if (loc.ambiguous) return { programs: [], note: `Several places are called "${a.near}". Ask which one (or for a ZIP code).`, places: loc.ambiguous }
           center = loc.point
           radius = a.radius_miles || 100
           points = await programPointsFor(db, ref)
         }
-        const openings = !!(a.position && a.hs_class)
         let latest = null
         let base
         if (openings) {
-          const { data: lat } = await db.from('program_openings_outlook').select('current_season')
-            .order('current_season', { ascending: false }).limit(1)
-          latest = lat?.[0]?.current_season ?? null
-          const rows = await allRows(() => db.from('program_openings_outlook')
-            .select('school_id,entry_season,position,current_season,graduating,continuing,early_rate,transitions,' +
-              'fresh_share,est_spots,est_freshman,schools!inner(school,program_gender,division,conference,city,state)')
-            .eq('entry_season', a.hs_class).eq('position', a.position).eq('schools.program_gender', a.gender)
-            .order('school_id', { ascending: true }))
+          latest = await latestP
+          const rows = await outlookP
           if (!rows.length) return { programs: [], note: `No openings estimates for the class of ${a.hs_class}. Latest roster season is ${latest}; classes ${latest + 1} to ${latest + 4} are covered.` }
           base = rankPrograms(rows, { minSeason: latest != null ? latest - 1 : null })
         } else {
@@ -387,14 +438,10 @@ function buildToolSet(db, log, ctx) {
 
         let majorChoice = null, offerings = null
         if (a.major) {
-          const cat = await majorCatalog(db)
-          majorChoice = searchMajors(cat, a.major, 1)[0] || null
+          const m = await majorP
+          majorChoice = m.choice
           if (!majorChoice) return { programs: [], note: `PitchSide's majors list has nothing matching "${a.major}". Try a broader field name.` }
-          const rows = await allRows(() => db.from('college_majors')
-            .select('unitid,cip_code,title,credential_level,graduates_2yr')
-            .eq(majorChoice.kind === 'area' ? 'family_code' : 'cip_code', majorChoice.code)
-            .in('credential_level', [2, 3]).order('unitid').order('cip_code').order('credential_level'))
-          offerings = offeringsBySchool(ref.links, rows)
+          offerings = offeringsBySchool(ref.links, m.rows)
         }
 
         const conf = a.conference ? confMatcher(a.conference) : null
@@ -1110,6 +1157,7 @@ export default async function handler(req, res) {
   if (messages.length && messages[messages.length - 1].role !== 'user') return res.status(400).json({ error: 'last message must be the question' })
   const asked = messages.length ? messages[messages.length - 1].content : question
   const turn = messages.length ? messages.filter(m => m.role === 'user').length : 1
+  warmUp(readClient())
   const ctx = {
     favoriteTeamIds: (Array.isArray(body.context?.favoriteTeamIds) ? body.context.favoriteTeamIds : [])
       .map(Number).filter(Number.isFinite).slice(0, 20),
@@ -1228,4 +1276,4 @@ export default async function handler(req, res) {
 }
 
 // For test/ask.test.mjs only (no network): the pieces that can be checked offline.
-export const _internals = { modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; CATALOG = null } }
+export const _internals = { modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; REF_LOADING = null; CATALOG = null } }
