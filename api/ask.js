@@ -244,6 +244,7 @@ async function pickSchool(db, { school_id, school, gender }) {
   if (!found.length) return { result: { matches: [], note: `No program matched "${school}", even allowing for typos. It may have closed, or PitchSide may not track it.` } }
   return { result: { matches: found.map(matchRow), note: 'Several programs match. Call again with the school_id of the one the person means (or ask, if it is unclear, e.g. men\'s or women\'s).' } }
 }
+const GK_TITLE = /goal ?keep|keeper|\bgk\b/i
 const programHead = s => ({ school_id: s.id, school: s.school, gender: s.program_gender, division: s.division, conference: s.conference })
 const SCHOOL_INPUT = {
   school: z.string().optional().describe('College name as the person wrote it (typos fine); use this OR school_id'),
@@ -328,7 +329,9 @@ function buildToolSet(db, log, ctx) {
         position: z.enum(['GK', 'D', 'M', 'F']).optional().describe('GK goalkeeper, D defender, M midfielder, F forward'),
         hs_class: z.number().int().optional().describe('High-school graduating class, e.g. 2027 (enters college that fall)'),
         divisions: z.array(z.enum(DIVISIONS)).optional(),
-        states: z.array(z.string()).optional().describe('Two-letter state codes, e.g. ["OH","PA"]'),
+        states: z.array(z.string()).optional().describe('Two-letter state codes to keep, e.g. ["OH","PA"]'),
+        exclude_states: z.array(z.string()).optional().describe('Two-letter state codes to leave out, e.g. ["OH"] for "out of state" from Ohio'),
+        schools: z.array(z.string()).optional().describe('College names (or school_ids) to find IN this same search: each comes back with its rank in the full list, its distance and its figures, or, if the filters left it out, the reason. Use for "why is X not on the list", "where does X rank".'),
         conference: z.string().optional().describe('Conference name or short name, e.g. "Big Ten", "SEC", "NESCAC"'),
         major: z.string().optional().describe('A major or field, e.g. "nursing", "engineering", "kinesiology"'),
         sat_min: z.number().int().optional().describe('Minimum average SAT of admitted students (400-1600)'),
@@ -392,39 +395,45 @@ function buildToolSet(db, log, ctx) {
         const conf = a.conference ? confMatcher(a.conference) : null
         const divs = a.divisions?.length ? new Set(a.divisions) : null
         const sts = a.states?.length ? new Set(a.states.map(s => s.toUpperCase())) : null
+        const notSts = a.exclude_states?.length ? new Set(a.exclude_states.map(s => s.toUpperCase())) : null
+        const need = [a.sat_min, a.sat_max, a.admission_rate_max, a.admission_rate_min, a.graduation_rate_min,
+          a.net_price_max, a.undergrads_min, a.undergrads_max, a.type, a.setting].some(v => v != null)
+        const distanceOf = id => {
+          if (!center) return null
+          const pt = points.get(id)
+          return pt ? milesBetween(center, pt) : null
+        }
+        // The first filter a program fails, in words, or null when it passes.
+        // Shared by the search and by the "schools" check ("why is X not here").
+        const failReason = (r, s, f, dist) => {
+          if (divs && !divs.has(s.division)) return `division is ${s.division || 'unknown'}`
+          if (sts && !sts.has(stateAbbr(s.state))) return `state is ${stateAbbr(s.state) || 'unknown'}`
+          if (notSts && notSts.has(stateAbbr(s.state))) return `in ${stateAbbr(s.state)}, which was left out`
+          if (conf && !conf(s.conference)) return `conference is ${s.conference || 'unknown'}`
+          if (need && !f) return 'no College Scorecard figures for this college'
+          if (a.sat_min != null && !(f.sat_average >= a.sat_min)) return `average SAT ${f.sat_average ?? 'not published'} is below ${a.sat_min}`
+          if (a.sat_max != null && !(f.sat_average != null && f.sat_average <= a.sat_max)) return `average SAT ${f.sat_average ?? 'not published'} is above ${a.sat_max}`
+          if (a.admission_rate_max != null && !(f.admission_rate != null && f.admission_rate <= a.admission_rate_max)) return `admission rate ${f.admission_rate ?? 'not published'} is above ${a.admission_rate_max}`
+          if (a.admission_rate_min != null && !(f.admission_rate == null || f.admission_rate >= a.admission_rate_min)) return `admission rate ${f.admission_rate} is below ${a.admission_rate_min}`
+          if (a.graduation_rate_min != null && !(f.graduation_rate >= a.graduation_rate_min)) return `graduation rate ${f.graduation_rate ?? 'not published'} is below ${a.graduation_rate_min}`
+          if (a.net_price_max != null && !(f.avg_net_price != null && f.avg_net_price <= a.net_price_max)) return `net price ${f.avg_net_price ?? 'not published'} is above ${a.net_price_max}`
+          if (a.undergrads_min != null && !(f.undergrad_enrollment >= a.undergrads_min)) return `${f.undergrad_enrollment ?? 'unknown'} undergraduates is below ${a.undergrads_min}`
+          if (a.undergrads_max != null && !(f.undergrad_enrollment != null && f.undergrad_enrollment <= a.undergrads_max)) return `${f.undergrad_enrollment ?? 'unknown'} undergraduates is above ${a.undergrads_max}`
+          if (a.type && controlWord(f.control) !== a.type) return `it is ${controlWord(f.control) || 'of unknown type'}, not ${a.type}`
+          if (a.setting && settingWord(f.locale) !== a.setting) return `setting is ${settingWord(f.locale) || 'unknown'}, not ${a.setting}`
+          if (center && dist == null) return 'its location is not known'
+          if (center && dist > radius) return `${Math.round(dist)} miles away, beyond ${radius}`
+          if (offerings && !offeringFor(offerings, r.school_id, s.division)) return 'it has not awarded that major in the last two years'
+          return null
+        }
         const out = []
         for (const r of base) {
           const s = r.schools || {}
-          if (divs && !divs.has(s.division)) continue
-          if (sts && !sts.has(stateAbbr(s.state))) continue
-          if (conf && !conf(s.conference)) continue
           const f = ref.facts.get(r.school_id) || null
-          const need = [a.sat_min, a.sat_max, a.admission_rate_max, a.admission_rate_min, a.graduation_rate_min,
-            a.net_price_max, a.undergrads_min, a.undergrads_max, a.type, a.setting].some(v => v != null)
-          if (need && !f) continue
-          if (a.sat_min != null && !(f.sat_average >= a.sat_min)) continue
-          if (a.sat_max != null && !(f.sat_average != null && f.sat_average <= a.sat_max)) continue
-          if (a.admission_rate_max != null && !(f.admission_rate != null && f.admission_rate <= a.admission_rate_max)) continue
-          if (a.admission_rate_min != null && !(f.admission_rate == null || f.admission_rate >= a.admission_rate_min)) continue
-          if (a.graduation_rate_min != null && !(f.graduation_rate >= a.graduation_rate_min)) continue
-          if (a.net_price_max != null && !(f.avg_net_price != null && f.avg_net_price <= a.net_price_max)) continue
-          if (a.undergrads_min != null && !(f.undergrad_enrollment >= a.undergrads_min)) continue
-          if (a.undergrads_max != null && !(f.undergrad_enrollment != null && f.undergrad_enrollment <= a.undergrads_max)) continue
-          if (a.type && controlWord(f.control) !== a.type) continue
-          if (a.setting && settingWord(f.locale) !== a.setting) continue
-          let dist = null
-          if (center) {
-            const pt = points.get(r.school_id)
-            if (!pt) { noLocation++; continue }
-            dist = milesBetween(center, pt)
-            if (dist > radius) continue
-          }
-          let majorNote = null
-          if (offerings) {
-            const o = offeringFor(offerings, r.school_id, s.division)
-            if (!o) continue
-            majorNote = majorReason(o, majorChoice)
-          }
+          const dist = distanceOf(r.school_id)
+          const why = failReason(r, s, f, dist)
+          if (why) { if (why === 'its location is not known') noLocation++; continue }
+          const majorNote = offerings ? majorReason(offeringFor(offerings, r.school_id, s.division), majorChoice) : null
           out.push({ r, s, f, majorNote, dist })
         }
 
@@ -443,6 +452,56 @@ function buildToolSet(db, log, ctx) {
         if (sort !== 'openings') out.sort(cmp)
 
         const n = Math.min(a.limit || MAX_ROWS, MAX_ROWS)
+        const toRow = ({ r, s, f, majorNote, dist }) => {
+          const row = {
+            school_id: r.school_id, school: s.school, division: s.division, conference: s.conference, state: stateAbbr(s.state),
+            admission_rate: f?.admission_rate ?? null, sat_average: f?.sat_average ?? null,
+            graduation_rate: f?.graduation_rate ?? null, avg_net_price: f?.avg_net_price ?? null,
+            undergrads: f?.undergrad_enrollment ?? null, type: f ? controlLabel(f.control) : null, setting: f ? LOCALE[f.locale] || null : null,
+          }
+          if (dist != null) row.distance_miles = Math.round(dist)
+          if (majorNote) row.major = majorNote
+          if (openings) {
+            Object.assign(row, {
+              est_freshman_openings: round(r.est_freshman), est_total_openings: round(r.est_spots),
+              graduating_before_entry: r.graduating, roster_season: r.current_season,
+              reasons: reasons(r, a.position, a.hs_class),
+            })
+          }
+          row.card = cardMetric(sort, row, openings)
+          return row
+        }
+
+        // "schools": where named programs stand in THIS search (rank, figures),
+        // or the first filter that left each one out.
+        let asked
+        if (a.schools?.length) {
+          asked = []
+          const rankOf = new Map(out.map((x, i) => [x.r.school_id, i + 1]))
+          const baseOf = new Map(base.map(r => [r.school_id, r]))
+          for (const name of a.schools.slice(0, 6)) {
+            const hit = ref.byId.has(name) ? [ref.byId.get(name)] : matchSchools(ref, name, a.gender)
+            if (hit.length !== 1) { asked.push({ asked_for: name, note: hit.length ? 'several programs match; pass a school_id' : 'no program matched' }); continue }
+            const sch = hit[0]
+            const rank = rankOf.get(sch.id)
+            if (rank) { const { card, ...row } = toRow(out[rank - 1]); asked.push({ ...row, rank_in_search: rank, of: out.length }); continue }
+            const dist = distanceOf(sch.id)
+            const f = ref.facts.get(sch.id) || null
+            const r = baseOf.get(sch.id)
+            const s2 = { school: sch.school, division: sch.division, conference: sch.conference, city: sch.city, state: sch.state }
+            const why = r ? failReason(r, s2, f, dist)
+              : openings ? `no openings estimate for a ${a.position} in the class of ${a.hs_class} (its rosters do not cover it)` : 'not in this search'
+            asked.push({
+              school_id: sch.id, school: sch.school, division: sch.division, state: stateAbbr(sch.state),
+              in_results: false, left_out_because: why || 'not in this search',
+              distance_miles: dist != null ? Math.round(dist) : undefined,
+              admission_rate: f?.admission_rate ?? undefined, sat_average: f?.sat_average ?? undefined,
+              avg_net_price: f?.avg_net_price ?? undefined, undergrads: f?.undergrad_enrollment ?? undefined,
+              est_freshman_openings: r && openings ? round(r.est_freshman) : undefined,
+            })
+          }
+        }
+
         return {
           matched: out.length,
           highlights: highlightsFor(out, { center, openings }),
@@ -457,25 +516,8 @@ function buildToolSet(db, log, ctx) {
           distance_note: center ? 'Straight-line miles from the place named, to the college campus (driving distance is longer).' : undefined,
           without_location: center && noLocation ? noLocation : undefined,
           academics_note: 'Admission rate, average SAT, graduation rate and net price are from the U.S. College Scorecard (2026 release). GPA is not available.',
-          programs: out.slice(0, n).map(({ r, s, f, majorNote, dist }) => {
-            const row = {
-              school_id: r.school_id, school: s.school, division: s.division, conference: s.conference, state: stateAbbr(s.state),
-              admission_rate: f?.admission_rate ?? null, sat_average: f?.sat_average ?? null,
-              graduation_rate: f?.graduation_rate ?? null, avg_net_price: f?.avg_net_price ?? null,
-              undergrads: f?.undergrad_enrollment ?? null, type: f ? controlLabel(f.control) : null, setting: f ? LOCALE[f.locale] || null : null,
-            }
-            if (dist != null) row.distance_miles = Math.round(dist)
-            if (majorNote) row.major = majorNote
-            if (openings) {
-              Object.assign(row, {
-                est_freshman_openings: round(r.est_freshman), est_total_openings: round(r.est_spots),
-                graduating_before_entry: r.graduating, roster_season: r.current_season,
-                reasons: reasons(r, a.position, a.hs_class),
-              })
-            }
-            row.card = cardMetric(sort, row, openings)
-            return row
-          }),
+          asked_about: asked,
+          programs: out.slice(0, n).map(toRow),
         }
       }),
     }),
@@ -600,24 +642,75 @@ function buildToolSet(db, log, ctx) {
         const { data, error } = await db.from('coaches').select('first_name, last_name, title, email')
           .eq('school_id', school_id).eq('is_active', true)
         if (error) throw new Error(error.message)
-        return { program: programHead(p.s), coaches: (data || []).map(c => ({ name: `${c.first_name} ${c.last_name}`.trim(), title: c.title, email: c.email })) }
+        const coaches = (data || []).map(c => ({ name: `${c.first_name} ${c.last_name}`.trim(), title: c.title, email: c.email }))
+        const gk = coaches.filter(c => GK_TITLE.test(c.title || ''))
+        return {
+          program: programHead(p.s), coaches,
+          goalkeeper_coach: gk.length ? gk.map(c => c.name) : 'none listed',
+          goalkeeper_note: gk.length ? undefined : 'No title on this staff names goalkeepers; another coach may still work with them.',
+        }
+      }),
+    }),
+
+    program_position_history: tool({
+      description: 'How one program\'s players at a POSITION (default GK, goalkeepers) have stayed or moved on, pooled over its last few ' +
+        'roster seasons: how many returned the next season, transferred to another college (traced), left after their final year, or left otherwise, ' +
+        'and how newcomers at that position arrived (freshmen, transfers, other). Also the current roster at that position by class year. ' +
+        'Use for "do goalkeepers stay or transfer at X", "how many keepers does X carry", "does X recruit freshman goalkeepers".',
+      inputSchema: z.object({ ...SCHOOL_INPUT, position: z.enum(['GK', 'D', 'M', 'F']).optional().describe('Default GK') }),
+      execute: run('program_position_history', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const school_id = p.s.id
+        const position = a.position || 'GK'
+        const [hist, cur] = await Promise.all([
+          db.from('program_position_retention').select('*').eq('school_id', school_id).eq('position', position).maybeSingle(),
+          db.from('college_rosters').select('roster_season, class_year').eq('school_id', school_id).eq('position', position)
+            .eq('is_active', true).order('roster_season', { ascending: false }).limit(60),
+        ])
+        if (hist.error) throw new Error(hist.error.message)
+        const latest = cur.data?.[0]?.roster_season ?? null
+        const now = (cur.data || []).filter(r => r.roster_season === latest)
+        const byClass = {}
+        for (const r of now) byClass[r.class_year || 'unknown'] = (byClass[r.class_year || 'unknown'] || 0) + 1
+        const h = hist.data
+        return {
+          program: programHead(p.s), position,
+          current_roster: latest == null ? null : { roster_season: latest, players: now.length, by_class_year: byClass },
+          history: h ? {
+            seasons: `${h.first_season} to ${h.last_season}`, season_pairs: h.season_pairs,
+            players_followed: h.on_roster, returned: h.returned, transferred_to_another_college: h.transferred_out,
+            left_after_final_year: h.left_after_final_year, left_otherwise: h.left_otherwise,
+            newcomers: { freshmen: h.arrived_as_freshmen, transfers_in: h.arrived_by_transfer, other: h.arrived_other },
+          } : null,
+          note: 'Counts pooled across seasons, never individual players. Transfers count only moves PitchSide could trace between two college rosters, so they are minimums; "left otherwise" includes players who stopped playing or moved somewhere PitchSide does not track.',
+        }
       }),
     }),
 
     program_profile: tool({
       description: 'Profile facts for one program: location and division, recruiting style (freshmen vs transfers, in-state reach, ' +
         'international share, roster stability, each read against similar programs), expected early-departure rate, ' +
-        'and campus facts from the U.S. College Scorecard (undergraduates, average net price, admission rate, graduation rate).',
-      inputSchema: z.object(SCHOOL_INPUT),
+        'and campus facts from the U.S. College Scorecard (undergraduates, average net price, admission rate, average SAT, graduation rate). ' +
+        'Pass "near" (the family\'s town and state, or ZIP) to get distance_miles from home.',
+      inputSchema: z.object({ ...SCHOOL_INPUT, near: z.string().optional().describe('A town with its state or a ZIP code; adds distance_miles') }),
       execute: run('program_profile', async (a) => {
         const p = await pickSchool(db, a)
         if (p.result) return p.result
         const school_id = p.s.id
+        let distance = null
+        if (a.near) {
+          const loc = await locate(db, a.near)
+          if (loc.point) {
+            const pt = (await programPointsFor(db, await refData(db))).get(school_id)
+            if (pt) distance = { distance_miles: Math.round(milesBetween(loc.point, pt)), from: loc.point.name, note: 'Straight-line miles; driving distance is longer.' }
+          }
+        }
         const [s, style, dep, link] = await Promise.all([
           db.from('schools').select('school, program_gender, division, conference, city, state').eq('id', school_id).maybeSingle(),
           db.from('program_recruiting_style').select('build_band, reach_band, abroad_band, stability_band').eq('school_id', school_id).maybeSingle(),
           db.from('program_departure_outlook').select('outlook_rate, transitions, basis').eq('school_id', school_id).maybeSingle(),
-          db.from('school_federal_college').select('unitid, college_facts(federal_name, undergrad_enrollment, avg_net_price, cost_of_attendance, admission_rate, graduation_rate, locale, control)')
+          db.from('school_federal_college').select('unitid, college_facts(federal_name, undergrad_enrollment, avg_net_price, cost_of_attendance, admission_rate, sat_average, graduation_rate, locale, control)')
             .eq('school_id', school_id).maybeSingle(),
         ])
         if (!s.data) return { error: 'No program with that id.' }
@@ -630,6 +723,7 @@ function buildToolSet(db, log, ctx) {
           } : null,
           expected_early_departure_rate: dep.data ? { rate: round(dep.data.outlook_rate, 3), seasons_tracked: dep.data.transitions, basis: dep.data.basis } : null,
           college_facts: link.data?.college_facts || null,
+          distance: distance || undefined,
         }
       }),
     }),
@@ -774,6 +868,10 @@ function buildToolSet(db, log, ctx) {
 }
 
 // ── the instructions every model gets ───────────────────────────────────────
+// ACT composite to SAT total, from the 2018 ACT/SAT concordance tables.
+const ACT_TO_SAT = '36=1590, 35=1540, 34=1500, 33=1460, 32=1430, 31=1400, 30=1370, 29=1340, 28=1310, 27=1280, 26=1240, 25=1210, ' +
+  '24=1180, 23=1140, 22=1110, 21=1080, 20=1040, 19=1010, 18=970, 17=930, 16=890, 15=850, 14=800, 13=760, 12=710'
+
 function instructions() {
   const today = new Date().toISOString().slice(0, 10)
   return [
@@ -789,6 +887,13 @@ function instructions() {
     '- People write in every way: typos, slang ("keeper", "D1", "class of \'28", "the Buckeyes"), half sentences. Work out what they mean and use the look-ups; find_school tolerates typos and nicknames.',
     '- Openings questions need gender, position and graduating class. If any is missing and the conversation does not already say it, ask for the missing pieces in ONE short question with the likely options, and stop. Searches that do not need them (majors, academics, results) run without them.',
     '- Academic fit: use find_programs filters (admission rate, average SAT, graduation rate, net price, size, public/private, setting, major) and program_majors. PitchSide has no GPA data; say so if asked, and use admission rate and average SAT instead. A program whose average SAT is near the student\'s score is a typical academic match.',
+    '- Never estimate, approximate or work out a figure yourself: not a distance, admission rate, SAT, price or openings number. If a figure you need is not in a look-up result, run the look-up now (for one program\'s distance from home: program_profile with near, or find_programs with schools). Never answer that something is "not in this conversation".',
+    '- "Why is X not on the list" or "where does X rank": run find_programs again with the SAME filters plus schools: [X], and explain from asked_about (rank_in_search of the total, or left_out_because).',
+    '- "Out of state", "not in Ohio", "away from home": pass exclude_states with the home state, and leave home-state programs out of recommendations unless they ask for them.',
+    '- Before the FIRST list of recommendations ("which schools would be a good fit", "recommend", "best options for me"): if the conversation does not yet say how far from home they will go (or a region) AND at least one of school size, cost, or a test score, ask first: one short message with up to three questions and likely options (for example "How far from home: 2 hours, 4 hours, anywhere?"), then stop (STATUS: clarify). If they already answered, or say "just show me", search.',
+    '- Academics: PitchSide has no GPA data. When academics matter and they gave only a GPA, ask for an SAT or ACT score (or a target range) in the same clarifying message. Convert an ACT composite to SAT with this table: ' + ACT_TO_SAT + '. For a typical academic match use find_programs with sat_min about 100 below and sat_max about 150 above the student\'s SAT; colleges whose average SAT is well above it are a reach, and say so.',
+    '- Goalkeepers (or any position): whether players at a position stay or transfer, how many a program carries, and how newcomers arrive come from program_position_history (default GK). Whether a staff has a goalkeeper coach comes from program_coaches (goalkeeper_coach). PitchSide has no playing-time or minutes data; say so if asked.',
+    '- General advice ("what should we decide first", "what matters most in choosing"): answer briefly from what PitchSide can search (distance, size, setting, public or private, cost, academics, major, openings, results, roster stability, coaches), without inventing facts, and offer to run the search (STATUS: answered).',
     '- Judgment questions ("is X a good fit", "D2 or D3", "should she…"): do not decide for them. Lay out the relevant facts side by side (results and RPI, openings, roster stability, academics, cost) and name the trade-offs to weigh.',
     '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place may be in several states, call find_programs with it anyway: it returns the matching places, and you ask which one from that list. Never name places or states from your own knowledge. If they say "close to home" without a place, ask for their town or ZIP code.',
     '- Club teams move up an age group each season (this season\'s U17 were last season\'s U16), so families often name a team by birth year ("the 2010s"); pass that as the team. When describing a team, give its age group and birth year, and say which seasons the coach visits came from (the seasons list).',
