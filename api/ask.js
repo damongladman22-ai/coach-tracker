@@ -179,6 +179,37 @@ function cardMetric(sort, row, openings) {
   return { value: pct(row.admission_rate), label: 'admitted' }
 }
 
+// ── list highlights, worked out here so the model never compares rows itself ─
+// Live check 2026-10-14: asked for observations, the model called Wilmington
+// one of the cheapest of 19 programs (it was among the dearest). Every
+// "closest / cheapest / most selective" claim now comes from these lines.
+function highlightsFor(rows, { center, openings } = {}) {
+  if (!rows || rows.length < 2) return undefined
+  const best = (val, lower) => {
+    let b = null
+    for (const x of rows) {
+      const v = val(x)
+      if (v == null || Number.isNaN(Number(v))) continue
+      if (!b || (lower ? v < b.v : v > b.v)) b = { x, v: Number(v) }
+    }
+    return b
+  }
+  const name = x => x.s.school
+  const pct = v => Math.round(v * 100) + '%'
+  const out = []
+  let b
+  if (center && (b = best(x => x.dist, true))) out.push(`Closest: ${name(b.x)} (${Math.round(b.v)} mi)`)
+  if (openings && (b = best(x => x.r.est_freshman ?? x.r.est_spots, false))) out.push(`Most estimated freshman openings: ${name(b.x)} (about ${round(b.v)})`)
+  if ((b = best(x => x.f?.avg_net_price, true))) out.push(`Lowest average net price: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')} a year)`)
+  if ((b = best(x => x.f?.avg_net_price, false))) out.push(`Highest average net price: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')} a year)`)
+  if ((b = best(x => x.f?.admission_rate, true))) out.push(`Most selective: ${name(b.x)} (${pct(b.v)} admitted)`)
+  if ((b = best(x => x.f?.sat_average, false))) out.push(`Highest average SAT: ${name(b.x)} (${b.v})`)
+  if ((b = best(x => x.f?.graduation_rate, false))) out.push(`Highest graduation rate: ${name(b.x)} (${pct(b.v)})`)
+  if ((b = best(x => x.f?.undergrad_enrollment, true))) out.push(`Smallest: ${name(b.x)} (${b.v.toLocaleString('en-US')} undergraduates)`)
+  if ((b = best(x => x.f?.undergrad_enrollment, false))) out.push(`Largest: ${name(b.x)} (${b.v.toLocaleString('en-US')} undergraduates)`)
+  return out.length ? out : undefined
+}
+
 // ── matching a college name (find_school, and the program look-ups) ─────────
 function matchSchools(ref, name, gender) {
   // Words people add that are not part of any name: "the Buckeyes",
@@ -412,6 +443,7 @@ function buildToolSet(db, log, ctx) {
         const n = Math.min(a.limit || MAX_ROWS, MAX_ROWS)
         return {
           matched: out.length,
+          highlights: highlightsFor(out, { center, openings }),
           showing: out.length > n ? `the first ${n} of ${out.length} in this order (the cards show these ${n})` : undefined,
           ranked_by: sort === 'openings'
             ? 'estimated openings for incoming freshmen (est_freshman_openings), then total; the same order as the Find programs page'
@@ -765,7 +797,7 @@ function instructions() {
     '- Write nothing before or between look-ups ("I will search…"): call the look-ups first, then write only the answer.',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
     '- Then structure: short bullet lists for a few facts; **bold** for the key number or name.',
-    '- LISTS of programs (find_programs, rank_by_results, programs_watching_team): the app shows them as program cards under your answer (logo, division, the key number, a link). Do NOT write a table or a numbered or bulleted list of those programs. Instead, after the direct answer, give one or two observations the cards do not show, naming at most three programs in the sentence (for example "Ohio Dominican and Capital are closest; Denison is the most selective at a 17% admit rate."). Exception: for programs_watching_team, the coach names are not on the cards, so list each program shown with its coaches.',
+    '- LISTS of programs (find_programs, rank_by_results, programs_watching_team): the app shows them as program cards under your answer (logo, division, the key number, a link). Do NOT write a table or a numbered or bulleted list of those programs. Instead, after the direct answer, give one or two observations the cards do not show. Comparisons across the list (closest, cheapest, most selective, highest SAT or graduation rate, largest, most openings) must come word for word from the look-up\'s highlights; never work out a comparison yourself, and never call a program "among the cheapest" or similar unless a highlight says it. Exception: for programs_watching_team, the coach names are not on the cards, so list each program shown with its coaches.',
     '- TABLES only for a side-by-side comparison of 2 to 4 named programs on several measures, or one program across seasons (rows = seasons). Clear column headers, at most 6 rows.',
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
     '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count. The cards under the answer show at most 40 programs; never say the cards hold all of a longer list, and do not comment on how many programs the cards or the list show.',
