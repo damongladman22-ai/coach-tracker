@@ -73,10 +73,138 @@ function Lookups({ lookups }) {
   )
 }
 
+// ── Pilot access (personal pilot links, no login; Damon 2026-10-14) ─────────
+function pilotLink(code) {
+  return `${window.location.origin}/ask?pilot=${encodeURIComponent(code)}`
+}
+
+function NewLink({ code, name, onDone }) {
+  const link = pilotLink(code)
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="border border-emerald-200 bg-emerald-50 rounded-lg p-3 text-sm space-y-2">
+      <div className="text-emerald-900 font-medium">Link for {name}. Copy it now: it is shown only once.</div>
+      <div className="flex flex-wrap items-center gap-2">
+        <code className="bg-white border rounded px-2 py-1 text-xs break-all">{link}</code>
+        <button type="button" className="px-2 py-1 rounded border bg-white text-sm"
+          onClick={() => { navigator.clipboard?.writeText(link).then(() => setCopied(true), () => {}) }}>
+          {copied ? 'Copied' : 'Copy link'}
+        </button>
+        <button type="button" className="text-sm text-gray-600 hover:underline" onClick={onDone}>Done</button>
+      </div>
+      <div className="text-xs text-emerald-900">
+        The pilot opens it once on their phone or computer (after the club passcode, if asked); the Ask tab then stays on in that browser.
+        Anyone with the link can use this pilot&apos;s allowance, so send it only to them.
+      </div>
+    </div>
+  )
+}
+
+function PilotAccess() {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState(null)
+  const [name, setName] = useState('')
+  const [limit, setLimit] = useState(25)
+  const [shown, setShown] = useState(null)   // { code, name }
+  const [busy, setBusy] = useState(false)
+
+  async function load() {
+    setErr(null)
+    try {
+      const r = await fetch('/api/ask?pilots=1', { headers: await authHeaders() })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setData(j)
+    } catch (e) { setErr(e.message || String(e)) }
+  }
+  useEffect(() => { load() }, [])
+
+  async function act(payload) {
+    setBusy(true); setErr(null)
+    try {
+      const r = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+        body: JSON.stringify({ pilot_admin: payload }) })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      await load()
+      return j
+    } catch (e) { setErr(e.message || String(e)); return null } finally { setBusy(false) }
+  }
+
+  async function create(e) {
+    e.preventDefault()
+    const j = await act({ action: 'create', name, daily_limit: Number(limit) })
+    if (j?.code) { setShown({ code: j.code, name: j.pilot.name }); setName('') }
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-gray-800">Pilot access</h2>
+        <button onClick={load} className="text-sm text-blue-600 hover:underline">Refresh</button>
+      </div>
+      <p className="text-sm text-gray-600">
+        Each pilot gets a private link: no login, their own daily question limit, every question tagged with their name.
+        Switch a pilot off, or give them a new link (the old one stops working), at any time.
+      </p>
+      {err && <div className="text-sm text-red-600">{err}</div>}
+      {shown && <NewLink code={shown.code} name={shown.name} onDone={() => setShown(null)} />}
+      <form onSubmit={create} className="flex flex-wrap items-end gap-2">
+        <label className="text-sm">
+          <div className="text-xs text-gray-500">Pilot name</div>
+          <input value={name} onChange={e => setName(e.target.value)} maxLength={60} placeholder="e.g. Jane Smith (U15 parent)"
+            className="border rounded px-2 py-1.5 text-sm w-64" />
+        </label>
+        <label className="text-sm">
+          <div className="text-xs text-gray-500">Questions per 24 hours</div>
+          <input type="number" min={1} max={500} value={limit} onChange={e => setLimit(e.target.value)} className="border rounded px-2 py-1.5 text-sm w-24" />
+        </label>
+        <button type="submit" disabled={busy || !name.trim()} className="px-3 py-1.5 rounded bg-[#0a1628] text-white text-sm disabled:opacity-50">Create pilot link</button>
+      </form>
+      {data && (
+        <>
+          <div className="text-sm text-gray-600">
+            All pilots this month: {data.month_used} of {data.month_limit} questions
+            {data.month_used >= data.month_limit ? ' (paused until next month)' : ''}.
+          </div>
+          {data.pilots.length === 0 ? <div className="text-sm text-gray-500">No pilots yet.</div> : (
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-gray-500 border-b">
+                <th className="py-1.5 pr-2">Pilot</th><th className="pr-2">Link ends</th><th className="pr-2">Last 24 h</th>
+                <th className="pr-2">Total</th><th className="pr-2">Last used</th><th className="pr-2">Status</th><th />
+              </tr></thead>
+              <tbody>
+                {data.pilots.map(p => (
+                  <tr key={p.id} className="border-b last:border-0">
+                    <td className="py-1.5 pr-2">{p.name}</td>
+                    <td className="pr-2 font-mono text-xs">…{p.code_hint}</td>
+                    <td className="pr-2">{p.today} / {p.daily_limit}</td>
+                    <td className="pr-2">{p.total}</td>
+                    <td className="pr-2 text-gray-500">{p.last_used_at ? new Date(p.last_used_at).toLocaleString() : 'never'}</td>
+                    <td className="pr-2">{p.active ? <span className="text-green-700">On</span> : <span className="text-gray-500">Off</span>}</td>
+                    <td className="text-right whitespace-nowrap space-x-3">
+                      <button type="button" disabled={busy} className="text-blue-600 hover:underline disabled:opacity-50"
+                        onClick={() => act({ action: 'update', id: p.id, active: !p.active })}>{p.active ? 'Switch off' : 'Switch on'}</button>
+                      <button type="button" disabled={busy} className="text-blue-600 hover:underline disabled:opacity-50"
+                        onClick={async () => { const j = await act({ action: 'new_link', id: p.id }); if (j?.code) setShown({ code: j.code, name: p.name }) }}>New link</button>
+                      <button type="button" disabled={busy} className="text-blue-600 hover:underline disabled:opacity-50"
+                        onClick={() => { const v = window.prompt(`Questions per 24 hours for ${p.name}`, String(p.daily_limit)); if (v) act({ action: 'update', id: p.id, daily_limit: Number(v) }) }}>Limit</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Question log (every question asked in /ask, newest first) ─────────────
 const LOG_FILTERS = [
   ['', 'All'], ['unavailable', 'Not answerable'], ['partial', 'Partial'],
-  ['clarify', 'Clarifying'], ['error', 'Errors'], ['down', 'Thumbs down'],
+  ['clarify', 'Clarifying'], ['error', 'Errors'], ['down', 'Thumbs down'], ['pilots', 'Pilots only'],
 ]
 const STATUS_STYLE = {
   answered: 'bg-green-100 text-green-800', partial: 'bg-amber-100 text-amber-800',
@@ -107,7 +235,7 @@ function QuestionLog() {
   const gaps = Object.entries(all.filter(r => r.gap && (r.status === 'unavailable' || r.status === 'partial'))
     .reduce((c, r) => { const g = r.gap.toLowerCase(); c[g] = (c[g] || 0) + 1; return c }, {}))
     .sort((a, b) => b[1] - a[1]).slice(0, 12)
-  const shown = all.filter(r => !filter || (filter === 'down' ? r.rating === -1 : r.status === filter))
+  const shown = all.filter(r => !filter || (filter === 'down' ? r.rating === -1 : filter === 'pilots' ? !!r.pilot_name : r.status === filter))
 
   return (
     <div className="bg-white rounded-lg shadow p-4 space-y-3">
@@ -148,6 +276,7 @@ function QuestionLog() {
                   <summary className="cursor-pointer flex flex-wrap items-center gap-2">
                     <span className="text-gray-400 font-mono text-xs">{new Date(r.created_at).toLocaleString()}</span>
                     <span className={`px-1.5 rounded text-xs ${STATUS_STYLE[r.status] || 'bg-gray-100'}`}>{r.status || '?'}</span>
+                    {r.pilot_name && <span className="px-1.5 rounded text-xs bg-indigo-100 text-indigo-800">{r.pilot_name}</span>}
                     {r.rating === 1 && <span title="Thumbs up">👍</span>}
                     {r.rating === -1 && <span title="Thumbs down">👎</span>}
                     <span className="text-gray-800">{r.question}</span>
@@ -155,7 +284,7 @@ function QuestionLog() {
                   </summary>
                   <div className="mt-2 space-y-2 pl-2">
                     <div className="text-xs text-gray-500">
-                      {r.user_email} · {r.surface} · turn {r.turn} · {r.model} · {secs(r.ms)}
+                      {r.pilot_name ? `Pilot: ${r.pilot_name}` : r.user_email} · {r.surface} · turn {r.turn} · {r.model} · {secs(r.ms)}
                       {' '}· look-ups: {(r.lookups || []).map(l => l.tool).join(', ') || 'none'}
                     </div>
                     {r.error ? <div className="text-red-600">Error: {r.error}</div>
@@ -253,6 +382,8 @@ export default function OwnerAsk({ session }) {
           Vercel AI Gateway{credits ? <> · gateway credit balance ${Number(credits.balance).toFixed(2)}</> : null}.
           {modelsError && <div className="mt-2 text-red-600">Could not load the model list: {modelsError}</div>}
         </div>
+
+        <PilotAccess />
 
         <QuestionLog />
 

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { supabase } from '../lib/supabase'
-import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
+import { useAskAccess, askHeaders } from '../ask/askAccess'
 import { useCollegeProfileLogos } from '../college-profiles/access/useCollegeProfileLogos'
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { PageLoader } from '../components/LoadingStates'
@@ -28,7 +28,8 @@ import { loadChats, saveChats, putChat, dropChat, newChatId, whenLabel } from '.
  *    with their first question and date, each reopened or deleted there
  *    (Damon 2026-10-14; src/ask/chatStore.js).
  *
- * Owner-only while in preview (Damon, 2026-10-13). /owner/ask stays as the
+ * Owner and pilot users only while in preview (Damon, 2026-10-13 and 14 Oct:
+ * personal pilot links, no login; src/ask/askAccess.js). /owner/ask stays as the
  * model test bench.
  */
 
@@ -233,7 +234,10 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
         {streaming && !body && <Thinking lookups={m.lookups} />}
         {body && <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{body}</ReactMarkdown>}
         {streaming && body && m.lookups?.some(l => !l.output) && <Thinking lookups={m.lookups} />}
-        {m.status === 'error' && (
+        {m.status === 'error' && m.limit && (
+          <div className="mt-1 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{m.error}</div>
+        )}
+        {m.status === 'error' && !m.limit && (
           <div className="mt-1 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
             Sorry, that did not work. {m.error ? <span className="text-red-500">({m.error})</span> : null} Please try again.
           </div>
@@ -313,7 +317,7 @@ function ChatsPanel({ chats, activeId, onOpen, onDelete, onNew, onClose, busy })
   )
 }
 
-function EmptyState({ onPick, program, onClearProgram }) {
+function EmptyState({ onPick, program, onClearProgram, pilot }) {
   const list = program ? programSuggestions(program) : SUGGESTIONS
   return (
     <div className="pt-10 sm:pt-16 pb-6 text-center">
@@ -327,6 +331,11 @@ function EmptyState({ onPick, program, onClearProgram }) {
           <p className="mt-2 text-gray-500 max-w-xl mx-auto">
             Openings by position and class, results and RPI, transfers, coaching staffs and campus facts, answered from PitchSide&apos;s college data.
           </p>)}
+      {pilot && (
+        <p className="mt-3 text-xs text-gray-500">
+          Pilot preview for {pilot.name}. Please use the thumbs up and down under each answer to tell us how it did.
+        </p>
+      )}
       <div className="mt-8 grid sm:grid-cols-2 gap-3 text-left">
         {list.map(s => (
           <button key={s.q} type="button" onClick={() => onPick(s.q)}
@@ -343,7 +352,8 @@ function EmptyState({ onPick, program, onClearProgram }) {
 // ── page ────────────────────────────────────────────────────────────────────
 
 export default function AskPitchSide({ session }) {
-  const owner = useIsSuperAdmin(session)
+  const access = useAskAccess(session)
+  const allowed = access.status === 'owner' || access.status === 'pilot'
   const logosEnabled = useCollegeProfileLogos(supabase)
   // Saved chats (this browser). The open chat is the first one, if any.
   const [chats, setChats] = useState(() => loadChats(window.localStorage))
@@ -381,7 +391,7 @@ export default function AskPitchSide({ session }) {
   }
   // Arriving from "Ask about this program": a fresh conversation about it.
   useEffect(() => {
-    if (!askedFor || owner !== 'allowed') return
+    if (!askedFor || !allowed) return
     let cancelled = false
     supabase.from('schools').select('id,school,program_gender').eq('id', askedFor).maybeSingle()
       .then(({ data }) => {
@@ -393,7 +403,7 @@ export default function AskPitchSide({ session }) {
       })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [askedFor, owner])
+  }, [askedFor, allowed])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [msgs])
   useEffect(() => {
     const el = boxRef.current
@@ -402,8 +412,8 @@ export default function AskPitchSide({ session }) {
     el.style.height = Math.min(el.scrollHeight, 180) + 'px'
   }, [input])
 
-  if (owner === 'checking') return <PageLoader message="Loading…" />
-  if (owner !== 'allowed') {
+  if (access.status === 'checking') return <PageLoader message="Loading…" />
+  if (!allowed) {
     return (
       <div className="min-h-screen bg-[#F2F3F5]">
         <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-600">Ask PitchSide is coming soon.</div>
@@ -448,7 +458,7 @@ export default function AskPitchSide({ session }) {
       update(bot.id, m => (m.status === 'streaming' ? { ...m, status: m.content ? 'done' : 'error' } : m))
     } catch (e) {
       if (e?.name === 'AbortError') update(bot.id, m => ({ ...m, status: m.content ? 'done' : 'error', error: m.content ? null : 'stopped' }))
-      else update(bot.id, m => ({ ...m, status: 'error', error: e.message || String(e) }))
+      else update(bot.id, m => ({ ...m, status: 'error', error: e.message || String(e), limit: !!e?.limit }))
     } finally {
       setBusy(false)
       abortRef.current = null
@@ -458,11 +468,9 @@ export default function AskPitchSide({ session }) {
   async function rate(m, rating) {
     update(m.id, x => ({ ...x, rating }))
     try {
-      const { data } = await supabase.auth.getSession()
-      const token = data?.session?.access_token
       await fetch('/api/ask', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        headers: await askHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ feedback: { log_id: m.logId, rating } }),
       })
     } catch { /* the rating is a nicety; never interrupt the chat for it */ }
@@ -496,7 +504,7 @@ export default function AskPitchSide({ session }) {
             onOpen={openChat} onDelete={deleteChat} onNew={() => startNew()} onClose={() => setShowChats(false)} />
         )}
         {msgs.length === 0
-          ? <EmptyState onPick={send} program={program} onClearProgram={() => setProgram(null)} />
+          ? <EmptyState onPick={send} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot} />
           : (
             <div className="py-4 space-y-6">
               {msgs.map(m => (m.role === 'user'

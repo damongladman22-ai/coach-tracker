@@ -1,7 +1,7 @@
 import { Outlet, useLocation, Link } from 'react-router-dom'
 import OPLogo from './OPLogo'
 import HamburgerMenu from './HamburgerMenu'
-import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
+import { useAskAccess } from '../ask/askAccess'
 
 /**
  * CsipShell — shared chrome for every CSIP surface (Explore index, program
@@ -25,8 +25,10 @@ export default function CsipShell({ session }) {
   const onLandscape = pathname.startsWith('/landscape')
   const onFind = pathname.startsWith('/find')
   const onAsk = pathname.startsWith('/ask')
-  // Ask PitchSide (backlog F2) is owner-only while in preview.
-  const showAsk = useIsSuperAdmin(session) === 'allowed'
+  // Ask PitchSide (backlog F2): the owner and pilot users (a personal pilot
+  // link, no login) while in preview.
+  const askStatus = useAskAccess(session).status
+  const showAsk = askStatus === 'owner' || askStatus === 'pilot'
 
   return (
     <>

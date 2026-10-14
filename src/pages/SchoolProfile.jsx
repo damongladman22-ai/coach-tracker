@@ -6,7 +6,7 @@ import { brandingFor } from '../college-profiles/data/schoolBranding'
 import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import CollegeProfile from '../college-profiles/CollegeProfile'
 import { PageLoader } from '../components/LoadingStates'
-import { useIsSuperAdmin } from '../lib/useIsSuperAdmin'
+import { useAskAccess } from '../ask/askAccess'
 
 /**
  * SchoolProfile — PitchSide's thin host for the portable College Profiles module.
@@ -38,8 +38,8 @@ export default function SchoolProfile({ session }) {
   const status = useCollegeProfilesAccess(supabase)
   const logosEnabled = useCollegeProfileLogos(supabase)
   // "Ask about this program" opens Ask PitchSide (backlog F2) about this
-  // program; owner-only while Ask is in preview, like the Ask tab.
-  const owner = useIsSuperAdmin(session)
+  // program; for the owner and pilot users while Ask is in preview, like the Ask tab.
+  const askStatus = useAskAccess(session).status
 
   if (status === 'checking') {
     return <PageLoader message="Loading…" />
@@ -73,7 +73,7 @@ export default function SchoolProfile({ session }) {
       backTo="/schools"
       backLabel="Explore Colleges"
       logoUrl={logoUrl}
-      headerAction={owner === 'allowed' ? (
+      headerAction={askStatus === 'owner' || askStatus === 'pilot' ? (
         <Link to={`/ask?program=${encodeURIComponent(schoolId)}`}
           className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-white bg-[#0a1628] rounded-full px-3.5 py-1.5 hover:bg-[#1c2c48] no-underline">
           <span aria-hidden="true">✦</span> Ask about this program

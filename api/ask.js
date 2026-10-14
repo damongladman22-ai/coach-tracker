@@ -8,6 +8,7 @@ import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason
 import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender } from '../src/lib/attendanceSignal.js'
 import { milesBetween } from '../src/lib/geo.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
+import { PILOT_HEADER, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 
 /**
  * POST /api/ask  { question, model }      -> answer + every look-up it used
@@ -866,17 +867,43 @@ async function logAsk(row) {
 
 // ── handler ─────────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
-  const who = await checkOwner(req)
-  if (!who.ok) return res.status(who.status).json({ error: 'Not allowed: ' + who.reason })
+  // Who is asking: the owner (signed in, super_admin) or a pilot (a code from
+  // a pilot link, in the X-Ask-Pilot header; server/ask/pilots.js).
+  const owner = await checkOwner(req)
+  let who = owner.ok ? { kind: 'owner', email: owner.email } : null
+  if (!who && req.headers[PILOT_HEADER]) {
+    const pilot = await findPilot(adminClient(), req.headers[PILOT_HEADER]).catch(() => null)
+    if (pilot) who = { kind: 'pilot', pilot, email: null }
+  }
+  if (!who) return res.status(owner.status === 500 ? 500 : 403).json({ error: 'Not allowed: ' + (req.headers[PILOT_HEADER] ? 'pilot link not active' : owner.reason) })
+  const isOwner = who.kind === 'owner'
+
+  // Is this browser allowed to use Ask? (The page asks once per load.)
+  if (req.method === 'GET' && req.query?.pilot_check) {
+    if (isOwner) return res.status(200).json({ ok: true, kind: 'owner' })
+    const usage = await pilotUsage(adminClient(), who.pilot.id).catch(() => ({ day: 0 }))
+    return res.status(200).json({ ok: true, kind: 'pilot', name: who.pilot.name, daily_limit: who.pilot.daily_limit,
+      left_today: Math.max(0, who.pilot.daily_limit - (usage.day || 0)) })
+  }
+
+  // Everything below except asking and rating is for the owner only.
+  const body = req.method === 'POST' ? (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})) : {}
+  if (!isOwner && (req.method !== 'POST' || body.pilot_admin)) return res.status(403).json({ error: 'Not allowed: owner only' })
+
+  if (req.method === 'GET' && req.query?.pilots) {
+    try { return res.status(200).json(await listPilots(adminClient())) } catch (e) { return res.status(500).json({ error: e.message }) }
+  }
 
   if (req.method === 'GET' && req.query?.log) {
     let q = adminClient().from('ask_log')
-      .select('id,created_at,user_email,surface,question,turn,model,status,gap,lookups,answer,ms,input_tokens,output_tokens,error,rating')
+      .select('id,created_at,user_email,pilot_id,surface,question,turn,model,status,gap,lookups,answer,ms,input_tokens,output_tokens,error,rating')
       .order('created_at', { ascending: false }).limit(300)
     if (req.query.status) q = q.eq('status', String(req.query.status))
-    const { data, error } = await q
+    if (req.query.pilot) q = q.eq('pilot_id', String(req.query.pilot))
+    const [{ data, error }, pilots] = await Promise.all([q, adminClient().from('ask_pilots').select('id,name')])
     if (error) return res.status(500).json({ error: error.message })
-    return res.status(200).json({ rows: data || [] })
+    const names = new Map((pilots.data || []).map(p => [p.id, p.name]))
+    return res.status(200).json({ rows: (data || []).map(r => ({ ...r, pilot_name: r.pilot_id ? names.get(r.pilot_id) || 'pilot' : null })) })
   }
 
   if (req.method === 'GET') {
@@ -896,19 +923,31 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST or GET only' })
-  const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})
+
+  if (body.pilot_admin) {
+    const r = await pilotAdmin(adminClient(), body.pilot_admin, who.email)
+    return res.status(r.status).json(r.body)
+  }
 
   // Thumbs up / down on an earlier answer.
   if (body.feedback) {
     const id = String(body.feedback.log_id || '')
     const rating = Number(body.feedback.rating)
     if (!/^[0-9a-f-]{36}$/i.test(id) || ![1, -1, 0].includes(rating)) return res.status(400).json({ error: 'bad feedback' })
-    const { error } = await adminClient().from('ask_log')
-      .update({ rating: rating || null, rated_at: new Date().toISOString() }).eq('id', id).eq('user_email', who.email)
+    let q = adminClient().from('ask_log').update({ rating: rating || null, rated_at: new Date().toISOString() }).eq('id', id)
+    q = isOwner ? q.eq('user_email', who.email) : q.eq('pilot_id', who.pilot.id)
+    const { error } = await q
     return error ? res.status(500).json({ error: error.message }) : res.status(200).json({ ok: true })
   }
 
-  const model = String(body.model || DEFAULT_MODEL)
+  // Pilots: the default model and settings only, within their limits.
+  if (!isOwner) {
+    const usage = await pilotUsage(adminClient(), who.pilot.id).catch(() => null)
+    const msg = usage ? limitMessage(usage, who.pilot) : null
+    if (msg) return res.status(429).json({ error: msg, limit: true })
+    adminClient().from('ask_pilots').update({ last_used_at: new Date().toISOString() }).eq('id', who.pilot.id).then(() => {}, () => {})
+  }
+  const model = isOwner ? String(body.model || DEFAULT_MODEL) : DEFAULT_MODEL
   if (!MODEL_RE.test(model)) return res.status(400).json({ error: 'bad model id' })
   const messages = cleanMessages(body.messages)
   const question = String(body.question || '').trim().slice(0, 1000)
@@ -935,7 +974,7 @@ export default async function handler(req, res) {
   }
   const prompt = messages.length ? { messages } : { prompt: programNote ? `${programNote}\n\n${question}` : question }
 
-  const reasoning = REASONING_LEVELS.includes(body.reasoning) ? body.reasoning : DEFAULT_REASONING
+  const reasoning = isOwner && REASONING_LEVELS.includes(body.reasoning) ? body.reasoning : DEFAULT_REASONING
   const log = []
   const t0 = Date.now()
   const common = {
@@ -946,12 +985,12 @@ export default async function handler(req, res) {
     stopWhen: stepCountIs(8),
     maxOutputTokens: 1800,
     reasoning,
-    providerOptions: gatewayOptions(model, who.email),
+    providerOptions: gatewayOptions(model, isOwner ? who.email : `pilot:${who.pilot.id}`),
   }
   const record = (text, usage, err) => {
     const { status, gap } = readStatus(text)
     return logAsk({
-      user_email: who.email, surface: body.stream ? 'chat' : 'bench', question: asked, turn, model,
+      user_email: who.email, pilot_id: isOwner ? null : who.pilot.id, surface: body.stream ? 'chat' : 'bench', question: asked, turn, model,
       status: err ? 'error' : (status || (text ? 'answered' : 'error')), gap,
       lookups: lookupSummary(log), answer: visibleAnswer(text).slice(0, 8000) || null, ms: Date.now() - t0,
       input_tokens: usage?.inputTokens ?? null, output_tokens: usage?.outputTokens ?? null, error: err || null,

@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase'
+import { askHeaders } from './askAccess'
 
 /**
  * askClient — talks to /api/ask in streaming mode (backlog F2).
@@ -9,18 +9,19 @@ import { supabase } from '../lib/supabase'
  * streamAsk() calls onEvent for each one, in order, as it arrives.
  */
 export async function streamAsk(messages, { signal, onEvent, context }) {
-  const { data } = await supabase.auth.getSession()
-  const token = data?.session?.access_token
   const r = await fetch('/api/ask', {
     method: 'POST',
     signal,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: await askHeaders({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ messages, stream: true, context }),
   })
   if (!r.ok || !r.body) {
     let msg = `HTTP ${r.status}`
-    try { msg = (await r.json()).error || msg } catch { /* not JSON */ }
-    throw new Error(msg)
+    let limit = false
+    try { const j = await r.json(); msg = j.error || msg; limit = !!j.limit } catch { /* not JSON */ }
+    const err = new Error(msg)
+    err.limit = limit   // a pilot limit: shown as a plain message, not a failure
+    throw err
   }
   const reader = r.body.getReader()
   const dec = new TextDecoder()
