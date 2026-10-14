@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { coachNameKey, classifyNewCoach, fillMissingFields } from '../lib/coachMatch'
 import OwnerLayout from '../components/OwnerLayout'
 import { matchesSchool } from '../lib/schoolMatch'
 
@@ -249,29 +250,77 @@ export default function Schools({ session }) {
     // Admin add from the Schools page. source='manual' tags this row so the
     // Coach Refresh pipeline leaves it alone. See
     // PitchSide_Ingest_Pipeline_Reference.docx.
-    const { error } = await supabase
-      .from('coaches')
-      .insert([{ 
-        school_id: schoolId,
-        first_name: coachFormData.first_name,
-        last_name: coachFormData.last_name,
-        email: coachFormData.email || null,
-        phone: coachFormData.phone || null,
-        title: coachFormData.title || null,
-        source: 'manual'
-      }])
-    
-    if (!error) {
-      setShowCoachForm(null)
-      setCoachFormData({ first_name: '', last_name: '', email: '', phone: '', title: '' })
-      // Refresh coaches for this school
-      const { data } = await supabase
-        .from('coaches')
-        .select('*')
-        .eq('school_id', schoolId)
-        .order('last_name')
-      setCoaches(prev => ({ ...prev, [schoolId]: data || [] }))
+    //
+    // Look first (src/lib/coachMatch.js): a coach who left and came back
+    // already has an inactive record with their attendance history on it.
+    // Switch that record back on rather than adding a second one.
+    const first = coachFormData.first_name.trim()
+    const last = coachFormData.last_name.trim()
+    if (!first || !last) {
+      alert('First and last name are required')
+      return
     }
+
+    const { data: atSchool, error: lookupError } = await supabase
+      .from('coaches')
+      .select('id, school_id, first_name, last_name, title, email, phone, is_active')
+      .eq('school_id', schoolId)
+    if (lookupError) {
+      alert('Error checking for an existing record: ' + lookupError.message)
+      return
+    }
+
+    const key = coachNameKey(schoolId, first, last)
+    const result = classifyNewCoach(
+      (atSchool || []).filter(c => coachNameKey(c.school_id, c.first_name, c.last_name) === key)
+    )
+
+    if (result.status === 'active') {
+      alert(`${first} ${last} is already listed as an active coach for this program.`)
+      return
+    }
+    if (result.status === 'ambiguous') {
+      alert(`${result.count} inactive records for ${first} ${last} already exist for this program. Merge them in Dedup Coaches first.`)
+      return
+    }
+
+    let saved
+    if (result.status === 'inactive') {
+      saved = await supabase
+        .from('coaches')
+        .update({ is_active: true, ...fillMissingFields(result.coach, coachFormData) })
+        .eq('id', result.coach.id)
+    } else {
+      saved = await supabase
+        .from('coaches')
+        .insert([{
+          school_id: schoolId,
+          first_name: first,
+          last_name: last,
+          email: coachFormData.email.trim() || null,
+          phone: coachFormData.phone.trim() || null,
+          title: coachFormData.title.trim() || null,
+          source: 'manual'
+        }])
+    }
+
+    if (saved.error) {
+      alert('Error saving coach: ' + saved.error.message)
+      return
+    }
+
+    if (result.status === 'inactive') {
+      alert(`${first} ${last} already had a record for this program (marked inactive). It has been switched back on, with its attendance history kept.`)
+    }
+    setShowCoachForm(null)
+    setCoachFormData({ first_name: '', last_name: '', email: '', phone: '', title: '' })
+    // Refresh coaches for this school
+    const { data } = await supabase
+      .from('coaches')
+      .select('*')
+      .eq('school_id', schoolId)
+      .order('last_name')
+    setCoaches(prev => ({ ...prev, [schoolId]: data || [] }))
   }
 
   const toggleCoachActive = async (coach, schoolId) => {

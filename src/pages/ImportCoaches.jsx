@@ -5,6 +5,7 @@ import OwnerLayout from '../components/OwnerLayout';
 import GenderBadge from '../components/GenderBadge';
 import { programGenderLabel } from '../lib/lookups';
 import { resolveSchool } from '../lib/resolveSchool';
+import { coachNameKey, indexCoachesByName, classifyNewCoach } from '../lib/coachMatch';
 import * as XLSX from 'xlsx';
 
 /**
@@ -601,49 +602,59 @@ export default function ImportCoaches({ session }) {
         // ADD MODE: Original import behavior
         const toImport = toProcess.filter(row => row.matchedSchool);
         
-        // Get existing coaches including active status
-        const { data: existingCoachesData } = await supabase
-          .from('coaches')
-          .select('id, first_name, last_name, school_id, is_active');
-        
-        // Build lookup map: key -> existing coach record
-        const existingMap = new Map();
-        (existingCoachesData || []).forEach(c => {
-          const key = `${c.school_id}|${c.first_name}|${c.last_name}`.toLowerCase();
-          existingMap.set(key, c);
-        });
-        
-        // Classify each row: new coach to insert, inactive match to reactivate, or active match (skip)
+        // Get ALL existing coaches, page by page. A single response is capped
+        // at 1,000 rows and there are well over 10,000 coaches, so reading one
+        // page made most existing coaches look new and the import would have
+        // added them a second time.
+        const existingCoachesData = [];
+        const PAGE = 1000;
+        for (let from = 0; ; from += PAGE) {
+          const { data: page, error: pageError } = await supabase
+            .from('coaches')
+            .select('id, first_name, last_name, school_id, is_active')
+            .order('id')
+            .range(from, from + PAGE - 1);
+          if (pageError) throw pageError;
+          existingCoachesData.push(...(page || []));
+          if (!page || page.length < PAGE) break;
+        }
+
+        // Same-person check (see src/lib/coachMatch.js): same program, same
+        // first and last name, ignoring case and extra spaces.
+        const existingByName = indexCoachesByName(existingCoachesData);
+
+        // Classify each row: new coach to insert, inactive match to reactivate,
+        // active match (skip), or several inactive matches (skip; merge them in
+        // Dedup Coaches first).
         const newCoaches = [];
-        const toReactivate = [];
+        const toReactivate = new Set();
         let activeDupes = 0;
-        
+        let ambiguous = 0;
+        const seenInFile = new Set();
+
         toImport.forEach(row => {
-          const key = `${row.matchedSchool.id}|${row.firstName}|${row.lastName}`.toLowerCase();
-          const existing = existingMap.get(key);
-          if (existing) {
-            if (existing.is_active === false) {
-              toReactivate.push(existing.id);
-            } else {
-              activeDupes++;
-            }
-          } else {
-            newCoaches.push(row);
-          }
+          const key = coachNameKey(row.matchedSchool.id, row.firstName, row.lastName);
+          if (seenInFile.has(key)) return; // same person twice in the file
+          seenInFile.add(key);
+          const result = classifyNewCoach(existingByName.get(key));
+          if (result.status === 'new') newCoaches.push(row);
+          else if (result.status === 'inactive') toReactivate.add(result.coach.id);
+          else if (result.status === 'active') activeDupes++;
+          else ambiguous++;
         });
-        
+
         const duplicates = activeDupes; // rows skipped because already active
-        
+
         // Reactivate any inactive matches
         let reactivated = 0;
-        if (toReactivate.length > 0) {
+        if (toReactivate.size > 0) {
           const { error: reactivateError } = await supabase
             .from('coaches')
             .update({ is_active: true })
-            .in('id', toReactivate);
-          
+            .in('id', [...toReactivate]);
+
           if (reactivateError) throw reactivateError;
-          reactivated = toReactivate.length;
+          reactivated = toReactivate.size;
         }
         
         if (newCoaches.length === 0 && reactivated === 0) {
@@ -652,7 +663,10 @@ export default function ImportCoaches({ session }) {
             imported: 0,
             duplicates,
             reactivated: 0,
-            message: 'All coaches already exist in the database and are active'
+            ambiguous,
+            message: ambiguous > 0
+              ? 'Nothing added: every coach already exists (see notes below)'
+              : 'All coaches already exist in the database and are active'
           });
           setImporting(false);
           return;
@@ -693,6 +707,7 @@ export default function ImportCoaches({ session }) {
           imported: totalImported,
           duplicates,
           reactivated,
+          ambiguous,
           message: `Successfully ${parts.join(', ')}`
         });
       }
@@ -1461,6 +1476,11 @@ export default function ImportCoaches({ session }) {
                 {importResult.reactivated > 0 && (
                   <p className="text-blue-700 mt-1">
                     {importResult.reactivated} coach{importResult.reactivated !== 1 ? 'es' : ''} reactivated (they were marked inactive but appeared in the import)
+                  </p>
+                )}
+                {importResult.ambiguous > 0 && (
+                  <p className="text-sm text-amber-700 mt-1">
+                    {importResult.ambiguous} coach{importResult.ambiguous !== 1 ? 'es' : ''} skipped: the program already has two or more inactive records with that name. Merge them in Dedup Coaches, then import again.
                   </p>
                 )}
                 

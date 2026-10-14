@@ -564,8 +564,13 @@ export default function CoachDirectory() {
           .eq('id', inserted.id)
           .single();
 
-        // Add to local state
-        setCoaches(prev => [...prev, withSchool || inserted]);
+        // Add to local state. The RPC switches a returning coach's inactive
+        // record back on instead of adding a second one, so the id may already
+        // be in the list: replace it rather than adding a copy.
+        const added = withSchool || inserted;
+        setCoaches(prev => prev.some(c => c.id === added.id)
+          ? prev.map(c => (c.id === added.id ? { ...c, ...added } : c))
+          : [...prev, added]);
 
         setToast({ show: true, message: 'Coach added!', type: 'success' });
       }
