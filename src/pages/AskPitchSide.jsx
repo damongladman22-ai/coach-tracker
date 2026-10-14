@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { supabase } from '../lib/supabase'
@@ -30,6 +30,9 @@ import { getFavorites } from '../hooks/useFavorite'
  */
 
 const STORE_KEY = 'ask-pitchside-thread-v1'
+// The program a conversation is about, when opened with "Ask about this
+// program" on a College Profile (/ask?program=<school_id>).
+const PROGRAM_KEY = 'ask-pitchside-program-v1'
 const SUGGESTIONS = [
   { label: 'Openings', q: "Which Big Ten women's programs have the most estimated goalkeeper openings for the class of 2027?" },
   { label: 'Academic fit', q: "Women's D3 programs in Ohio or Pennsylvania with an average SAT around 1300 that offer nursing" },
@@ -46,6 +49,36 @@ function loadThread() {
 }
 function saveThread(msgs) {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(msgs.slice(-30))) } catch { /* storage full or blocked */ }
+}
+function loadProgram() {
+  try { const v = JSON.parse(localStorage.getItem(PROGRAM_KEY) || 'null'); return v && v.id ? v : null } catch { return null }
+}
+function saveProgram(p) {
+  try { if (p) localStorage.setItem(PROGRAM_KEY, JSON.stringify(p)); else localStorage.removeItem(PROGRAM_KEY) } catch { /* blocked */ }
+}
+const genderWord = g => (g === 'M' ? "men's" : "women's")
+function programSuggestions(p) {
+  const n = p.school
+  return [
+    { label: 'Results', q: `How has ${n} ${genderWord(p.gender)} soccer done over the last three seasons?` },
+    { label: 'Coaches', q: `Who is on the ${n} ${genderWord(p.gender)} coaching staff?` },
+    { label: 'Openings', q: `What are the estimated openings at ${n} for my position and class?` },
+    { label: 'Recruiting', q: `Does ${n} recruit mostly freshmen or transfers, and how stable is the roster?` },
+    { label: 'Academics and cost', q: `What is ${n} like academically, and what does it cost?` },
+    { label: 'Your team', q: `Have ${n} coaches watched our team play?` },
+  ]
+}
+
+function ProgramChip({ p, onClear }) {
+  return (
+    <div className="inline-flex items-center gap-2 bg-white border border-[#D9DEE3] rounded-full pl-3 pr-1.5 py-1 text-sm text-gray-700">
+      <span>About <Link to={`/school/${p.id}`} className="font-semibold text-gray-900 hover:underline">{p.school}</Link> · {genderWord(p.gender)}</span>
+      {onClear && (
+        <button type="button" onClick={onClear} aria-label="Stop asking about this program"
+          className="h-6 w-6 rounded-full grid place-items-center text-gray-500 hover:bg-gray-100">×</button>
+      )}
+    </div>
+  )
 }
 
 function monogram(name) {
@@ -259,16 +292,22 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
   )
 }
 
-function EmptyState({ onPick }) {
+function EmptyState({ onPick, program, onClearProgram }) {
+  const list = program ? programSuggestions(program) : SUGGESTIONS
   return (
     <div className="pt-10 sm:pt-16 pb-6 text-center">
       <OPLogo className="h-12 w-12 mx-auto" />
-      <h1 className="mt-4 text-2xl sm:text-3xl font-semibold text-gray-900">Ask about any college soccer program</h1>
-      <p className="mt-2 text-gray-500 max-w-xl mx-auto">
-        Openings by position and class, results and RPI, transfers, coaching staffs and campus facts, answered from PitchSide&apos;s college data.
-      </p>
+      <h1 className="mt-4 text-2xl sm:text-3xl font-semibold text-gray-900">
+        {program ? <>Ask about {program.school}</> : 'Ask about any college soccer program'}
+      </h1>
+      {program
+        ? <div className="mt-3"><ProgramChip p={program} onClear={onClearProgram} /></div>
+        : (
+          <p className="mt-2 text-gray-500 max-w-xl mx-auto">
+            Openings by position and class, results and RPI, transfers, coaching staffs and campus facts, answered from PitchSide&apos;s college data.
+          </p>)}
       <div className="mt-8 grid sm:grid-cols-2 gap-3 text-left">
-        {SUGGESTIONS.map(s => (
+        {list.map(s => (
           <button key={s.q} type="button" onClick={() => onPick(s.q)}
             className="text-left bg-white border border-[#E5E8EB] rounded-xl px-4 py-3 hover:border-gray-400 hover:shadow-sm transition">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{s.label}</div>
@@ -286,6 +325,9 @@ export default function AskPitchSide({ session }) {
   const owner = useIsSuperAdmin(session)
   const logosEnabled = useCollegeProfileLogos(supabase)
   const [msgs, setMsgs] = useState(loadThread)
+  const [program, setProgram] = useState(loadProgram)
+  const [params, setParams] = useSearchParams()
+  const askedFor = params.get('program')
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const abortRef = useRef(null)
@@ -293,6 +335,23 @@ export default function AskPitchSide({ session }) {
   const boxRef = useRef(null)
 
   useEffect(() => { if (!busy) saveThread(msgs) }, [msgs, busy])
+  useEffect(() => { saveProgram(program) }, [program])
+  // Arriving from "Ask about this program": a fresh conversation about it.
+  useEffect(() => {
+    if (!askedFor || owner !== 'allowed') return
+    let cancelled = false
+    supabase.from('schools').select('id,school,program_gender').eq('id', askedFor).maybeSingle()
+      .then(({ data }) => {
+        if (cancelled) return
+        if (data) {
+          if (data.id !== program?.id || msgs.length) { setMsgs([]); saveThread([]) }
+          setProgram({ id: data.id, school: data.school, gender: data.program_gender })
+        }
+        setParams({}, { replace: true })
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askedFor, owner])
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }) }, [msgs])
   useEffect(() => {
     const el = boxRef.current
@@ -327,7 +386,7 @@ export default function AskPitchSide({ session }) {
     try {
       await streamAsk(history, {
         signal: ctrl.signal,
-        context: { favoriteTeamIds: getFavorites() },
+        context: { favoriteTeamIds: getFavorites(), programId: program?.id || null },
         onEvent: ev => {
           if (ev.t === 'text') update(bot.id, m => ({ ...m, content: m.content + ev.d }))
           else if (ev.t === 'lookup') update(bot.id, m => ({ ...m, lookups: [...m.lookups, { tool: ev.tool, input: ev.input }] }))
@@ -373,16 +432,17 @@ export default function AskPitchSide({ session }) {
     <div className="min-h-[calc(100vh-6.5rem)] bg-[#F2F3F5] flex flex-col">
       <div className="flex-1 w-full max-w-3xl mx-auto px-4">
         {msgs.length > 0 && (
-          <div className="flex justify-end pt-3">
+          <div className="flex items-center justify-between gap-2 pt-3">
+            <div>{program && <ProgramChip p={program} />}</div>
             <button type="button" disabled={busy}
-              onClick={() => { setMsgs([]); saveThread([]) }}
+              onClick={() => { setMsgs([]); saveThread([]); setProgram(null) }}
               className="text-sm text-gray-600 border border-[#D9DEE3] bg-white rounded-full px-3 py-1 hover:border-gray-500 disabled:opacity-50">
               New chat
             </button>
           </div>
         )}
         {msgs.length === 0
-          ? <EmptyState onPick={send} />
+          ? <EmptyState onPick={send} program={program} onClearProgram={() => setProgram(null)} />
           : (
             <div className="py-4 space-y-6">
               {msgs.map(m => (m.role === 'user'

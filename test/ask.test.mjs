@@ -112,6 +112,9 @@ async function run(tool, input) {
   assert.equal(T.visibleAnswer(text), 'Vanderbilt leads.\n\nBased on 2026.')
   assert.deepEqual(T.readStatus(text), { status: 'unavailable', gap: 'ID camps' })
   assert.deepEqual(T.readStatus('Done.\nSTATUS: answered\nFOLLOW-UPS: x | y | z'), { status: 'answered', gap: null })
+  assert.deepEqual(T.readStatus('x\nSTATUS: partial - coaches for the remaining programs beyond the first five'), { status: 'answered', gap: null }, 'rest of a long list is not a gap')
+  assert.deepEqual(T.readStatus('x\nSTATUS: partial - full list of 226 programs'), { status: 'answered', gap: null })
+  assert.deepEqual(T.readStatus('x\nSTATUS: partial - incoming commits'), { status: 'partial', gap: 'incoming commits' }, 'a real gap stays')
   const late = 'Pitt leads.\n\nSTATUS: answered\n\nBased on 2026 rosters.\n\nFOLLOW-UPS: a b c | d e f | g h i'
   assert.equal(T.visibleAnswer(late), 'Pitt leads.\n\n\nBased on 2026 rosters.', 'text after STATUS is kept')
   const { splitAnswer } = await import('../src/ask/answerText.js')
@@ -213,7 +216,7 @@ async function run(tool, input) {
   r = await go({ gender: 'W', near: 'Columbus' })
   assert.deepEqual(r.places, ['Columbus, OH', 'Columbus, GA'], 'asks which Columbus')
   r = await go({ gender: 'W', near: 'Nowhere, OH' })
-  assert.ok(/could not find/.test(r.note))
+  assert.ok(/could not find/i.test(r.note))
 }
 
 

@@ -19,6 +19,8 @@ import { STYLE_OPTIONS, styleMap, toggleStyle, matchesStyles, styleReason } from
 import { teamsFor, defaultTeamId, summarizeAttendance, attendanceReason, lineage } from '../lib/attendanceSignal'
 import { getActiveSeasonId, listSeasons } from '../lib/season'
 import { useFavorites } from '../hooks/useFavorite'
+import { locatePlace, programPoints } from '../lib/geoSearch'
+import { milesBetween } from '../lib/geo'
 
 /**
  * FindPrograms — "Find programs" (backlog F3, Targeting: ranked fit list).
@@ -57,6 +59,13 @@ import { useFavorites } from '../hooks/useFavorite'
  * reason line, and "Only programs that have watched us" narrows the list.
  * Rules in src/lib/attendanceSignal.js. If teams cannot be read, the team
  * picker is simply not shown.
+ *
+ * DISTANCE (Damon 2026-10-14, same as Ask PitchSide's radius search). A town
+ * and state, or a ZIP code, plus a radius keeps programs within that many
+ * straight-line miles; each row says how far it is. Places come from
+ * geo_points (pipeline out_sql/25, U.S. Census); a program is placed at its
+ * college's College Scorecard point, else its own town. Programs that cannot
+ * be placed are left out while a distance is set. Ranking is unchanged.
  */
 const PAGE = 1000
 const STEP = 25
@@ -104,6 +113,18 @@ async function fetchWatched(teamIds) {
     q => q.in('games.team_id', teamIds).order('id'), PAGE)
   return summarizeAttendance(rows)
 }
+
+// Where every active program is (lib/geoSearch.js): College Scorecard point, else its town.
+async function fetchProgramPoints() {
+  const [schools, links] = await Promise.all([
+    fetchAllRows(supabase, 'schools', 'id,city,state', q => q.neq('is_active', false).order('id'), PAGE),
+    fetchAllRows(supabase, 'school_federal_college', 'school_id,college_facts(latitude,longitude)', q => q.order('school_id'), PAGE),
+  ])
+  const facts = new Map(links.filter(l => l.college_facts).map(l => [l.school_id, l.college_facts]))
+  return programPoints(supabase, schools, facts)
+}
+
+const RADII = [25, 50, 100, 150, 200, 300, 500]
 
 async function fetchCatalog() {
   const { data, error } = await supabase.from('college_major_catalog')
@@ -207,6 +228,12 @@ export default function FindPrograms() {
   const [teamPick, setTeamPick] = useState(null)     // null = not chosen by hand: use the starred team
   const [watched, setWatched] = useState({ key: null, map: null, err: '' })
   const [onlyWatched, setOnlyWatched] = useState(false)
+  // Distance
+  const [nearText, setNearText] = useState('')
+  const [place, setPlace] = useState(null)            // { name, lat, lon } once found
+  const [nearMsg, setNearMsg] = useState(null)        // { error } | { ambiguous: [names] } | { busy: true }
+  const [radius, setRadius] = useState(100)
+  const [points, setPoints] = useState({ map: null, err: '' })
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -225,6 +252,30 @@ export default function FindPrograms() {
       .catch(() => { /* no teams: the team picker is not shown */ })
     return () => { cancelled = true }
   }, [status])
+
+  // Program locations load the first time a distance is set.
+  const needPoints = !!place && !points.map && !points.err
+  useEffect(() => {
+    if (!needPoints) return
+    let cancelled = false
+    fetchProgramPoints()
+      .then(map => { if (!cancelled) setPoints({ map, err: '' }) })
+      .catch(e => { if (!cancelled) setPoints({ map: null, err: e.message || 'Could not load program locations.' }) })
+    return () => { cancelled = true }
+  }, [needPoints])
+
+  async function findPlace(text) {
+    const t = String(text || '').trim()
+    if (!t) return
+    setNearMsg({ busy: true })
+    try {
+      const r = await locatePlace(supabase, t)
+      if (r.point) { setPlace({ name: r.point.name, lat: r.point.lat, lon: r.point.lon }); setNearMsg(null); setNearText('') }
+      else setNearMsg(r)
+    } catch (e) {
+      setNearMsg({ error: e.message || 'Could not look that place up.' })
+    }
+  }
 
   const choiceKey = choice ? `${choice.kind}|${choice.code}` : null
   useEffect(() => {
@@ -280,9 +331,13 @@ export default function FindPrograms() {
 
   const answered = key != null && res.key === key
   const rows = answered ? res.rows : null
-  const loading = ready && (!answered || !offerReady || (filterWatched && watched.key !== teamKey))
+  const loading = ready && (!answered || !offerReady || (filterWatched && watched.key !== teamKey) || (!!place && !points.map && !points.err))
   const err = loadErr || (answered ? res.err : '') || (choiceKey && offer.key === choiceKey ? offer.err : '') ||
-    (filterWatched && watched.key === teamKey ? watched.err : '')
+    (filterWatched && watched.key === teamKey ? watched.err : '') || (place ? points.err : '')
+  const distanceOf = id => {
+    const pt = place && points.map ? points.map.get(id) : null
+    return pt ? milesBetween(place, pt) : null
+  }
   const limit = more.key === key ? more.n : STEP
 
   const ranked = useMemo(() => {
@@ -292,10 +347,13 @@ export default function FindPrograms() {
       : null
     const styleKeep = styles.size && styleData ? r => matchesStyles(styleData.get(r.school_id), styles) : null
     const watchKeep = filterWatched ? (watchedMap ? r => watchedMap.has(r.school_id) : () => false) : null
-    const keeps = [majorKeep, styleKeep, watchKeep].filter(Boolean)
+    const distKeep = place
+      ? (points.map ? r => { const pt = points.map.get(r.school_id); return !!pt && milesBetween(place, pt) <= radius } : () => false)
+      : null
+    const keeps = [majorKeep, styleKeep, watchKeep, distKeep].filter(Boolean)
     const keep = keeps.length ? r => keeps.every(k => k(r)) : null
     return rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null, keep })
-  }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData, filterWatched, watchedMap])
+  }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData, filterWatched, watchedMap, place, radius, points])
 
   const years = latest != null ? [latest + 1, latest + 2, latest + 3, latest + 4] : []
   const pos = POSITIONS.find(p => p.code === position)
@@ -390,6 +448,45 @@ export default function FindPrograms() {
                     {abbr}
                   </label>
                 ))}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-3">
+            <div className="text-xs text-gray-500 mb-1.5">
+              Distance {!place && '(any)'}
+              <span className="text-gray-400"> · straight-line miles from a town or ZIP code</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {place ? (
+                <span className="text-sm rounded-full px-3 py-1.5 bg-[#0a1628] text-white">Near {place.name}</span>
+              ) : (
+                <input type="search" value={nearText} onChange={e => setNearText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') findPlace(nearText) }}
+                  placeholder="Town and state, or ZIP code"
+                  aria-label="Near a town or ZIP code"
+                  className="w-56 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-800" />
+              )}
+              <select className={selectCls} value={radius} onChange={e => setRadius(Number(e.target.value))} aria-label="Within how many miles">
+                {RADII.map(m => <option key={m} value={m}>Within {m} miles</option>)}
+              </select>
+              {place ? (
+                <button type="button" onClick={() => { setPlace(null); setNearMsg(null) }}
+                  className="text-sm text-[#1d4ed8] hover:underline">Any distance</button>
+              ) : (
+                <button type="button" onClick={() => findPlace(nearText)} disabled={!nearText.trim() || nearMsg?.busy}
+                  className="text-sm border border-gray-300 bg-white rounded-lg px-3 py-2 hover:border-gray-500 disabled:opacity-50">
+                  {nearMsg?.busy ? 'Finding…' : 'Set'}
+                </button>
+              )}
+            </div>
+            {nearMsg?.error && <div className="text-xs text-rose-700 mt-1.5">{nearMsg.error}</div>}
+            {nearMsg?.ambiguous && (
+              <div className="mt-2">
+                <div className="text-xs text-gray-500 mb-1.5">Which one?</div>
+                <div className="flex flex-wrap gap-2">
+                  {nearMsg.ambiguous.map(n => <Chip key={n} on={false} onClick={() => findPlace(n)}>{n}</Chip>)}
+                </div>
               </div>
             )}
           </div>
@@ -499,7 +596,8 @@ export default function FindPrograms() {
             <p className="text-sm text-gray-600 mb-2 px-1">
               {ranked.length.toLocaleString()} {ranked.length === 1 ? 'program' : 'programs'}, ranked by estimated
               openings for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}
-              {filterWatched ? <>, whose coaches have watched {team.name}</> : null}.
+              {filterWatched ? <>, whose coaches have watched {team.name}</> : null}
+              {place ? <>, within {radius} miles of {place.name}</> : null}.
             </p>
             <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
               {shown.map((r, i) => {
@@ -527,6 +625,9 @@ export default function FindPrograms() {
                         </div>
                         <div className="text-xs text-gray-400 truncate">
                           {[s.city, stateAbbr(s.state) || s.state].filter(Boolean).join(', ')}
+                          {place && distanceOf(r.school_id) != null && (
+                            <span className="text-gray-600"> · {Math.round(distanceOf(r.school_id))} mi from {place.name}</span>
+                          )}
                         </div>
                       </div>
                       <div className="flex-shrink-0 text-right">
@@ -564,7 +665,7 @@ export default function FindPrograms() {
               })}
               {shown.length === 0 && (
                 <div className="px-3 py-10 text-center text-gray-500 text-sm">
-                  No programs match. Try more divisions{choice ? ', states or another major' : ' or states'}.
+                  No programs match. Try more divisions{choice ? ', states or another major' : ' or states'}{place ? ', or a wider distance' : ''}.
                 </div>
               )}
             </div>
@@ -588,6 +689,8 @@ export default function FindPrograms() {
               {team && <> Coach attendance counts the coaches logged at {team.name}’s games, including the same team
               in earlier seasons (one age group younger each year); a program that has not been logged may still be
               interested.</>}
+              {place && <> Distances are straight-line miles from {place.name} to the campus (driving is
+              farther). Programs we cannot place on the map are left out while a distance is set.</>}
               {styleData && <> Recruiting styles compare each program with the middle half of other programs in its
               division, as on its College Profile; a program with too little data for a chosen style is left out.</>}
             </p>

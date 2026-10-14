@@ -29,5 +29,6 @@ export const ASK_TEST_QUESTIONS = [
   { id: 17, q: "Does Siena Heights still have a women's soccer team?", expect: ['find_school'] },
   { id: 18, q: "When can college coaches start contacting my daughter? She is a high school sophomore.", none: true },
   { id: 19, q: "Who is the best goalkeeper in the ACC?", none: true },
-  { id: 20, q: "Which college coaches have watched our team play this season?", none: true },
+  // Since 2026-10-13 the team look-up answers this (it used to expect "not available").
+  { id: 20, q: "Which college coaches have watched our team play this season?", expect: ['programs_watching_team'] },
 ]

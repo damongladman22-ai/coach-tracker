@@ -6,7 +6,8 @@ import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr } from '../src/l
 import { expandTerms, scoreSchool, setAliasIndex } from '../src/lib/schoolMatch.js'
 import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel } from '../src/lib/majorFilter.js'
 import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender } from '../src/lib/attendanceSignal.js'
-import { parseNear, placeKey, milesBetween } from '../src/lib/geo.js'
+import { milesBetween } from '../src/lib/geo.js'
+import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 
 /**
  * POST /api/ask  { question, model }      -> answer + every look-up it used
@@ -129,44 +130,11 @@ async function majorCatalog(db) {
 // ── distance search ─────────────────────────────────────────────────────────
 // Where each program is: the College Scorecard point of its college, else its
 // own city found in geo_points (U.S. Census towns). Cached with REF.
-async function programPoints(db, ref) {
-  if (ref.points) return ref.points
-  const pts = new Map(), want = new Map()
-  for (const s of ref.schools) {
-    const f = ref.facts.get(s.id)
-    if (f?.latitude != null && f?.longitude != null) { pts.set(s.id, { lat: f.latitude, lon: f.longitude }); continue }
-    const st = stateAbbr(s.state), k = placeKey(s.city)
-    if (st && k) want.set(s.id, [st, k])
-  }
-  const keys = [...new Set([...want.values()].map(([, k]) => k))]
-  const found = new Map()
-  for (let i = 0; i < keys.length; i += 150) {
-    const { data, error } = await db.from('geo_points').select('state,key,lat,lon').eq('kind', 'place').in('key', keys.slice(i, i + 150))
-    if (error) throw new Error(error.message)
-    for (const g of data || []) found.set(g.state + '|' + g.key, { lat: g.lat, lon: g.lon })
-  }
-  for (const [id, [st, k]] of want) { const g = found.get(st + '|' + k); if (g) pts.set(id, g) }
-  ref.points = pts
-  return pts
+async function programPointsFor(db, ref) {
+  if (!ref.points) ref.points = await programPoints(db, ref.schools, ref.facts)
+  return ref.points
 }
-
-// "Dublin, OH" / "43017" -> { point } | { ambiguous: [names] } | { error }
-async function locate(db, near) {
-  const p = parseNear(near)
-  if (p.zip) {
-    const { data, error } = await db.from('geo_points').select('name,state,lat,lon').eq('kind', 'zip').eq('key', p.zip).limit(1)
-    if (error) throw new Error(error.message)
-    return data?.[0] ? { point: data[0] } : { error: `PitchSide has no location for ZIP code ${p.zip}. Ask for the town and state instead.` }
-  }
-  if (!p.city) return { error: 'No place given. Ask for a town and state, or a ZIP code.' }
-  let q = db.from('geo_points').select('name,state,lat,lon,land_sqmi').eq('kind', 'place').eq('key', p.city)
-  if (p.state) q = q.eq('state', p.state)
-  const { data, error } = await q.order('land_sqmi', { ascending: false }).limit(12)
-  if (error) throw new Error(error.message)
-  if (!data?.length) return { error: `PitchSide could not find "${near}"${p.state ? '' : ' (no state given)'}. Ask for a ZIP code, or a nearby larger town with its state.` }
-  if (data.length > 1 && !p.state) return { ambiguous: data.map(d => d.name) }
-  return { point: data[0] }
-}
+const locate = (db, near) => locatePlace(db, near)
 
 const LOCALE = {
   11: 'Large city', 12: 'Midsize city', 13: 'Small city', 21: 'Large suburb', 22: 'Midsize suburb', 23: 'Small suburb',
@@ -355,7 +323,7 @@ function buildToolSet(db, log, ctx) {
           if (loc.ambiguous) return { programs: [], note: `Several places are called "${a.near}". Ask which one (or for a ZIP code).`, places: loc.ambiguous }
           center = loc.point
           radius = a.radius_miles || 100
-          points = await programPoints(db, ref)
+          points = await programPointsFor(db, ref)
         }
         const openings = !!(a.position && a.hs_class)
         let latest = null
@@ -788,22 +756,23 @@ function instructions() {
     '- Openings questions need gender, position and graduating class. If any is missing and the conversation does not already say it, ask for the missing pieces in ONE short question with the likely options, and stop. Searches that do not need them (majors, academics, results) run without them.',
     '- Academic fit: use find_programs filters (admission rate, average SAT, graduation rate, net price, size, public/private, setting, major) and program_majors. PitchSide has no GPA data; say so if asked, and use admission rate and average SAT instead. A program whose average SAT is near the student\'s score is a typical academic match.',
     '- Judgment questions ("is X a good fit", "D2 or D3", "should she…"): do not decide for them. Lay out the relevant facts side by side (results and RPI, openings, roster stability, academics, cost) and name the trade-offs to weigh.',
-    '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place is shared by several states, ask which. If they say "close to home" without a place, ask for their town or ZIP code.',
+    '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place may be in several states, call find_programs with it anyway: it returns the matching places, and you ask which one from that list. Never name places or states from your own knowledge. If they say "close to home" without a place, ask for their town or ZIP code.',
     '- Club teams move up an age group each season (this season\'s U17 were last season\'s U16), so families often name a team by birth year ("the 2010s"); pass that as the team. When describing a team, give its age group and birth year, and say which seasons the coach visits came from (the seasons list).',
     '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. PitchSide logs WHICH coaches attended: name them from coaches_seen (name, title, games attended, latest game). For each program you show, list EVERY coach in its coaches_seen, in the order given, with their games; add "(no longer on staff)" exactly when still_on_staff is false, and never otherwise. Show at most 5 programs and offer more. For one college, pass school. Never say names are not logged. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
-    '- Then structure: short bullet lists for a few facts; a Markdown table when comparing programs or seasons (3 to 10 rows, clear column headers); **bold** for the key number or name.',
+    '- Then structure: short bullet lists for a few facts; **bold** for the key number or name.',
+    '- LISTS of programs (find_programs, rank_by_results, programs_watching_team): the app shows them as program cards under your answer (logo, division, the key number, a link). Do NOT write a table or a numbered or bulleted list of those programs. Instead, after the direct answer, give one or two observations the cards do not show, naming at most three programs in the sentence (for example "Ohio Dominican and Capital are closest; Denison is the most selective at a 17% admit rate."). Exception: for programs_watching_team, the coach names are not on the cards, so list each program shown with its coaches.',
+    '- TABLES only for a side-by-side comparison of 2 to 4 named programs on several measures, or one program across seasons (rows = seasons). Clear column headers, at most 6 rows.',
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
     '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count. The cards under the answer show at most 40 programs; never say the cards hold all of a longer list.',
-    '- When find_programs or rank_by_results returns a list, the app shows those programs as cards under your answer. Summarise the top 3 to 5 in prose or a compact table; do not repeat the whole list.',
-    '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for). Keep that order and lead with the freshman figure; the total can go in a second column.',
+    '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for); when you name the leaders, keep that order and quote the freshman figure.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
-    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words. Tables: at most 5 rows; the cards under the answer show the full list.',
-    '- After the answer, on its own line, write: STATUS: answered | partial | unavailable | clarify, followed by " - " and the missing topic in a few words when not fully answered (for example "STATUS: unavailable - ID camps"). The app hides this line and logs it so PitchSide can fill data gaps. Use "answered" when you answered what was asked, even if you showed only the top of a long list; "partial" only when part of the question could not be answered from the data.',
+    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words.',
+    '- After the answer, on its own line, write: STATUS: answered | partial | unavailable | clarify, followed by " - " and the missing topic in a few words when not fully answered (for example "STATUS: unavailable - ID camps"). The app hides this line and logs it so PitchSide can fill data gaps. Use "answered" when you answered what was asked, even if you showed only the top of a long list (showing 5 of 226 programs is "answered", not "partial"); "partial" only when the DATA could not answer part of the question (for example "STATUS: partial - incoming commits").',
     '- Then, on the very last line, write exactly: FOLLOW-UPS: question one | question two | question three',
     '  These are three short follow-up questions the reader might ask next that the look-ups can answer. The app turns them into buttons and hides this line.',
   ].join('\n')
@@ -831,9 +800,15 @@ function adminClient() {
 }
 
 // The model ends every answer with "STATUS: answered|partial|unavailable|clarify - topic".
+// A "partial" whose gap is only the rest of a long list is not a data gap:
+// the answer showed the top of the list and offered more.
+const LIST_REMAINDER = /\b(remaining|rest of|beyond the (first|top)|more (programs|schools|colleges|teams|coaches)|next \d+|other \d+|full list|additional (programs|schools)|all \d+)\b/i
 function readStatus(text) {
   const m = /^\s*\**STATUS:?\**:?\s*(answered|partial|unavailable|clarify)\b\s*(?:[-–—:|]\s*(.+))?$/im.exec(text || '')
-  return m ? { status: m[1].toLowerCase(), gap: m[2] ? m[2].trim().slice(0, 200) : null } : { status: null, gap: null }
+  if (!m) return { status: null, gap: null }
+  const status = m[1].toLowerCase(), gap = m[2] ? m[2].trim().slice(0, 200) : null
+  if (status === 'partial' && gap && LIST_REMAINDER.test(gap)) return { status: 'answered', gap: null }
+  return { status, gap }
 }
 // What the page shows: everything before the STATUS / FOLLOW-UPS lines.
 function visibleAnswer(text) {
@@ -906,13 +881,26 @@ export default async function handler(req, res) {
   const question = String(body.question || '').trim().slice(0, 1000)
   if (!messages.length && !question) return res.status(400).json({ error: 'question required' })
   if (messages.length && messages[messages.length - 1].role !== 'user') return res.status(400).json({ error: 'last message must be the question' })
-  const prompt = messages.length ? { messages } : { prompt: question }
   const asked = messages.length ? messages[messages.length - 1].content : question
   const turn = messages.length ? messages.filter(m => m.role === 'user').length : 1
   const ctx = {
     favoriteTeamIds: (Array.isArray(body.context?.favoriteTeamIds) ? body.context.favoriteTeamIds : [])
       .map(Number).filter(Number.isFinite).slice(0, 20),
   }
+  // Opened from a College Profile ("Ask about this program"): say which program
+  // "this program" means. Put on the FIRST user message so it is the same on
+  // every turn and the conversation stays in the prompt cache.
+  const programId = String(body.context?.programId || '')
+  let programNote = null
+  if (/^[0-9a-f-]{36}$/i.test(programId)) {
+    const s = (await refData(readClient())).byId.get(programId)
+    if (s) programNote = `[Asked from the College Profile of ${s.school} (${s.program_gender === 'M' ? 'men' : 'women'}'s soccer, ${s.division}), school_id ${s.id}. "This program", "they", "them" and "here" mean this program unless the question names another.]`
+  }
+  if (programNote && messages.length) {
+    const i = messages.findIndex(m => m.role === 'user')
+    if (i >= 0) messages[i] = { ...messages[i], content: `${programNote}\n\n${messages[i].content}` }
+  }
+  const prompt = messages.length ? { messages } : { prompt: programNote ? `${programNote}\n\n${question}` : question }
 
   const reasoning = REASONING_LEVELS.includes(body.reasoning) ? body.reasoning : DEFAULT_REASONING
   const log = []

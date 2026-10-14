@@ -38,7 +38,9 @@ import { intlShareFromGeo, styleShift } from './data/recruitingStyle'
 
 /**
  * CollegeProfile — the portable module entry point.
- * Props (all injected; no PitchSide imports): client, schoolId, backTo, backLabel, theme, logoUrl
+ * Props (all injected; no PitchSide imports): client, schoolId, backTo, backLabel, theme, logoUrl, headerAction
+ *   headerAction → optional node the host shows at the right of the back link
+ *             (PitchSide: "Ask about this program", owner-only while in preview).
  *   theme   → { accent, accentDeep, accentTint } — the OVERRIDE tier. When the
  *             host supplies one it wins, so a hand-curated colourway is never
  *             displaced by a derived one. When it does not, the colourway is
@@ -71,7 +73,7 @@ const NAV = [
   { id: 'sec-staff', label: 'Staff' },
 ]
 
-export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme, logoUrl }) {
+export default function CollegeProfile({ client, schoolId, backTo = '/', backLabel = 'Back', theme, logoUrl, headerAction = null }) {
   const { loading, error, school, rosters, coaches, seasons, currentSeason, currentRoster, lastSyncedRaw, rosterUrl, homeUrl } =
     useProgramProfile(client, schoolId)
   const benchmarks = useProgramBenchmarks(client, school, currentSeason)
@@ -137,7 +139,10 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   return (
     <div className="cp-root" style={styleVars}>
       <div className="cp-wrap">
-        <a className="cp-back" href={backTo}>‹ {backLabel}</a>
+        <div className="cp-topbar">
+          <a className="cp-back" href={backTo}>‹ {backLabel}</a>
+          {headerAction}
+        </div>
 
         {loading && <div className="cp-state">Loading program…</div>}
 

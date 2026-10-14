@@ -77,7 +77,7 @@ export function sourceLabels(lookups) {
         'undergrads_min', 'undergrads_max', 'type', 'setting'].some(k => i[k] != null) || (i.sort && !['openings', 'distance'].includes(i.sort))) {
         out.push('U.S. College Scorecard')
       }
-      if (i.near) out.push('U.S. Census locations')
+      if (i.near) out.push('U.S. College Scorecard', 'U.S. Census locations')
     } else if (SOURCE_LABEL[l.tool]) out.push(SOURCE_LABEL[l.tool])
   }
   return [...new Set(out)]

@@ -41,6 +41,8 @@
 
 .cp-back{display:inline-block; margin:4px 0 16px; color:var(--accent-deep); font-weight:600; text-decoration:none; font-size:13px}
 .cp-back:hover{text-decoration:underline}
+.cp-topbar{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap}
+.cp-topbar > *:not(.cp-back){margin:4px 0 16px}
 
 /* load / error / empty states */
 .cp-state{display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:8px;
