@@ -281,6 +281,11 @@ async function run(tool, input) {
   assert.match(by['Vanderbilt University'].left_out_because, /miles away, beyond 300/, 'the filter that left it out')
   assert.ok(by['Vanderbilt University'].distance_miles > 300, 'distance from the look-up, not a guess')
 
+  r = await go('find_programs', { gender: 'W', schools: ['Ohio State'] })
+  assert.equal(r.asked_about.length, 2, 'a short name matching several programs reports each')
+  assert.ok(r.asked_about.every(x => x.note === 'one of several programs matching this name'))
+  r = await go('find_programs', { gender: 'W', schools: ['Wisconsin'] })
+  assert.equal(r.asked_about[0].school_id, 'wis-w', '"Wisconsin" means the University of Wisconsin')
   r = await go('find_programs', { gender: 'W', schools: ['Ohio State University'] })
   assert.equal(r.asked_about[0].school_id, 'osu-w', 'an exact name wins over "Ohio State Marion"')
   r = await go('find_school', { name: 'Ohio State University' })

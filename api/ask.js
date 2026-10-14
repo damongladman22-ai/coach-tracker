@@ -484,12 +484,23 @@ function buildToolSet(db, log, ctx) {
           asked = []
           const rankOf = new Map(out.map((x, i) => [x.r.school_id, i + 1]))
           const baseOf = new Map(base.map(r => [r.school_id, r]))
+          // A short name ("Michigan") matches several colleges. Prefer the one
+          // called "University of <name>"; otherwise report every match (up to
+          // four), so the answer never stalls on "which one?" (pilot, 2026-10-14).
+          const targets = []
           for (const name of a.schools.slice(0, 6)) {
-            const hit = ref.byId.has(name) ? [ref.byId.get(name)] : matchSchools(ref, name, a.gender)
-            if (hit.length !== 1) { asked.push({ asked_for: name, note: hit.length ? 'several programs match; pass a school_id' : 'no program matched' }); continue }
-            const sch = hit[0]
+            let hit = ref.byId.has(name) ? [ref.byId.get(name)] : matchSchools(ref, name, a.gender)
+            if (hit.length > 1) {
+              const flagship = hit.filter(h => norm(h.school) === `university of ${norm(name)}`)
+              if (flagship.length === 1) hit = flagship
+            }
+            if (!hit.length) { asked.push({ asked_for: name, note: 'no program matched' }); continue }
+            for (const h of hit.slice(0, 4)) targets.push({ name, sch: h, several: hit.length > 1 })
+          }
+          for (const { name, sch, several } of targets) {
+            const also = several ? { asked_for: name, note: 'one of several programs matching this name' } : {}
             const rank = rankOf.get(sch.id)
-            if (rank) { const row = toRow(out[rank - 1]); delete row.card; asked.push({ ...row, rank_in_search: rank, of: out.length }); continue }
+            if (rank) { const row = toRow(out[rank - 1]); delete row.card; asked.push({ ...row, rank_in_search: rank, of: out.length, ...also }); continue }
             const dist = distanceOf(sch.id)
             const f = ref.facts.get(sch.id) || null
             const r = baseOf.get(sch.id)
@@ -503,6 +514,7 @@ function buildToolSet(db, log, ctx) {
               admission_rate: f?.admission_rate ?? undefined, sat_average: f?.sat_average ?? undefined,
               avg_net_price: f?.avg_net_price ?? undefined, undergrads: f?.undergrad_enrollment ?? undefined,
               est_freshman_openings: r && openings ? round(r.est_freshman) : undefined,
+              ...also,
             })
           }
         }
