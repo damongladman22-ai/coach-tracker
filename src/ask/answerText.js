@@ -22,3 +22,18 @@ export function splitAnswer(text) {
     .map(s => s.replace(/^\s*(?:[-*\u2022]|\d+[.)])\s+/, '').trim()).filter(s => s.length > 3).slice(0, 3)
   return { body, followups }
 }
+
+// What an earlier assistant turn is sent back as, in the conversation history:
+// the visible answer plus, when it ran a program search, the exact filters it
+// used. Without them a follow-up such as "why is Michigan not on the list?"
+// re-ran the search with different filters and contradicted the list the reader
+// had just seen (pilot, 2026-10-14). The server tells the model never to show it.
+export function historyContent(content, lookups) {
+  const body = splitAnswer(content).body
+  const last = [...(lookups || [])].reverse().find(l => l && l.tool === 'find_programs' && l.input)
+  if (!last) return body
+  const filters = { ...last.input }
+  delete filters.schools
+  delete filters.limit
+  return `${body}\n\n[Filters used for this answer: find_programs ${JSON.stringify(filters)}]`
+}

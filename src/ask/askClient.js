@@ -43,7 +43,7 @@ export async function streamAsk(messages, { signal, onEvent, context }) {
 /** Split the model's text into the visible answer and its FOLLOW-UPS line.
  *  The STATUS line (answered / partial / unavailable, for the question log)
  *  and the FOLLOW-UPS line are never shown as text. */
-export { stripMeta, splitAnswer } from './answerText.js'
+export { stripMeta, splitAnswer, historyContent } from './answerText.js'
 
 const LOOKUP_LABEL = {
   find_school: i => `Finding ${i?.name || 'the program'}`,

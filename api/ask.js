@@ -227,6 +227,11 @@ function matchSchools(ref, name, gender) {
     if (score > 0) scored.push({ s, score })
   }
   scored.sort((a, b) => b.score - a.score || String(a.s.school).localeCompare(String(b.s.school)))
+  // A name typed exactly as the college is called wins outright: "University
+  // of Michigan" must not come back as several Michigan colleges (pilot,
+  // 2026-10-14). Only the program(s) with that exact name are returned.
+  const exact = scored.filter(x => norm(x.s.school) === norm(cleaned))
+  if (exact.length) return exact.map(x => x.s)
   const top = scored.length ? scored[0].score : 0
   return scored.filter(x => x.score >= top * 0.6).slice(0, 10).map(x => x.s)
 }
@@ -484,7 +489,7 @@ function buildToolSet(db, log, ctx) {
             if (hit.length !== 1) { asked.push({ asked_for: name, note: hit.length ? 'several programs match; pass a school_id' : 'no program matched' }); continue }
             const sch = hit[0]
             const rank = rankOf.get(sch.id)
-            if (rank) { const { card, ...row } = toRow(out[rank - 1]); asked.push({ ...row, rank_in_search: rank, of: out.length }); continue }
+            if (rank) { const row = toRow(out[rank - 1]); delete row.card; asked.push({ ...row, rank_in_search: rank, of: out.length }); continue }
             const dist = distanceOf(sch.id)
             const f = ref.facts.get(sch.id) || null
             const r = baseOf.get(sch.id)
@@ -888,7 +893,8 @@ function instructions() {
     '- Openings questions need gender, position and graduating class. If any is missing and the conversation does not already say it, ask for the missing pieces in ONE short question with the likely options, and stop. Searches that do not need them (majors, academics, results) run without them.',
     '- Academic fit: use find_programs filters (admission rate, average SAT, graduation rate, net price, size, public/private, setting, major) and program_majors. PitchSide has no GPA data; say so if asked, and use admission rate and average SAT instead. A program whose average SAT is near the student\'s score is a typical academic match.',
     '- Never estimate, approximate or work out a figure yourself: not a distance, admission rate, SAT, price or openings number. If a figure you need is not in a look-up result, run the look-up now (for one program\'s distance from home: program_profile with near, or find_programs with schools). Never answer that something is "not in this conversation".',
-    '- "Why is X not on the list" or "where does X rank": run find_programs again with the SAME filters plus schools: [X], and explain from asked_about (rank_in_search of the total, or left_out_because).',
+    '- An earlier answer of yours may end with a note "[Filters used for this answer: find_programs {...}]". It is the exact search behind that answer; the reader does not see it. Never mention it.',
+    '- "Why is X not on the list" or "where does X rank": run find_programs again with EXACTLY the filters in that note (same distance, SAT range, size and so on), adding only schools: [X], and explain from asked_about (rank_in_search of the total, or left_out_because). Change a filter only when the person asks for the change.',
     '- "Out of state", "not in Ohio", "away from home": pass exclude_states with the home state, and leave home-state programs out of recommendations unless they ask for them.',
     '- Before the FIRST list of recommendations ("which schools would be a good fit", "recommend", "best options for me"): if the conversation does not yet say how far from home they will go (or a region) AND at least one of school size, cost, or a test score, ask first: one short message with up to three questions and likely options (for example "How far from home: 2 hours, 4 hours, anywhere?"), then stop (STATUS: clarify). If they already answered, or say "just show me", search.',
     '- Academics: PitchSide has no GPA data. When academics matter and they gave only a GPA, ask for an SAT or ACT score (or a target range) in the same clarifying message. Convert an ACT composite to SAT with this table: ' + ACT_TO_SAT + '. For a typical academic match use find_programs with sat_min about 100 below and sat_max about 150 above the student\'s SAT; colleges whose average SAT is well above it are a reach, and say so.',

@@ -245,4 +245,69 @@ async function run(tool, input) {
   assert.equal(big.programs.length, 40, 'the full output is untouched for the cards')
 }
 
+// pilot fixes (2026-10-14): out of state, "where does X rank / why not on the list",
+// exact names, distance on a profile, goalkeeper coach and goalkeeper history
+{
+  const LL = { 'osu-w': [40.0, -83.03], 'wis-w': [43.07, -89.4], 'den-w': [40.07, -82.52], 'ken-w': [40.37, -82.40], 'van-w': [36.14, -86.80] }
+  const P = { ...tables,
+    schools: [...schools, S('osm-w', 'Ohio State Marion', 'W', 'JC', null, 'Marion', 'Ohio')],
+    school_federal_college: schools.map((s, i) => ({ school_id: s.id, unitid: 100 + i,
+      college_facts: { ...facts[s.id], latitude: LL[s.id][0], longitude: LL[s.id][1] } })),
+    geo_points: [{ kind: 'place', state: 'OH', key: 'columbus', name: 'Columbus, OH', lat: 39.98, lon: -82.98, land_sqmi: 220 }],
+    coaches: [
+      { school_id: 'wis-w', first_name: 'Ann', last_name: 'Lead', title: 'Head Coach', email: null, is_active: true },
+      { school_id: 'wis-w', first_name: 'Gil', last_name: 'Keep', title: 'Assistant Coach / Goalkeepers', email: null, is_active: true },
+      { school_id: 'van-w', first_name: 'Ed', last_name: 'Solo', title: 'Head Coach', email: null, is_active: true },
+    ],
+    program_position_retention: [{ school_id: 'wis-w', position: 'GK', first_season: 2022, last_season: 2026, season_pairs: 4,
+      on_roster: 14, returned: 8, transferred_out: 1, left_after_final_year: 3, left_otherwise: 2,
+      arrived_as_freshmen: 4, arrived_by_transfer: 1, arrived_other: 1 }],
+    college_rosters: [
+      { school_id: 'wis-w', roster_season: 2026, class_year: 'FR', position: 'GK', is_active: true },
+      { school_id: 'wis-w', roster_season: 2026, class_year: 'SR', position: 'GK', is_active: true },
+      { school_id: 'wis-w', roster_season: 2026, class_year: 'JR', position: 'GK', is_active: true },
+    ],
+  }
+  const go = async (tool, input) => { T.resetCache(); return T.buildTools(fakeDb(P), [], {})[tool].execute(input, { toolCallId: 't', messages: [] }) }
+
+  let r = await go('find_programs', { gender: 'W', near: 'Columbus, OH', radius_miles: 500, exclude_states: ['OH'] })
+  assert.deepEqual(r.programs.map(p => p.school_id).sort(), ['van-w', 'wis-w'], 'out of state leaves Ohio out')
+
+  r = await go('find_programs', { gender: 'W', near: 'Columbus, OH', radius_miles: 300, schools: ['Vanderbilt', 'Denison University', 'Kenyon'] })
+  const by = Object.fromEntries(r.asked_about.map(x => [x.school, x]))
+  assert.equal(by['Denison University'].rank_in_search, 2, 'rank in the same search')
+  assert.equal(by['Denison University'].of, 3)
+  assert.equal(by['Vanderbilt University'].in_results, false)
+  assert.match(by['Vanderbilt University'].left_out_because, /miles away, beyond 300/, 'the filter that left it out')
+  assert.ok(by['Vanderbilt University'].distance_miles > 300, 'distance from the look-up, not a guess')
+
+  r = await go('find_programs', { gender: 'W', schools: ['Ohio State University'] })
+  assert.equal(r.asked_about[0].school_id, 'osu-w', 'an exact name wins over "Ohio State Marion"')
+  r = await go('find_school', { name: 'Ohio State University' })
+  assert.deepEqual(r.matches.map(m => m.school_id), ['osu-w'])
+
+  r = await go('program_profile', { school_id: 'van-w', near: 'Columbus, OH' })
+  assert.ok(r.distance.distance_miles > 300 && r.distance.distance_miles < 400, 'distance from home on a profile')
+
+  r = await go('program_coaches', { school_id: 'wis-w' })
+  assert.deepEqual(r.goalkeeper_coach, ['Gil Keep'])
+  r = await go('program_coaches', { school_id: 'van-w' })
+  assert.equal(r.goalkeeper_coach, 'none listed')
+
+  r = await go('program_position_history', { school_id: 'wis-w' })
+  assert.equal(r.position, 'GK', 'goalkeepers by default')
+  assert.equal(r.history.returned, 8)
+  assert.equal(r.history.transferred_to_another_college, 1)
+  assert.deepEqual(r.current_roster, { roster_season: 2026, players: 3, by_class_year: { FR: 1, SR: 1, JR: 1 } })
+  r = await go('program_position_history', { school_id: 'van-w' })
+  assert.equal(r.history, null, 'no history: says so instead of inventing')
+
+  const { historyContent } = await import('../src/ask/answerText.js')
+  const h = historyContent('Five programs.\n\nSTATUS: answered\nFOLLOW-UPS: a | b | c',
+    [{ tool: 'program_coaches', input: { school_id: 'x' } },
+     { tool: 'find_programs', input: { gender: 'M', sat_min: 980, schools: ['X'], limit: 15 } }])
+  assert.equal(h, 'Five programs.\n\n[Filters used for this answer: find_programs {"gender":"M","sat_min":980}]')
+  assert.equal(historyContent('Hi.\nSTATUS: answered', []), 'Hi.')
+}
+
 console.log('ask.test.mjs: all assertions passed')

@@ -8,7 +8,7 @@ import { useCollegeProfileLogos } from '../college-profiles/access/useCollegePro
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { PageLoader } from '../components/LoadingStates'
 import OPLogo from '../components/OPLogo'
-import { streamAsk, splitAnswer, lookupLabel, sourceLabels, programCards } from '../ask/askClient'
+import { streamAsk, splitAnswer, historyContent, lookupLabel, sourceLabels, programCards } from '../ask/askClient'
 import { getFavorites } from '../hooks/useFavorite'
 import { loadChats, saveChats, putChat, dropChat, newChatId, whenLabel } from '../ask/chatStore'
 
@@ -432,7 +432,7 @@ export default function AskPitchSide({ session }) {
     const user = { id: newId(), role: 'user', content: q }
     const bot = { id: newId(), role: 'assistant', content: '', lookups: [], status: 'streaming' }
     const history = [...msgs.filter(m => m.status !== 'error'), user]
-      .map(m => ({ role: m.role, content: m.role === 'assistant' ? splitAnswer(m.content).body : m.content }))
+      .map(m => ({ role: m.role, content: m.role === 'assistant' ? historyContent(m.content, m.lookups) : m.content }))
     setMsgs(list => [...list, user, bot])
     setInput('')
     setBusy(true)
