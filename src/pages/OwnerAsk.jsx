@@ -73,6 +73,133 @@ function Lookups({ lookups }) {
   )
 }
 
+// ── Pilot usage: trends and real-world use (server/ask/usage.js) ───────────
+const usd = x => (x == null ? '—' : x < 0.01 ? `$${x.toFixed(4)}` : `$${x.toFixed(2)}`)
+const SOURCE_LABEL = { typed: 'Typed', suggestion: 'Suggested question', followup: 'Follow-up chip', 'not recorded': 'Not recorded (before 14 Oct)' }
+
+function Tile({ label, value, sub }) {
+  return (
+    <div className="border rounded-lg px-3 py-2">
+      <div className="text-xs text-gray-500">{label}</div>
+      <div className="text-xl font-semibold text-gray-900 tabular-nums">{value}</div>
+      {sub && <div className="text-xs text-gray-500">{sub}</div>}
+    </div>
+  )
+}
+
+function DailyBars({ days }) {
+  const [hover, setHover] = useState(null)
+  const max = Math.max(1, ...days.map(d => d.questions))
+  const h = d => `${Math.round((d.questions / max) * 100)}%`
+  const label = d => new Date(d.day + 'T12:00:00Z').toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  const shown = hover != null ? days[hover] : null
+  return (
+    <div>
+      <div className="flex items-baseline justify-between text-xs text-gray-500 mb-1">
+        <span>Questions per day, last 30 days</span>
+        <span className="tabular-nums">{shown ? `${label(shown)}: ${shown.questions} questions · ${shown.pilots} pilots · ${usd(shown.cost_usd)}` : `most in a day: ${max}`}</span>
+      </div>
+      <div className="flex items-end gap-[2px] h-28 border-b border-gray-200" onMouseLeave={() => setHover(null)} role="img"
+        aria-label="Questions per day for the last 30 days">
+        {days.map((d, i) => (
+          <div key={d.day} className="flex-1 h-full flex items-end cursor-default" onMouseEnter={() => setHover(i)}
+            title={`${label(d)}: ${d.questions} questions, ${d.pilots} pilots, ${usd(d.cost_usd)}`}>
+            <div className={`w-full rounded-t ${hover === i ? 'bg-[#1d4ed8]' : 'bg-[#3b6fd8]'}`} style={{ height: d.questions ? h(d) : 0, minHeight: d.questions ? 2 : 0 }} />
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-between text-[11px] text-gray-400 mt-1"><span>{days[0] && label(days[0])}</span><span>{days.at(-1) && label(days.at(-1))}</span></div>
+    </div>
+  )
+}
+
+function CountList({ title, items, total, labels = {} }) {
+  return (
+    <div>
+      <div className="text-xs text-gray-500 mb-1">{title}</div>
+      {items.length === 0 ? <div className="text-sm text-gray-400">None yet</div> : (
+        <ul className="space-y-1">
+          {items.map(it => (
+            <li key={it.label} className="text-sm">
+              <div className="flex justify-between gap-2"><span className="text-gray-800">{labels[it.label] || it.label}</span>
+                <span className="tabular-nums text-gray-600">{it.n} · {Math.round((it.n / Math.max(1, total)) * 100)}%</span></div>
+              <div className="h-1.5 bg-gray-100 rounded"><div className="h-1.5 bg-[#3b6fd8] rounded" style={{ width: `${(it.n / Math.max(1, total)) * 100}%` }} /></div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+function PilotUsage() {
+  const [data, setData] = useState(null)
+  const [err, setErr] = useState(null)
+  const [mine, setMine] = useState(false)
+  async function load(all = mine) {
+    setErr(null)
+    try {
+      const r = await fetch(`/api/ask?usage=${all ? 'all' : 'pilots'}`, { headers: await authHeaders() })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`)
+      setData(j)
+    } catch (e) { setErr(e.message || String(e)) }
+  }
+  useEffect(() => { load(mine) }, [mine])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const d = data
+  return (
+    <div className="bg-white rounded-lg shadow p-4 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-gray-800">Pilot usage</h2>
+        <div className="flex items-center gap-3 text-sm">
+          <label className="flex items-center gap-1.5 text-gray-600">
+            <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)} /> Include my own questions
+          </label>
+          <button onClick={() => load()} className="text-blue-600 hover:underline">Refresh</button>
+        </div>
+      </div>
+      {err && <div className="text-sm text-red-600">{err}</div>}
+      {d && (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <Tile label="Pilot spend" value={usd(d.spend_usd)} sub={d.budget_usd ? `of $${d.budget_usd} budget · ${usd(d.avg_cost_usd)} a question` : null} />
+            <Tile label="Questions" value={d.questions.toLocaleString()} sub={`${d.conversations} conversations · ${d.questions_per_conversation ? d.questions_per_conversation.toFixed(1) : '—'} per conversation`} />
+            <Tile label="Pilots" value={`${d.active_pilots_7d} active`} sub={`in the last 7 days · ${d.returning_pilots} of ${d.pilots_with_questions} came back on another day`} />
+            <Tile label="Answer speed" value={d.median_ms ? `${(d.median_ms / 1000).toFixed(1)} s` : '—'} sub={d.p90_ms ? `typical · 1 in 10 slower than ${(d.p90_ms / 1000).toFixed(1)} s` : null} />
+          </div>
+          <DailyBars days={d.by_day} />
+          <div className="grid sm:grid-cols-3 gap-4">
+            <CountList title="What they ask about" items={d.topics} total={d.questions} />
+            <CountList title="How the answer went" items={d.status} total={d.questions} />
+            <CountList title="How the question started" items={d.sources} total={d.questions} labels={SOURCE_LABEL} />
+          </div>
+          <div className="text-sm text-gray-600">Thumbs up {d.thumbs_up} · thumbs down {d.thumbs_down} · conversations with a follow-up question {d.conversations_with_followups} of {d.conversations}</div>
+          {d.per_pilot.length > 0 && (
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-gray-500 border-b">
+                <th className="py-1.5 pr-2">Pilot</th><th className="pr-2">Questions</th><th className="pr-2">Conversations</th><th className="pr-2">Days used</th>
+                <th className="pr-2">Not fully answered</th><th className="pr-2">👍 / 👎</th><th className="pr-2">Spend</th><th>Last used</th>
+              </tr></thead>
+              <tbody>
+                {d.per_pilot.map(p => (
+                  <tr key={p.id} className="border-b last:border-0">
+                    <td className="py-1.5 pr-2">{p.name}</td><td className="pr-2 tabular-nums">{p.questions}</td><td className="pr-2 tabular-nums">{p.conversations}</td>
+                    <td className="pr-2 tabular-nums">{p.active_days}</td><td className="pr-2 tabular-nums">{p.not_answered}</td>
+                    <td className="pr-2 tabular-nums">{p.thumbs_up} / {p.thumbs_down}</td><td className="pr-2 tabular-nums">{usd(p.cost_usd)}</td>
+                    <td className="text-gray-500">{p.last_used ? new Date(p.last_used).toLocaleString() : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          <p className="text-xs text-gray-400">Chat questions only (not this test bench). Spend, conversations and how a question started are recorded from 14 October; earlier questions show as not recorded.</p>
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Pilot access (personal pilot links, no login; Damon 2026-10-14) ─────────
 function pilotLink(code) {
   return `${window.location.origin}/ask?pilot=${encodeURIComponent(code)}`
@@ -104,7 +231,7 @@ function PilotAccess() {
   const [data, setData] = useState(null)
   const [err, setErr] = useState(null)
   const [name, setName] = useState('')
-  const [limit, setLimit] = useState(25)
+  const [limit, setLimit] = useState(150)
   const [shown, setShown] = useState(null)   // { code, name }
   const [busy, setBusy] = useState(false)
 
@@ -164,8 +291,8 @@ function PilotAccess() {
       {data && (
         <>
           <div className="text-sm text-gray-600">
-            All pilots this month: {data.month_used} of {data.month_limit} questions
-            {data.month_used >= data.month_limit ? ' (paused until next month)' : ''}.
+            Pilot spend so far: ${Number(data.spend_usd || 0).toFixed(2)} of ${data.budget_usd} budget
+            {data.spend_usd >= data.budget_usd ? ' (pilots paused: budget reached)' : ''}.
           </div>
           {data.pilots.length === 0 ? <div className="text-sm text-gray-500">No pilots yet.</div> : (
             <table className="w-full text-sm">
@@ -382,6 +509,8 @@ export default function OwnerAsk({ session }) {
           Vercel AI Gateway{credits ? <> · gateway credit balance ${Number(credits.balance).toFixed(2)}</> : null}.
           {modelsError && <div className="mt-2 text-red-600">Could not load the model list: {modelsError}</div>}
         </div>
+
+        <PilotUsage />
 
         <PilotAccess />
 

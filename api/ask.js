@@ -8,7 +8,8 @@ import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason
 import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender } from '../src/lib/attendanceSignal.js'
 import { milesBetween } from '../src/lib/geo.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
-import { PILOT_HEADER, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
+import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
+import { summarizeUsage } from '../server/ask/usage.js'
 
 /**
  * POST /api/ask  { question, model }      -> answer + every look-up it used
@@ -858,6 +859,16 @@ function lookupSummary(log) {
   })
 }
 // Best effort: a logging failure must never break an answer.
+// Actual AI Gateway cost of a question: every model call in it (one per step), summed.
+function costOfSteps(steps) {
+  let usd = 0, any = false
+  for (const st of steps || []) {
+    const c = Number(st?.providerMetadata?.gateway?.cost)
+    if (Number.isFinite(c)) { usd += c; any = true }
+  }
+  return any ? Math.round(usd * 1e8) / 1e8 : null
+}
+
 async function logAsk(row) {
   try {
     const { data, error } = await adminClient().from('ask_log').insert(row).select('id').single()
@@ -889,6 +900,26 @@ export default async function handler(req, res) {
   // Everything below except asking and rating is for the owner only.
   const body = req.method === 'POST' ? (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {})) : {}
   if (!isOwner && (req.method !== 'POST' || body.pilot_admin)) return res.status(403).json({ error: 'Not allowed: owner only' })
+
+  // Pilot usage: trends and real-world use (server/ask/usage.js).
+  if (req.method === 'GET' && req.query?.usage) {
+    try {
+      const admin = adminClient()
+      const includeOwner = req.query.usage === 'all'
+      const rows = []
+      for (let from = 0; ; from += 1000) {
+        let q = admin.from('ask_log').select('id,created_at,pilot_id,conversation_id,source,status,rating,ms,cost_usd,lookups,error,surface')
+          .eq('surface', 'chat').order('id').range(from, from + 999)
+        if (!includeOwner) q = q.not('pilot_id', 'is', null)
+        const { data, error } = await q
+        if (error) throw new Error(error.message)
+        rows.push(...(data || []))
+        if (!data || data.length < 1000) break
+      }
+      const { data: pilots } = await admin.from('ask_pilots').select('id,name')
+      return res.status(200).json(summarizeUsage(rows, pilots || [], { days: 30, budget: PILOT_BUDGET_USD }))
+    } catch (e) { return res.status(500).json({ error: e.message }) }
+  }
 
   if (req.method === 'GET' && req.query?.pilots) {
     try { return res.status(200).json(await listPilots(adminClient())) } catch (e) { return res.status(500).json({ error: e.message }) }
@@ -987,10 +1018,14 @@ export default async function handler(req, res) {
     reasoning,
     providerOptions: gatewayOptions(model, isOwner ? who.email : `pilot:${who.pilot.id}`),
   }
-  const record = (text, usage, err) => {
+  // For usage tracking: the saved chat this question belongs to, and how it started.
+  const conversationId = /^[A-Za-z0-9_-]{1,64}$/.test(String(body.context?.conversationId || '')) ? body.context.conversationId : null
+  const source = ['typed', 'suggestion', 'followup'].includes(body.context?.source) ? body.context.source : null
+  const record = (text, usage, err, costUsd = null) => {
     const { status, gap } = readStatus(text)
     return logAsk({
       user_email: who.email, pilot_id: isOwner ? null : who.pilot.id, surface: body.stream ? 'chat' : 'bench', question: asked, turn, model,
+      cost_usd: costUsd, conversation_id: conversationId, source,
       status: err ? 'error' : (status || (text ? 'answered' : 'error')), gap,
       lookups: lookupSummary(log), answer: visibleAnswer(text).slice(0, 8000) || null, ms: Date.now() - t0,
       input_tokens: usage?.inputTokens ?? null, output_tokens: usage?.outputTokens ?? null, error: err || null,
@@ -1013,6 +1048,7 @@ export default async function handler(req, res) {
     let text = ''
     let err = null
     let usage = {}
+    let costUsd = null
     try {
       const result = streamText(common)
       let stepText = ''
@@ -1030,11 +1066,12 @@ export default async function handler(req, res) {
         else if (part.type === 'error') { err = String(part.error?.message || part.error); send({ t: 'error', error: err }) }
       }
       usage = (await result.totalUsage) || {}
+      costUsd = costOfSteps(await result.steps)
     } catch (e) {
       err = e.message || String(e)
       send({ t: 'error', error: err })
     }
-    const logId = await record(text, usage, err)
+    const logId = await record(text, usage, err, costUsd)
     send({ t: 'done', model, reasoning, ms: Date.now() - t0, log_id: logId,
       usage: { input_tokens: usage.inputTokens ?? null, output_tokens: usage.outputTokens ?? null,
         reasoning_tokens: usage.outputTokenDetails?.reasoningTokens ?? usage.reasoningTokens ?? null } })
@@ -1045,8 +1082,8 @@ export default async function handler(req, res) {
   try {
     const result = await generateText(common)
     const usage = result.totalUsage || result.usage || {}
-    const gw = result.providerMetadata?.gateway || null
-    const logId = await record(result.text, usage, null)
+    const costUsd = costOfSteps(result.steps)
+    const logId = await record(result.text, usage, null, costUsd)
     return res.status(200).json({
       model,
       answer: result.text,
@@ -1057,7 +1094,7 @@ export default async function handler(req, res) {
       usage: { input_tokens: usage.inputTokens ?? null, output_tokens: usage.outputTokens ?? null,
         reasoning_tokens: usage.outputTokenDetails?.reasoningTokens ?? usage.reasoningTokens ?? null,
         cached_input_tokens: usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? null },
-      gateway_cost: gw?.cost ?? null,
+      gateway_cost: costUsd,
       ms: Date.now() - t0,
     })
   } catch (e) {

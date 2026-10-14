@@ -423,10 +423,12 @@ export default function AskPitchSide({ session }) {
 
   const update = (id, fn) => setMsgs(list => list.map(m => (m.id === id ? fn(m) : m)))
 
-  async function send(text) {
+  // source: how the question started (typed | suggestion | followup), for pilot usage tracking.
+  async function send(text, source = 'typed') {
     const q = String(text || '').trim()
     if (!q || busy) return
-    if (!activeId) setActiveId(newChatId())
+    const conversationId = activeId || newChatId()
+    if (!activeId) setActiveId(conversationId)
     const user = { id: newId(), role: 'user', content: q }
     const bot = { id: newId(), role: 'assistant', content: '', lookups: [], status: 'streaming' }
     const history = [...msgs.filter(m => m.status !== 'error'), user]
@@ -439,7 +441,7 @@ export default function AskPitchSide({ session }) {
     try {
       await streamAsk(history, {
         signal: ctrl.signal,
-        context: { favoriteTeamIds: getFavorites(), programId: program?.id || null },
+        context: { favoriteTeamIds: getFavorites(), programId: program?.id || null, conversationId, source },
         onEvent: ev => {
           if (ev.t === 'text') update(bot.id, m => ({ ...m, content: m.content + ev.d }))
           else if (ev.t === 'reset') update(bot.id, m => ({ ...m, content: m.content.slice(0, ev.keep || 0) }))
@@ -504,7 +506,7 @@ export default function AskPitchSide({ session }) {
             onOpen={openChat} onDelete={deleteChat} onNew={() => startNew()} onClose={() => setShowChats(false)} />
         )}
         {msgs.length === 0
-          ? <EmptyState onPick={send} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot} />
+          ? <EmptyState onPick={q => send(q, 'suggestion')} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot} />
           : (
             <div className="py-4 space-y-6">
               {msgs.map(m => (m.role === 'user'
@@ -512,7 +514,7 @@ export default function AskPitchSide({ session }) {
                   <div key={m.id} className="flex justify-end">
                     <div className="max-w-[85%] bg-[#0a1628] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] whitespace-pre-wrap">{m.content}</div>
                   </div>)
-                : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={send} onRate={rate} busy={busy} />))}
+                : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={q => send(q, 'followup')} onRate={rate} busy={busy} />))}
               <div ref={endRef} style={{ scrollMarginBottom: 150 }} />
             </div>
           )}

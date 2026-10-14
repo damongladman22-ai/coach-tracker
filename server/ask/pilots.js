@@ -9,9 +9,11 @@
 import { createHash, randomBytes } from 'node:crypto'
 
 export const PILOT_HEADER = 'x-ask-pilot'
-export const DEFAULT_DAILY_LIMIT = 25        // questions per pilot in any 24 hours (editable per pilot)
-export const BURST_PER_MINUTE = 6            // questions per pilot in any 60 seconds
-export const MONTHLY_PILOT_LIMIT = 1500      // all pilots together, per calendar month (UTC)
+// Limits (Damon 2026-10-14: 5 to 10 pilots, $50 for the pilot; loosened so it
+// feels like real use). Measured cost: about $0.0005 to $0.0015 a question.
+export const DEFAULT_DAILY_LIMIT = 150       // questions per pilot in any 24 hours (editable per pilot)
+export const BURST_PER_MINUTE = 10           // questions per pilot in any 60 seconds
+export const PILOT_BUDGET_USD = 50           // all pilots together, actual AI cost (ask_log.cost_usd), all time
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'   // no 0/O, 1/I/L
 
@@ -42,18 +44,33 @@ async function countSince(admin, sinceIso, pilotId) {
   return count || 0
 }
 
-/** Questions this pilot asked in the last 24 hours and last minute, and all pilots this month. */
+/** Actual AI cost of every pilot question so far (USD). Cached a minute per server instance. */
+let SPEND = null
+export async function pilotSpend(admin, { fresh = false } = {}) {
+  if (!fresh && SPEND && Date.now() - SPEND.at < 60e3) return SPEND.usd
+  let usd = 0
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await admin.from('ask_log').select('id,cost_usd')
+      .not('pilot_id', 'is', null).not('cost_usd', 'is', null).order('id').range(from, from + 999)
+    if (error) throw new Error(error.message)
+    for (const r of data || []) usd += Number(r.cost_usd) || 0
+    if (!data || data.length < 1000) break
+  }
+  SPEND = { at: Date.now(), usd }
+  return usd
+}
+
+/** Questions this pilot asked in the last 24 hours and last minute, and all pilots' spend so far. */
 export async function pilotUsage(admin, pilotId, now = new Date()) {
   const day = new Date(now.getTime() - 24 * 3600e3).toISOString()
   const minute = new Date(now.getTime() - 60e3).toISOString()
-  const month = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString()
-  const [d, m, mo] = await Promise.all([countSince(admin, day, pilotId), countSince(admin, minute, pilotId), countSince(admin, month, null)])
-  return { day: d, minute: m, month: mo }
+  const [d, m, spend] = await Promise.all([countSince(admin, day, pilotId), countSince(admin, minute, pilotId), pilotSpend(admin)])
+  return { day: d, minute: m, spend }
 }
 
 /** A plain-words message when a limit is reached, else null. */
 export function limitMessage(usage, pilot) {
-  if (usage.month >= MONTHLY_PILOT_LIMIT) return 'Ask PitchSide is paused for the rest of this month while we review the pilot. Thank you for testing it.'
+  if (usage.spend >= PILOT_BUDGET_USD) return 'Ask PitchSide is paused while we review the pilot. Thank you for testing it.'
   if (usage.day >= (pilot.daily_limit || DEFAULT_DAILY_LIMIT)) return `You have reached the pilot limit of ${pilot.daily_limit || DEFAULT_DAILY_LIMIT} questions in 24 hours. Questions open up again as the day goes on.`
   if (usage.minute >= BURST_PER_MINUTE) return 'That is a lot of questions in one minute. Please wait a moment and try again.'
   return null
@@ -78,11 +95,10 @@ export async function listPilots(admin) {
     }
     if (!data || data.length < 1000) break
   }
-  const month = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()
   return {
     pilots: (pilots || []).map(p => ({ ...p, ...stats.get(p.id) })),
-    month_used: await countSince(admin, month, null),
-    month_limit: MONTHLY_PILOT_LIMIT,
+    spend_usd: await pilotSpend(admin, { fresh: true }),
+    budget_usd: PILOT_BUDGET_USD,
   }
 }
 

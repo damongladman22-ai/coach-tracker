@@ -1,6 +1,6 @@
 // Pilot access to Ask PitchSide (server/ask/pilots.js), with a fake database.
 import assert from 'node:assert/strict'
-import { newPilotCode, normCode, hashCode, codeHint, findPilot, limitMessage, pilotAdmin, MONTHLY_PILOT_LIMIT, BURST_PER_MINUTE } from '../server/ask/pilots.js'
+import { newPilotCode, normCode, hashCode, codeHint, findPilot, limitMessage, pilotAdmin, PILOT_BUDGET_USD, BURST_PER_MINUTE, DEFAULT_DAILY_LIMIT } from '../server/ask/pilots.js'
 
 // codes: 12 characters, no look-alike letters; typed with or without dashes or case, same hash
 const codes = Array.from({ length: 200 }, newPilotCode)
@@ -70,10 +70,11 @@ function fakeDb(rows) {
   assert.equal((await pilotAdmin(db, { action: 'update', id: 'nope', active: false }, 'o')).status, 400)
 }
 
-// limits: plain words, the month first, then the day, then the minute
-const p = { daily_limit: 25 }
-assert.equal(limitMessage({ day: 24, minute: 0, month: 10 }, p), null)
-assert.ok(/25 questions in 24 hours/.test(limitMessage({ day: 25, minute: 0, month: 10 }, p)))
-assert.ok(/wait a moment/.test(limitMessage({ day: 3, minute: BURST_PER_MINUTE, month: 10 }, p)))
-assert.ok(/paused for the rest of this month/.test(limitMessage({ day: 0, minute: 0, month: MONTHLY_PILOT_LIMIT }, p)))
+// limits: plain words, the budget first, then the day, then the minute
+const p = { daily_limit: 150 }
+assert.equal(DEFAULT_DAILY_LIMIT, 150)
+assert.equal(limitMessage({ day: 149, minute: 0, spend: 10 }, p), null)
+assert.ok(/150 questions in 24 hours/.test(limitMessage({ day: 150, minute: 0, spend: 10 }, p)))
+assert.ok(/wait a moment/.test(limitMessage({ day: 3, minute: BURST_PER_MINUTE, spend: 10 }, p)))
+assert.ok(/paused while we review the pilot/.test(limitMessage({ day: 0, minute: 0, spend: PILOT_BUDGET_USD }, p)))
 console.log('pilots.test.mjs: all assertions passed')
