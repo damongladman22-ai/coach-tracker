@@ -409,10 +409,10 @@ function buildToolSet(db, log, ctx) {
         }[sort]
         if (sort !== 'openings') out.sort(cmp)
 
-        const n = Math.min(a.limit || 12, MAX_ROWS)
+        const n = Math.min(a.limit || MAX_ROWS, MAX_ROWS)
         return {
           matched: out.length,
-          showing: out.length > n ? `the first ${n} of ${out.length} in this order` : undefined,
+          showing: out.length > n ? `the first ${n} of ${out.length} in this order (the cards show these ${n})` : undefined,
           ranked_by: sort === 'openings'
             ? 'estimated openings for incoming freshmen (est_freshman_openings), then total; the same order as the Find programs page'
             : sort,
@@ -762,12 +762,13 @@ function instructions() {
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
+    '- Write nothing before or between look-ups ("I will search…"): call the look-ups first, then write only the answer.',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
     '- Then structure: short bullet lists for a few facts; **bold** for the key number or name.',
     '- LISTS of programs (find_programs, rank_by_results, programs_watching_team): the app shows them as program cards under your answer (logo, division, the key number, a link). Do NOT write a table or a numbered or bulleted list of those programs. Instead, after the direct answer, give one or two observations the cards do not show, naming at most three programs in the sentence (for example "Ohio Dominican and Capital are closest; Denison is the most selective at a 17% admit rate."). Exception: for programs_watching_team, the coach names are not on the cards, so list each program shown with its coaches.',
     '- TABLES only for a side-by-side comparison of 2 to 4 named programs on several measures, or one program across seasons (rows = seasons). Clear column headers, at most 6 rows.',
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
-    '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count. The cards under the answer show at most 40 programs; never say the cards hold all of a longer list.',
+    '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count. The cards under the answer show at most 40 programs; never say the cards hold all of a longer list, and do not comment on how many programs the cards or the list show.',
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for); when you name the leaders, keep that order and quote the freshman figure.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
@@ -927,6 +928,7 @@ export default async function handler(req, res) {
 
   // Streaming (the consumer page): newline-delimited JSON events.
   //   {t:'text', d}                  a piece of the answer
+  //   {t:'reset', keep}              drop text written before a look-up: keep the first `keep` characters
   //   {t:'lookup', tool, input}      a look-up started
   //   {t:'data', tool, input, output} a look-up finished, with its rows
   //   {t:'done', model, ms, usage, log_id}  finished (log_id: for thumbs up/down)
@@ -942,9 +944,17 @@ export default async function handler(req, res) {
     let usage = {}
     try {
       const result = streamText(common)
+      let stepText = ''
       for await (const part of result.fullStream) {
-        if (part.type === 'text-delta') { text += part.text; send({ t: 'text', d: part.text }) }
-        else if (part.type === 'tool-call') send({ t: 'lookup', tool: part.toolName, input: part.input })
+        // Text the model writes before calling look-ups ("I'll search for…") is
+        // not the answer: when a step that wrote text then calls a look-up, the
+        // page is told to drop that text (reset to the length kept).
+        if (part.type === 'start-step') stepText = ''
+        else if (part.type === 'text-delta') { text += part.text; stepText += part.text; send({ t: 'text', d: part.text }) }
+        else if (part.type === 'tool-call') {
+          if (stepText) { text = text.slice(0, text.length - stepText.length); stepText = ''; send({ t: 'reset', keep: text.length }) }
+          send({ t: 'lookup', tool: part.toolName, input: part.input })
+        }
         else if (part.type === 'tool-result') send({ t: 'data', tool: part.toolName, input: part.input, output: part.output })
         else if (part.type === 'error') { err = String(part.error?.message || part.error); send({ t: 'error', error: err }) }
       }

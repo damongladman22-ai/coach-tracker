@@ -389,6 +389,7 @@ export default function AskPitchSide({ session }) {
         context: { favoriteTeamIds: getFavorites(), programId: program?.id || null },
         onEvent: ev => {
           if (ev.t === 'text') update(bot.id, m => ({ ...m, content: m.content + ev.d }))
+          else if (ev.t === 'reset') update(bot.id, m => ({ ...m, content: m.content.slice(0, ev.keep || 0) }))
           else if (ev.t === 'lookup') update(bot.id, m => ({ ...m, lookups: [...m.lookups, { tool: ev.tool, input: ev.input }] }))
           else if (ev.t === 'data') update(bot.id, m => {
             const ls = [...m.lookups]
