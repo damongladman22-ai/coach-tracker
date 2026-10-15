@@ -8,6 +8,7 @@ import { useCollegeProfileLogos } from '../college-profiles/access/useCollegePro
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { PageLoader } from '../components/LoadingStates'
 import OPLogo from '../components/OPLogo'
+import FitBadge from '../components/FitBadge'
 import { streamAsk, splitAnswer, historyContent, lookupLabel, sourceLabels, programCards,
   splitEmail, knownEmails, addressList, mailtoHref, emailText } from '../ask/askClient'
 import { getFavorites } from '../hooks/useFavorite'
@@ -138,6 +139,7 @@ function ProgramCards({ items, logosEnabled, onDraft, busy }) {
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{p.school}</div>
                   <div className="text-xs text-gray-500 truncate">{[p.division, p.conference, p.state].filter(Boolean).join(' · ')}</div>
+                  {p.fit && <FitBadge fit={p.fit} className="mt-1" />}
                 </div>
                 <div className="text-right flex-shrink-0">
                   <div className="text-base font-semibold text-gray-900 leading-tight">{big ?? '—'}</div>

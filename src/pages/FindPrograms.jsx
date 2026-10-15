@@ -21,6 +21,8 @@ import { getActiveSeasonId, listSeasons } from '../lib/season'
 import { useFavorites } from '../hooks/useFavorite'
 import { locatePlace, programPoints } from '../lib/geoSearch'
 import { milesBetween } from '../lib/geo'
+import { strengthIndex, fitFor, satEquivalent, tierCounts, TIER_LABEL } from '../lib/fitTier'
+import FitBadge from '../components/FitBadge'
 
 /**
  * FindPrograms — "Find programs" (backlog F3, Targeting: ranked fit list).
@@ -66,6 +68,14 @@ import { milesBetween } from '../lib/geo'
  * geo_points (pipeline out_sql/25, U.S. Census); a program is placed at its
  * college's College Scorecard point, else its own town. Programs that cannot
  * be placed are left out while a distance is set. Ranking is unchanged.
+ *
+ * REACH / GOOD FIT / SAFETY (recruiting resources review item 2, Damon
+ * 2026-10-15). With a test score and/or chosen divisions (the levels the player
+ * is aiming for), each program is labeled from src/lib/fitTier.js: academics
+ * from the College Scorecard (average SAT, admission rate), athletics from the
+ * level and the program's strength in its division (RPI or record over the
+ * latest two seasons) and its estimated freshman openings. Chips filter by
+ * label. Ranking is unchanged.
  */
 const PAGE = 1000
 const STEP = 25
@@ -125,6 +135,24 @@ async function fetchProgramPoints() {
 }
 
 const RADII = [25, 50, 100, 150, 200, 300, 500]
+
+// For the fit labels: every program's strength in its division (latest two
+// seasons of program_results) and each college's average SAT and admission rate.
+async function fetchFitData() {
+  const top = await supabase.from('program_results').select('season').order('season', { ascending: false }).limit(1)
+  if (top.error) throw top.error
+  const latest = top.data?.[0]?.season
+  const [results, links] = await Promise.all([
+    latest == null ? [] : fetchAllRows(supabase, 'program_results',
+      'school_id,season,wins,losses,ties,rpi_rank,schools!inner(program_gender,division)',
+      q => q.gte('season', latest - 1).order('school_id').order('season'), PAGE),
+    fetchAllRows(supabase, 'school_federal_college', 'school_id,college_facts(sat_average,admission_rate)',
+      q => q.order('school_id'), PAGE),
+  ])
+  const programOf = new Map(results.map(r => [r.school_id, { division: r.schools?.division, gender: r.schools?.program_gender }]))
+  const facts = new Map(links.filter(l => l.college_facts).map(l => [l.school_id, l.college_facts]))
+  return { strength: strengthIndex(results, programOf), facts }
+}
 
 async function fetchCatalog() {
   const { data, error } = await supabase.from('college_major_catalog')
@@ -235,6 +263,11 @@ export default function FindPrograms() {
   const [radius, setRadius] = useState(100)
   const [points, setPoints] = useState({ map: null, err: '' })
 
+  const [test, setTest] = useState('SAT')
+  const [score, setScore] = useState('')
+  const [fitData, setFitData] = useState({ data: null, err: '' })
+  const [tiers, setTiers] = useState(() => new Set())   // empty = every label
+
   useEffect(() => {
     if (status !== 'allowed') return
     let cancelled = false
@@ -252,6 +285,37 @@ export default function FindPrograms() {
       .catch(() => { /* no teams: the team picker is not shown */ })
     return () => { cancelled = true }
   }, [status])
+
+  // The player for the fit labels: SAT total (ACT converted) and the levels aimed for.
+  const sat = satEquivalent(score, test)
+  const targets = divisions.size ? [...divisions] : null
+  const wantFit = sat != null || !!targets
+  const needFit = wantFit && !fitData.data && !fitData.err
+  useEffect(() => {
+    if (!needFit) return
+    let cancelled = false
+    fetchFitData()
+      .then(data => { if (!cancelled) setFitData({ data, err: '' }) })
+      .catch(e => { if (!cancelled) setFitData({ data: null, err: e.message || 'Could not load the fit data.' }) })
+    return () => { cancelled = true }
+  }, [needFit])
+  const fitOf = useMemo(() => {
+    if (!wantFit || !fitData.data) return null
+    const { strength, facts } = fitData.data
+    const player = { sat, targets }
+    const cache = new Map()
+    return r => {
+      if (!cache.has(r.school_id)) {
+        const f = facts.get(r.school_id)
+        cache.set(r.school_id, fitFor({
+          division: r.schools?.division, gender: r.schools?.program_gender,
+          sat_average: f?.sat_average, admission_rate: f?.admission_rate, est_freshman: r.est_freshman,
+        }, strength.get(r.school_id) || null, player))
+      }
+      return cache.get(r.school_id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantFit, fitData, sat, targets?.join(',')])
 
   // Program locations load the first time a distance is set.
   const needPoints = !!place && !points.map && !points.err
@@ -331,7 +395,7 @@ export default function FindPrograms() {
 
   const answered = key != null && res.key === key
   const rows = answered ? res.rows : null
-  const loading = ready && (!answered || !offerReady || (filterWatched && watched.key !== teamKey) || (!!place && !points.map && !points.err))
+  const loading = ready && (!answered || !offerReady || needFit || (filterWatched && watched.key !== teamKey) || (!!place && !points.map && !points.err))
   const err = loadErr || (answered ? res.err : '') || (choiceKey && offer.key === choiceKey ? offer.err : '') ||
     (filterWatched && watched.key === teamKey ? watched.err : '') || (place ? points.err : '')
   const distanceOf = id => {
@@ -354,6 +418,9 @@ export default function FindPrograms() {
     const keep = keeps.length ? r => keeps.every(k => k(r)) : null
     return rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null, keep })
   }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData, filterWatched, watchedMap, place, radius, points])
+  // Labels on the list, then the label filter (counts are before the filter).
+  const counts = useMemo(() => (fitOf ? tierCounts(ranked.map(fitOf)) : null), [ranked, fitOf])
+  const listed = useMemo(() => (fitOf && tiers.size ? ranked.filter(r => tiers.has(fitOf(r)?.tier)) : ranked), [ranked, fitOf, tiers])
 
   const years = latest != null ? [latest + 1, latest + 2, latest + 3, latest + 4] : []
   const pos = POSITIONS.find(p => p.code === position)
@@ -388,7 +455,7 @@ export default function FindPrograms() {
   }
 
   const selectCls = 'text-sm border border-gray-300 rounded-lg px-2.5 py-2 bg-white text-gray-800'
-  const shown = ranked.slice(0, limit)
+  const shown = listed.slice(0, limit)
   const stateSummary = states.size === 0
     ? 'Anywhere'
     : states.size <= 6 ? [...states].sort().join(', ') : `${states.size} states`
@@ -425,6 +492,37 @@ export default function FindPrograms() {
                 <Chip key={d} on={divisions.has(d)} onClick={() => toggle(divisions, setDivisions, d)}>{d}</Chip>
               ))}
             </div>
+          </div>
+
+          <div className="mb-3">
+            <div className="text-xs text-gray-500 mb-1.5">
+              Test score {sat == null && '(optional)'}
+              <span className="text-gray-400"> · with the divisions you are aiming for, labels each program Reach, Good fit or Safety</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <select className={selectCls} value={test} onChange={e => setTest(e.target.value)} aria-label="Test">
+                <option value="SAT">SAT</option>
+                <option value="ACT">ACT</option>
+              </select>
+              <input type="number" inputMode="numeric" value={score} onChange={e => setScore(e.target.value)}
+                placeholder={test === 'SAT' ? 'e.g. 1250' : 'e.g. 27'} aria-label="Test score"
+                className="w-28 text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-800" />
+              {score.trim() && sat == null && <span className="text-xs text-rose-700">Enter {test === 'SAT' ? 'an SAT total from 400 to 1600' : 'an ACT composite from 9 to 36'}.</span>}
+              {test === 'ACT' && sat != null && <span className="text-xs text-gray-500">about {sat} on the SAT</span>}
+            </div>
+            {wantFit && fitData.err && <div className="text-xs text-rose-700 mt-1.5">Labels are not available right now ({fitData.err}).</div>}
+            {fitOf && (
+              <div className="flex flex-wrap items-center gap-2 mt-2">
+                {['reach', 'good', 'safety'].map(t => (
+                  <Chip key={t} on={tiers.has(t)} onClick={() => toggle(tiers, setTiers, t)}>
+                    {TIER_LABEL[t]}{counts ? ` (${counts[t]})` : ''}
+                  </Chip>
+                ))}
+                {tiers.size > 0 && (
+                  <button type="button" onClick={() => setTiers(new Set())} className="text-sm text-[#1d4ed8] hover:underline ml-1">Every label</button>
+                )}
+              </div>
+            )}
           </div>
 
           <div>
@@ -594,7 +692,7 @@ export default function FindPrograms() {
         {!err && ready && !loading && rows && (
           <>
             <p className="text-sm text-gray-600 mb-2 px-1">
-              {ranked.length.toLocaleString()} {ranked.length === 1 ? 'program' : 'programs'}, ranked by estimated
+              {listed.length.toLocaleString()} {listed.length === 1 ? 'program' : 'programs'}{tiers.size ? ` labeled ${[...tiers].map(t => TIER_LABEL[t]).join(' or ')}` : ''}, ranked by estimated
               openings for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}
               {filterWatched ? <>, whose coaches have watched {team.name}</> : null}
               {place ? <>, within {radius} miles of {place.name}</> : null}.
@@ -614,6 +712,7 @@ export default function FindPrograms() {
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-gray-900 leading-snug">{s.school}</span>
                           <GenderBadge gender={s.program_gender} />
+                          {fitOf && <FitBadge fit={fitOf(r)} />}
                           {watchedMap?.has(r.school_id) && (
                             <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-emerald-50 text-emerald-800 border border-emerald-200 whitespace-nowrap">
                               Watched your team
@@ -640,6 +739,9 @@ export default function FindPrograms() {
                       </div>
                     </div>
                     <ul className="mt-2 space-y-0.5 sm:pl-[94px]">
+                      {fitOf && (fitOf(r)?.why || []).map((t, k) => (
+                        <li key={'fit' + k} className="text-xs text-gray-700">{t}</li>
+                      ))}
                       {reasons(r, position, Number(entry)).map((t, k) => (
                         <li key={k} className="text-xs text-gray-600">{t}</li>
                       ))}
@@ -665,15 +767,15 @@ export default function FindPrograms() {
               })}
               {shown.length === 0 && (
                 <div className="px-3 py-10 text-center text-gray-500 text-sm">
-                  No programs match. Try more divisions{choice ? ', states or another major' : ' or states'}{place ? ', or a wider distance' : ''}.
+                  No programs match. {tiers.size ? 'Try another label, or ' : ''}Try more divisions{choice ? ', states or another major' : ' or states'}{place ? ', or a wider distance' : ''}.
                 </div>
               )}
             </div>
-            {ranked.length > shown.length && (
+            {listed.length > shown.length && (
               <div className="text-center mt-3">
                 <button type="button" onClick={() => setMore({ key, n: limit + STEP })}
                   className="text-sm border border-gray-300 bg-white rounded-lg px-4 py-2 hover:border-gray-500">
-                  Show {Math.min(STEP, ranked.length - shown.length)} more
+                  Show {Math.min(STEP, listed.length - shown.length)} more
                 </button>
               </div>
             )}
@@ -691,6 +793,12 @@ export default function FindPrograms() {
               interested.</>}
               {place && <> Distances are straight-line miles from {place.name} to the campus (driving is
               farther). Programs we cannot place on the map are left out while a distance is set.</>}
+              {fitOf && <> Reach, Good fit and Safety are estimates. Academic: your SAT (an ACT is converted) against the
+              college’s average SAT and admission rate from the College Scorecard; a college admitting under a quarter of
+              applicants is always a reach. Athletic: the divisions you chose are the levels you are aiming for; a program above
+              them is a reach and one below them a safety; within them, its place in its division by RPI or record over the last
+              two seasons decides, and under half an estimated freshman opening counts toward reach. A balanced list has some of
+              each.</>}
               {styleData && <> Recruiting styles compare each program with the middle half of other programs in its
               division, as on its College Profile; a program with too little data for a chosen style is left out.</>}
             </p>

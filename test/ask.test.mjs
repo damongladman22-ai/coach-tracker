@@ -16,6 +16,7 @@ function fakeDb(tables) {
         select() { return q },
         eq(col, v) { rows = rows.filter(r => getPath(r, col) === v); return q },
         neq(col, v) { rows = rows.filter(r => getPath(r, col) !== v); return q },
+        gte(col, v) { rows = rows.filter(r => getPath(r, col) >= v); return q },
         in(col, vs) { rows = rows.filter(r => vs.includes(getPath(r, col))); return q },
         not() { return q },
         ilike() { return q },
@@ -380,6 +381,21 @@ async function run(tool, input) {
   const href = mailtoHref({ to: ['alead@wis.edu'], cc: ['gkeep@wis.edu'], subject: 'A & B', body: 'Line 1\nLine 2' })
   assert.equal(href, 'mailto:alead@wis.edu?cc=gkeep@wis.edu&subject=A%20%26%20B&body=Line%201%0D%0ALine%202')
   assert.equal(emailText({ to: ['a@b.edu'], cc: [], subject: 'S', body: 'Hi' }), 'To: a@b.edu\nSubject: S\n\nHi')
+}
+
+// ── Reach / Good fit / Safety on find_programs (src/lib/fitTier.js) ───────
+{
+  const T2 = { ...tables, program_results: [] }
+  T.resetCache()
+  const tools = T.buildTools(fakeDb(T2), [], {})
+  const r = await tools.find_programs.execute({ gender: 'W', student_sat: 1250 }, { toolCallId: 't', messages: [] })
+  const by = Object.fromEntries(r.programs.map(p => [p.school_id, p.fit]))
+  assert.equal(by['van-w'].label, 'Reach', 'Vanderbilt: average SAT 1530, admits 6%')
+  assert.match(by['van-w'].why.join(' '), /Academic reach: average SAT 1530, 280 above yours, admits 6%/)
+  assert.ok(r.fit_summary && r.fit_summary.reach >= 1, 'a summary of labels')
+  const none = await tools.find_programs.execute({ gender: 'W' }, { toolCallId: 't', messages: [] })
+  assert.equal(none.programs[0].fit, undefined, 'no score and no level: no labels')
+  assert.equal(none.fit_summary, undefined)
 }
 
 console.log('ask.test.mjs: all assertions passed')

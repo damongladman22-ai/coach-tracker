@@ -7,6 +7,7 @@ import { expandTerms, scoreSchool, setAliasIndex } from '../src/lib/schoolMatch.
 import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel } from '../src/lib/majorFilter.js'
 import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender } from '../src/lib/attendanceSignal.js'
 import { milesBetween } from '../src/lib/geo.js'
+import { strengthIndex, fitFor, tierCounts } from '../src/lib/fitTier.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 import { summarizeUsage } from '../server/ask/usage.js'
@@ -161,12 +162,38 @@ function programPointsFor(db, ref) {
   return ref.points
 }
 
+// Each program's strength within its division and gender (src/lib/fitTier.js),
+// from program_results for the latest two seasons; cached like REF, and a load
+// under way is shared.
+let STRENGTH = null, STRENGTH_LOADING = null
+function strengthData(db) {
+  if (STRENGTH && Date.now() - STRENGTH.at < 15 * 60 * 1000) return Promise.resolve(STRENGTH.map)
+  if (!STRENGTH_LOADING) {
+    STRENGTH_LOADING = (async () => {
+      const [ref, top] = await Promise.all([
+        refData(db),
+        db.from('program_results').select('season').order('season', { ascending: false }).limit(1),
+      ])
+      const latest = top.data?.[0]?.season
+      const rows = latest == null ? [] : await allRows(() => db.from('program_results')
+        .select('school_id,season,wins,losses,ties,rpi_rank').gte('season', latest - 1)
+        .order('school_id').order('season'))
+      const programOf = new Map(ref.schools.map(x => [x.id, { division: x.division, gender: x.program_gender }]))
+      const map = strengthIndex(rows, programOf)
+      STRENGTH = { at: Date.now(), map }
+      return map
+    })().finally(() => { STRENGTH_LOADING = null })
+  }
+  return STRENGTH_LOADING
+}
+
 // Loads every question's search may need, started as soon as a question
 // arrives so they run while the model is still planning its first step.
 // Best effort: a failure here is retried by the look-up that needs it.
 function warmUp(db) {
   refData(db).then(ref => programPointsFor(db, ref)).catch(() => {})
   majorCatalog(db).catch(() => {})
+  strengthData(db).catch(() => {})
 }
 // A promise whose failure is reported only where it is awaited.
 const quiet = p => { p.catch(() => {}); return p }
@@ -413,7 +440,9 @@ function buildToolSet(db, log, ctx) {
         gender: z.enum(['M', 'W']),
         position: z.enum(['GK', 'D', 'M', 'F']).optional().describe('GK goalkeeper, D defender, M midfielder, F forward'),
         hs_class: z.number().int().optional().describe('High-school graduating class, e.g. 2027 (enters college that fall)'),
-        divisions: z.array(z.enum(DIVISIONS)).optional(),
+        divisions: z.array(z.enum(DIVISIONS)).optional().describe('Levels to search; also the levels the player is aiming for, used for the Reach / Good fit / Safety labels'),
+        student_sat: z.number().int().min(400).max(1600).optional()
+          .describe('The player\'s SAT total (convert an ACT first). With divisions or alone, each program gets a Reach / Good fit / Safety label (fit)'),
         states: z.array(z.string()).optional().describe('Two-letter state codes to keep, e.g. ["OH","PA"]'),
         exclude_states: z.array(z.string()).optional().describe('Two-letter state codes to leave out, e.g. ["OH"] for "out of state" from Ohio'),
         schools: z.array(z.string()).optional().describe('College names (or school_ids) to find IN this same search: each comes back with its rank in the full list, its distance and its figures, or, if the filters left it out, the reason. Use for "why is X not on the list", "where does X rank".'),
@@ -439,6 +468,8 @@ function buildToolSet(db, log, ctx) {
         // Start every read this search needs at once; each is awaited where used.
         const openings = !!(a.position && a.hs_class)
         const refP = quiet(refData(db))
+        const wantFit = a.student_sat != null || !!a.divisions?.length
+        const strengthP = wantFit ? quiet(strengthData(db)) : null
         const locP = a.near ? quiet(locate(db, a.near)) : null
         const latestP = openings ? quiet((async () => {
           const { data: lat } = await db.from('program_openings_outlook').select('current_season')
@@ -524,6 +555,14 @@ function buildToolSet(db, log, ctx) {
           if (offerings && !offeringFor(offerings, r.school_id, s.division)) return 'it has not awarded that major in the last two years'
           return null
         }
+        // Reach / Good fit / Safety (src/lib/fitTier.js): with the player's SAT
+        // and/or the levels aimed for. Without results data, academics alone.
+        const strength = strengthP ? await strengthP.catch(() => null) : null
+        const player = { sat: a.student_sat ?? null, targets: a.divisions?.length ? a.divisions : null }
+        const fitOf = (id, s, f, r) => (wantFit ? fitFor({
+          division: s.division, gender: a.gender, sat_average: f?.sat_average, admission_rate: f?.admission_rate,
+          est_freshman: openings && r ? r.est_freshman : null,
+        }, strength?.get(id) || null, player) : null)
         const out = []
         for (const r of base) {
           const s = r.schools || {}
@@ -532,7 +571,19 @@ function buildToolSet(db, log, ctx) {
           const why = failReason(r, s, f, dist)
           if (why) { if (why === 'its location is not known') noLocation++; continue }
           const majorNote = offerings ? majorReason(offeringFor(offerings, r.school_id, s.division), majorChoice) : null
-          out.push({ r, s, f, majorNote, dist })
+          out.push({ r, s, f, majorNote, dist, fit: fitOf(r.school_id, s, f, r) })
+        }
+        let fitSummary
+        if (wantFit) {
+          const c = tierCounts(out.map(x => x.fit))
+          const first = tier => out.filter(x => x.fit?.tier === tier).slice(0, 4).map(x => x.s.school)
+          fitSummary = {
+            reach: c.reach, good_fit: c.good, safety: c.safety,
+            first_reach: first('reach'), first_good_fit: first('good'), first_safety: first('safety'),
+            basis: 'Labels are estimates. Academic: the player\'s SAT against the college\'s average SAT and admission rate (College Scorecard). ' +
+              'Athletic: the level the player is aiming for (divisions) and the program\'s place in its division by RPI or record over the latest two seasons, ' +
+              'with very few estimated freshman openings counting toward reach. ' + (strength ? '' : 'Results were not available, so athletic labels use the level alone.'),
+          }
         }
 
         const sort = (a.sort === 'distance' && !center) ? 'selectivity' : a.sort || (openings ? 'openings' : center ? 'distance' : 'selectivity')
@@ -550,7 +601,7 @@ function buildToolSet(db, log, ctx) {
         if (sort !== 'openings') out.sort(cmp)
 
         const n = Math.min(a.limit || MAX_ROWS, MAX_ROWS)
-        const toRow = ({ r, s, f, majorNote, dist }) => {
+        const toRow = ({ r, s, f, majorNote, dist, fit }) => {
           const row = {
             school_id: r.school_id, school: s.school, division: s.division, conference: s.conference, state: stateAbbr(s.state),
             admission_rate: f?.admission_rate ?? null, sat_average: f?.sat_average ?? null,
@@ -559,6 +610,7 @@ function buildToolSet(db, log, ctx) {
           }
           if (dist != null) row.distance_miles = Math.round(dist)
           if (majorNote) row.major = majorNote
+          if (fit) row.fit = { tier: fit.tier, label: fit.label, why: fit.why }
           if (openings) {
             Object.assign(row, {
               est_freshman_openings: round(r.est_freshman), est_total_openings: round(r.est_spots),
@@ -607,6 +659,7 @@ function buildToolSet(db, log, ctx) {
               admission_rate: f?.admission_rate ?? undefined, sat_average: f?.sat_average ?? undefined,
               avg_net_price: f?.avg_net_price ?? undefined, undergrads: f?.undergrad_enrollment ?? undefined,
               est_freshman_openings: r && openings ? round(r.est_freshman) : undefined,
+              fit: (() => { const x = fitOf(sch.id, s2, f, r); return x ? { tier: x.tier, label: x.label, why: x.why } : undefined })(),
               ...also,
             })
           }
@@ -615,6 +668,7 @@ function buildToolSet(db, log, ctx) {
         return {
           matched: out.length,
           highlights: highlightsFor(out, { center, openings }),
+          fit_summary: fitSummary,
           showing: out.length > n ? `the first ${n} of ${out.length} in this order (the cards show these ${n})` : undefined,
           ranked_by: sort === 'openings'
             ? 'estimated openings for incoming freshmen (est_freshman_openings), then total; the same order as the Find programs page'
@@ -1042,7 +1096,7 @@ function instructions() {
     '- An earlier answer of yours may end with a note "[Filters used for this answer: find_programs {...}]". It is the exact search behind that answer; the reader does not see it. Never mention it.',
     '- "Why is X not on the list" or "where does X rank": run find_programs again with EXACTLY the filters in that note (same distance, SAT range, size and so on), adding only schools: [X], and explain from asked_about (rank_in_search of the total, or left_out_because). Change a filter only when the person asks for the change.',
     '- "Out of state", "not in Ohio", "away from home": pass exclude_states with the home state, and leave home-state programs out of recommendations unless they ask for them.',
-    '- A message that starts "Quick quiz answers:" comes from the quick quiz and holds the whole profile. Do not ask clarifying questions: search at once with find_programs (gender, position and hs_class; near = home with radius_miles = the miles given, or no radius for "anywhere"; exclude_states with the home state for "out of state only", or states for "home state only"; divisions for the level; undergrads_min / undergrads_max for size (small under 5,000, mid-size 5,000 to 15,000, large over 15,000); type; net_price_max; the SAT range from the test score as below; major unless undecided). Recommend a shortlist of up to five programs and name the trade-offs. "Playing early" favors programs with more estimated freshman openings and lower divisions; "highest level" favors the highest division in the list. If fewer than three programs match, relax ONE filter (the distance first, then the size), say which, and search again.',
+    '- A message that starts "Quick quiz answers:" comes from the quick quiz and holds the whole profile. Do not ask clarifying questions: search at once with find_programs (gender, position and hs_class; near = home with radius_miles = the miles given, or no radius for "anywhere"; exclude_states with the home state for "out of state only", or states for "home state only"; divisions for the level; undergrads_min / undergrads_max for size (small under 5,000, mid-size 5,000 to 15,000, large over 15,000); type; net_price_max; the SAT range from the test score as below; major unless undecided). Pass student_sat (the SAT, or the ACT converted as below) so every program gets a Reach / Good fit / Safety label. Recommend a balanced shortlist of up to five programs: when fit_summary has them, at least one Reach, two or three Good fit and at least one Safety; give each program its label and the reason from its fit in a few words, and name the trade-offs. "Playing early" favors programs with more estimated freshman openings and lower divisions; "highest level" favors the highest division in the list. If fewer than three programs match, relax ONE filter (the distance first, then the size), say which, and search again.',
     '- Before the FIRST list of recommendations ("which schools would be a good fit", "recommend", "best options for me"): if the conversation does not yet say how far from home they will go (or a region) AND at least one of school size, cost, or a test score, ask first: one short message with up to three questions and likely options (for example "How far from home: 2 hours, 4 hours, anywhere?"), then stop (STATUS: clarify). If they already answered, or say "just show me", search.',
     '- Academics: PitchSide has no GPA data. When academics matter and they gave only a GPA, ask for an SAT or ACT score (or a target range) in the same clarifying message. Convert an ACT composite to SAT with this table: ' + ACT_TO_SAT + '. For a typical academic match use find_programs with sat_min about 100 below and sat_max about 150 above the student\'s SAT; colleges whose average SAT is well above it are a reach, and say so.',
     '- Goalkeepers (or any position): whether players at a position stay or transfer, how many a program carries, and how newcomers arrive come from program_position_history (default GK). Whether a staff has a goalkeeper coach comes from program_coaches (goalkeeper_coach). PitchSide has no playing-time or minutes data; say so if asked.',
@@ -1051,6 +1105,7 @@ function instructions() {
     '- Distance ("within 100 miles of Columbus", "near 43017", "a few hours from Pittsburgh"): find_programs with near (town and state, or ZIP) and radius_miles (default 100; about 60 miles per hour of driving). Distances are straight-line; say so. If the place may be in several states, call find_programs with it anyway: it returns the matching places, and you ask which one from that list. Never name places or states from your own knowledge. If they say "close to home" without a place, ask for their town or ZIP code.',
     '- Club teams move up an age group each season (this season\'s U17 were last season\'s U16), so families often name a team by birth year ("the 2010s"); pass that as the team. When describing a team, give its age group and birth year, and say which seasons the coach visits came from (the seasons list).',
     '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. PitchSide logs WHICH coaches attended: name them from coaches_seen (name, title, games attended, latest game). For each program you show, list EVERY coach in its coaches_seen, in the order given, with their games; add "(no longer on staff)" exactly when still_on_staff is false, and never otherwise. Show at most 5 programs and offer more. For one college, pass school. Never say names are not logged. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
+    '- Reach / Good fit / Safety: whenever the conversation gives the player\'s test score or the levels they are aiming for, pass student_sat (convert an ACT) and divisions to find_programs. Each program then has fit (label, and why: the athletic and academic reasons) and the result has fit_summary. Use only those labels and reasons; never label a program yourself. Say the labels are estimates. A balanced list has some of each (more good fits than reaches or safeties). For "is X a reach for me", run find_programs with schools: [X], student_sat and divisions, and answer from asked_about (fit).',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'OUTREACH EMAILS ("draft an email to Dayton", "write to the Toledo coaches", the Draft an email button)',
@@ -1390,4 +1445,4 @@ export default async function handler(req, res) {
 }
 
 // For test/ask.test.mjs only (no network): the pieces that can be checked offline.
-export const _internals = { outreachAddresses, modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; REF_LOADING = null; CATALOG = null } }
+export const _internals = { outreachAddresses, modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; REF_LOADING = null; CATALOG = null; STRENGTH = null; STRENGTH_LOADING = null } }
