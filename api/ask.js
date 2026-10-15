@@ -1126,7 +1126,7 @@ function buildToolSet(db, log, ctx) {
         return {
           team: chosen.name,
           event: { name: ev.event_name, dates: `${ev.start_date} to ${ev.end_date}`, location: ev.location || null,
-            earlier_editions_logged: past.map(e => seasonName.get(String(e.season_id)) || e.start_date) },
+            earlier_editions_logged: [...new Set(past.map(e => seasonName.get(String(e.season_id)) || e.start_date))] },
           games: games.length ? games : undefined,
           games_note: games.length ? (isShowcase(ev) ? undefined : 'A season-long league: the next three games.') : 'The team\'s games at this event are not in PitchSide yet.',
           other_upcoming_events: upcoming.filter(e => e.id !== ev.id).slice(0, 5).map(describe),
@@ -1134,6 +1134,7 @@ function buildToolSet(db, log, ctx) {
           note: list.length ? undefined : 'No college coaches are logged at earlier editions of this event or at this team\'s games yet.',
           programs: list.slice(0, MAX_ROWS).map(x => ({
             ...x, state: stateAbbr(x.state), event_name: ev.event_name,
+            thank_line: x.watched_your_team ? `Thank ${x.watched_your_team.coaches[0]} for coming to watch the team before.` : undefined,
             card: x.watched_your_team ? { value: x.watched_your_team.games, label: x.watched_your_team.games === 1 ? 'game of yours' : 'games of yours' }
               : { value: x.at_event_before.coaches.length, label: x.at_event_before.coaches.length === 1 ? 'coach at event' : 'coaches at event' },
           })),
@@ -1347,7 +1348,7 @@ function instructions() {
     '- Call event_invite_facts (event words, and team if they name one). If it returns event_choices or team_choices, ask which one in one short message listing them, and stop (STATUS: clarify).',
     '- Answer: one sentence with the event, its dates and the team\'s games there (the games lines exactly as given, or that the schedule is not posted yet). Then name the top three programs and each one\'s reason (why) in one sentence each; the cards show the full list, each with a Draft an invite button. Add one line of advice: invite coaches a week or two ahead with your schedule, and follow up after the event with highlights. If no programs are returned, say so and suggest inviting programs from their shortlist.',
     '- An invite email ("draft an invite to the Dayton coaches", the Draft an invite button) needs the same four details as an outreach email (name, class, position, club team); ask once for any that are missing, inviting the optional details (jersey color and number, field numbers, highlight video link, phone), and stop. With them: call outreach_facts (school, gender, position) and event_invite_facts (event, and school) at the same time.',
-    '- Write the invite in the player\'s voice, plain text, at most about 180 words, in the same ---EMAIL--- format as an outreach email (To and Cc from outreach_facts). Subject: <player name> | <class> <position word> | <club team> | <event name> schedule. Body: the greeting from outreach_facts; one or two sentences on who I am and one true specific about the program; "I will be playing at <event> (<location>, <dates>)" and each game line exactly as given, adding field and jersey only if given (if the schedule is not posted, say I will send it when it is); an invitation to come watch; the highlight video link if given; thanks; sign-off (name, class and position, club team, phone if given). If watched_your_team lists this program, add one line thanking that coach by name for watching before. Never mention PitchSide, attendance logs, or that their staff was at the event before.',
+    '- Write the invite in the player\'s voice, plain text, at most about 180 words, in the same ---EMAIL--- format as an outreach email (To and Cc from outreach_facts). Subject: <player name> | <class> <position word> | <club team> | <event name> schedule. Body: the greeting from outreach_facts; one or two sentences on who I am and one true specific about the program; if event_invite_facts gives this program a thank_line, one sentence doing exactly that (it is required); "I will be playing at <event> (<location only if event.location is given>, <dates>)" and each game line exactly as given, adding field and jersey only if given (if the schedule is not posted, say I will send it when it is); an invitation to come watch; the highlight video link if given; thanks; sign-off (name, class and position, club team, phone if given). Never mention PitchSide, attendance logs, or that their staff was at the event before, in the email or in your note after it.',
     '',
     'CALL PREP ("prepare me for a call with Dayton", "what should I ask the Toledo coach", the Prepare for a call button)',
     '- Needs the player\'s position and graduating class; take them from anywhere in the conversation (quiz answers, earlier messages). If either is missing, ask for it in one short question and stop (STATUS: clarify).',
