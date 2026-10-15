@@ -8,8 +8,11 @@
  *
  * WHO TO INVITE
  *  - Programs whose coaches were logged at an earlier edition of the same event
- *    (same name once years are taken out, e.g. "ECNL Florida Fall 2025" and
- *    "ECNL Florida Fall"), at games of club teams of the same gender.
+ *    at games of club teams of the same gender. Editions are tied by name once
+ *    years, seasons of the year and girls / boys are taken out, because the
+ *    club names them differently from year to year: "ECNL Florida Fall",
+ *    "ECNL Florida" and "ECNL Florida - Winter" are one event; "ECNL RL
+ *    Florida" is another.
  *  - Programs whose coaches have watched this team (its lineage: the same
  *    players in earlier seasons).
  *  - Both first, then by games watched of this team, then by coaches seen at
@@ -18,11 +21,13 @@
 
 const norm = s => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()
 
-/** An event's name without years or season labels: the key that ties editions together. */
+/** An event's name without years, season labels or girls / boys: the key that ties editions together. */
 export function eventKey(name) {
   return norm(String(name || '')
     .replace(/\b(19|20)\d\d\s*[-/]\s*\d{2,4}\b/g, ' ')
     .replace(/\b(19|20)\d\d\b/g, ' '))
+    .replace(/\b(fall|spring|winter|summer|girls|boys|womens|mens|the)\b/g, ' ')
+    .replace(/\s+/g, ' ').trim()
 }
 
 const DAY = 24 * 3600 * 1000
@@ -34,9 +39,13 @@ export function isShowcase(ev) {
 
 /**
  * Upcoming events -> the one asked for.
+ *   upcoming: events, each with team_games = the team's games scheduled there
+ *             (0 for a club event with no schedule for this team yet).
  *   query: words from the question ("Phoenix", "Florida showcase"), or empty.
- * Returns { event } or { choices } (several fit, or none was named and more
- * than one showcase is coming up).
+ * With a query, any upcoming event can match. Without one, only events where
+ * the team has games are picked: the single showcase, else the single league
+ * schedule; otherwise { choices } to ask which.
+ * Returns { event } or { choices }.
  */
 export function pickEvent(upcoming, query) {
   const list = upcoming || []
@@ -51,9 +60,11 @@ export function pickEvent(upcoming, query) {
     if (some.length === 1) return { event: some[0] }
     return { choices: some.length ? some : list }
   }
-  const shows = list.filter(isShowcase)
+  const withGames = list.filter(e => (e.team_games || 0) > 0)
+  const shows = withGames.filter(isShowcase)
   if (shows.length === 1) return { event: shows[0] }
-  return { choices: shows.length ? shows : list }
+  if (!shows.length && withGames.length === 1) return { event: withGames[0] }
+  return { choices: shows.length ? shows : withGames.length ? withGames : list }
 }
 
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']

@@ -1060,7 +1060,9 @@ function buildToolSet(db, log, ctx) {
           const vocab = new Set(current.flatMap(t => tok(t.name)))
           const words = tok(team).filter(w => vocab.has(w))
           const cand = words.length ? current.filter(t => { const n = tok(t.name); return words.every(w => n.includes(w)) }) : []
-          chosen = cand.length === 1 ? cand[0] : null
+          // An exact name ("U17 Girls ECNL") wins over a longer one that contains it ("U17 Girls ECNL RL").
+          const exact = cand.filter(t => tok(t.name).length === words.length)
+          chosen = cand.length === 1 ? cand[0] : exact.length === 1 ? exact[0] : null
           if (!chosen) return { programs: [], note: `Ask which club team they mean.`, team_choices: (cand.length ? cand : current).map(t => t.name).slice(0, 20) }
         } else {
           const id = defaultTeamId(current, (ctx.favoriteTeamIds || []).map(String), teams, seasons)
@@ -1080,7 +1082,7 @@ function buildToolSet(db, log, ctx) {
           if (e.start_date >= today && active && String(e.season_id) === String(active.id) && !byEvent.has(e.id)) upcoming.push(e)
         }
         upcoming.sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)))
-        const pick = pickEvent(upcoming, event)
+        const pick = pickEvent(upcoming.map(e => ({ ...e, team_games: (byEvent.get(e.id) || []).length })), event)
         const describe = e => ({ event: e.event_name, dates: `${e.start_date} to ${e.end_date}`, location: e.location || undefined,
           team_games_scheduled: (byEvent.get(e.id) || []).length })
         if (!pick.event) {
@@ -1095,7 +1097,8 @@ function buildToolSet(db, log, ctx) {
         const games = (isShowcase(ev) ? mineAll : mineAll.slice(0, 3)).map(g => gameLine(g))
         // Earlier editions of the event, and their games for teams of the same gender.
         const key = eventKey(ev.event_name)
-        const past = events.filter(e => e.id !== ev.id && e.start_date < today && eventKey(e.event_name) === key)
+        const since = `${Number(today.slice(0, 4)) - 3}${today.slice(4)}`
+        const past = events.filter(e => e.id !== ev.id && e.start_date < today && e.start_date >= since && eventKey(e.event_name) === key)
         const teamGender = new Map(teams.map(t => [t.id, teamProgramGender(t.gender)]))
         let pastRows = []
         if (past.length) {

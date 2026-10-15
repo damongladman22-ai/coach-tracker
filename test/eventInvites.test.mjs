@@ -5,10 +5,14 @@ import { eventKey, isShowcase, pickEvent, gameLine, inviteList } from '../src/li
 assert.equal(eventKey('ECNL Florida Fall 2025'), eventKey('ECNL Florida Fall'))
 assert.equal(eventKey('ECNL Girls Ohio Valley 2025-26'), eventKey('ECNL Girls Ohio Valley 2026-27'))
 assert.notEqual(eventKey('ECNL Girls North Carolina - Fall'), eventKey('ECNL Florida Fall'))
+assert.equal(eventKey('ECNL Florida Fall'), eventKey('ECNL Florida - Winter'), 'the club names editions differently')
+assert.equal(eventKey('ECNL Girls North Carolina - Fall'), eventKey('ECNL North Carolina - Spring'))
+assert.notEqual(eventKey('ECNL RL Florida'), eventKey('ECNL Florida'), 'RL is a different event')
 
-const fl = { id: 1, event_name: 'ECNL Florida Fall', start_date: '2026-12-05', end_date: '2026-12-07' }
-const nc = { id: 2, event_name: 'ECNL Girls North Carolina - Fall', start_date: '2026-10-10', end_date: '2026-10-12' }
-const lg = { id: 3, event_name: 'ECNL Girls Ohio Valley 2026-27', start_date: '2026-08-01', end_date: '2027-07-31' }
+const fl = { id: 1, event_name: 'ECNL Florida Fall', start_date: '2026-12-05', end_date: '2026-12-07', team_games: 3 }
+const nc = { id: 2, event_name: 'ECNL Girls North Carolina - Fall', start_date: '2026-10-10', end_date: '2026-10-12', team_games: 3 }
+const lg = { id: 3, event_name: 'ECNL Girls Ohio Valley 2026-27', start_date: '2026-08-01', end_date: '2027-07-31', team_games: 10 }
+const none = { id: 4, event_name: 'ECNL Phoenix', start_date: '2027-03-01', end_date: '2027-03-03', team_games: 0 }
 assert.equal(isShowcase(fl), true)
 assert.equal(isShowcase(lg), false, 'a season-long league is not a showcase')
 assert.equal(pickEvent([fl, lg], 'Florida').event.id, 1)
@@ -16,6 +20,8 @@ assert.equal(pickEvent([fl, lg], '').event.id, 1, 'the only upcoming showcase')
 assert.equal(pickEvent([fl, nc, lg], '').choices.length, 2, 'two showcases: ask which')
 assert.equal(pickEvent([fl, nc, lg], 'the Florida showcase').event.id, 1)
 assert.deepEqual(pickEvent([], 'x'), { choices: [] })
+assert.equal(pickEvent([lg, none], '').event.id, 3, 'no showcase with games: the league schedule, not a club event without games')
+assert.equal(pickEvent([lg, none], 'Phoenix').event.id, 4, 'named: any upcoming event')
 
 assert.equal(gameLine({ game_date: '2026-12-05', game_time: '09:00:00', timezone: 'America/New_York', opponent: 'Florida United' }),
   'Sat, Dec 5, 9:00 AM ET vs Florida United')
