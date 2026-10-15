@@ -9,6 +9,7 @@ import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender
 import { milesBetween } from '../src/lib/geo.js'
 import { strengthIndex, fitFor, tierCounts } from '../src/lib/fitTier.js'
 import { styleReason } from '../src/lib/styleFilter.js'
+import { eventKey, isShowcase, pickEvent, gameLine, inviteList } from '../src/lib/eventInvites.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 import { summarizeUsage } from '../server/ask/usage.js'
@@ -941,7 +942,7 @@ function buildToolSet(db, log, ctx) {
             seasons: `${h.first_season} to ${h.last_season}`, players_followed: h.on_roster, returned: h.returned,
             transferred_to_another_college: h.transferred_out, left_after_final_year: h.left_after_final_year, left_otherwise: h.left_otherwise,
             newcomers: { freshmen: h.arrived_as_freshmen, transfers_in: h.arrived_by_transfer, other: h.arrived_other },
-            newcomers_in_words: `Of ${h.arrived_as_freshmen + h.arrived_by_transfer + h.arrived_other} newcomers at this position, ${h.arrived_as_freshmen} arrived as freshmen, ${h.arrived_by_transfer} by transfer` + (h.arrived_other ? ` and ${h.arrived_other} otherwise` : ''),
+            newcomers_in_words: `Of ${h.arrived_as_freshmen + h.arrived_by_transfer + h.arrived_other} newcomers at this position, ${h.arrived_as_freshmen} arrived as ${h.arrived_as_freshmen === 1 ? 'a freshman' : 'freshmen'}, ${h.arrived_by_transfer} by transfer` + (h.arrived_other ? ` and ${h.arrived_other} otherwise` : ''),
           } : null,
           recruiting_style: styleReason(style.data, s.division) || null,
           recent_seasons: res.data || [],
@@ -1026,6 +1027,113 @@ function buildToolSet(db, log, ctx) {
           expected_early_departure_rate: dep.data ? { rate: round(dep.data.outlook_rate, 3), seasons_tracked: dep.data.transitions, basis: dep.data.basis } : null,
           college_facts: link.data?.college_facts || null,
           distance: distance || undefined,
+        }
+      }),
+    }),
+
+    event_invite_facts: tool({
+      description: 'For inviting college coaches to watch the family\'s club team at an upcoming event: picks the event (from the team\'s upcoming games and the club\'s upcoming events), ' +
+        'lists the team\'s games there (date, kickoff, opponent), and ranks the college programs worth inviting: those whose coaches were logged at an earlier edition of the same event ' +
+        'and those whose coaches have watched this team. Uses the team the person has starred unless a team is named. ' +
+        'Use for "who should I invite to the Florida showcase", "which coaches should I invite", and for the schedule in an invite email.',
+      inputSchema: z.object({
+        event: z.string().optional().describe('Event words as the person wrote them, e.g. "Florida", "the North Carolina showcase"; leave out to use the next showcase'),
+        team: z.string().optional().describe('Club team name, e.g. "U17 Girls ECNL" or a birth year "2010 girls"; leave out for their starred team'),
+        school: z.string().optional().describe('Only this college (for an invite email\'s schedule)'),
+      }),
+      execute: run('event_invite_facts', async ({ event, team, school }) => {
+        const today = new Date().toISOString().slice(0, 10)
+        const [teams, seasonsRes, events] = await Promise.all([
+          allRows(() => db.from('teams').select('id,name,gender,season_id,program_id,active,age_groups(name)').order('id')),
+          db.from('seasons').select('id,name,start_date,is_active'),
+          allRows(() => db.from('events').select('id,event_name,start_date,end_date,location,season_id').order('id')),
+        ])
+        const seasons = seasonsRes.data || []
+        const active = seasons.find(x => x.is_active) || null
+        const seasonName = new Map(seasons.map(x => [String(x.id), x.name]))
+        const current = teams.filter(t => active && String(t.season_id) === String(active.id) && t.active !== false)
+        // The team: named, else the starred team (or its current-season successor).
+        let chosen = null
+        if (team) {
+          const tok = x => norm(x).replace(/\bu\s+(\d{1,2})\b/g, 'u$1').split(' ').filter(Boolean)
+            .map(w => ({ girl: 'girls', women: 'girls', womens: 'girls', boy: 'boys', men: 'boys', mens: 'boys' }[w] || w))
+          const vocab = new Set(current.flatMap(t => tok(t.name)))
+          const words = tok(team).filter(w => vocab.has(w))
+          const cand = words.length ? current.filter(t => { const n = tok(t.name); return words.every(w => n.includes(w)) }) : []
+          chosen = cand.length === 1 ? cand[0] : null
+          if (!chosen) return { programs: [], note: `Ask which club team they mean.`, team_choices: (cand.length ? cand : current).map(t => t.name).slice(0, 20) }
+        } else {
+          const id = defaultTeamId(current, (ctx.favoriteTeamIds || []).map(String), teams, seasons)
+          chosen = current.find(t => String(t.id) === String(id)) || null
+          if (!chosen) return { programs: [], note: 'No starred team. Ask which club team they mean (they can also star their team on its page in PitchSide).', team_choices: current.map(t => t.name).slice(0, 20) }
+        }
+        const gender = teamProgramGender(chosen.gender)
+        // Upcoming: the team's games from today, by event; plus the club's upcoming events with no games for it yet.
+        const { data: upGames, error: ge } = await db.from('games').select('id,event_id,game_date,game_time,timezone,opponent')
+          .eq('team_id', chosen.id).gte('game_date', today).order('game_date').order('game_time').limit(200)
+        if (ge) throw new Error(ge.message)
+        const byEvent = new Map()
+        for (const g of upGames || []) { if (!byEvent.has(g.event_id)) byEvent.set(g.event_id, []); byEvent.get(g.event_id).push(g) }
+        const evById = new Map(events.map(e => [e.id, e]))
+        const upcoming = [...byEvent.keys()].map(id => evById.get(id)).filter(Boolean)
+        for (const e of events) {
+          if (e.start_date >= today && active && String(e.season_id) === String(active.id) && !byEvent.has(e.id)) upcoming.push(e)
+        }
+        upcoming.sort((a, b) => String(a.start_date).localeCompare(String(b.start_date)))
+        const pick = pickEvent(upcoming, event)
+        const describe = e => ({ event: e.event_name, dates: `${e.start_date} to ${e.end_date}`, location: e.location || undefined,
+          team_games_scheduled: (byEvent.get(e.id) || []).length })
+        if (!pick.event) {
+          return {
+            team: chosen.name, programs: [],
+            note: pick.choices.length ? 'Ask which event they mean, offering these.' : 'No upcoming events or games are in PitchSide for this team yet.',
+            event_choices: pick.choices.slice(0, 10).map(describe),
+          }
+        }
+        const ev = pick.event
+        const mineAll = byEvent.get(ev.id) || []
+        const games = (isShowcase(ev) ? mineAll : mineAll.slice(0, 3)).map(g => gameLine(g))
+        // Earlier editions of the event, and their games for teams of the same gender.
+        const key = eventKey(ev.event_name)
+        const past = events.filter(e => e.id !== ev.id && e.start_date < today && eventKey(e.event_name) === key)
+        const teamGender = new Map(teams.map(t => [t.id, teamProgramGender(t.gender)]))
+        let pastRows = []
+        if (past.length) {
+          const pg = await allRows(() => db.from('games').select('id,team_id,event_id').in('event_id', past.map(e => e.id)).order('id'))
+          const keepGames = pg.filter(g => teamGender.get(g.team_id) === gender)
+          const seasonOfGame = new Map(keepGames.map(g => [g.id, seasonName.get(String(evById.get(g.event_id)?.season_id)) || null]))
+          const ids = keepGames.map(g => g.id)
+          for (let i = 0; i < ids.length; i += 200) {
+            const chunk = ids.slice(i, i + 200)
+            const rows = await allRows(() => db.from('attendance')
+              .select('id,coach_id,game_id,coaches!inner(school_id,first_name,last_name,title,is_active)').in('game_id', chunk).order('id'))
+            pastRows = pastRows.concat(rows.map(r => ({ ...r, season: seasonOfGame.get(r.game_id) })))
+          }
+        }
+        const line = lineage(chosen, teams, seasons).map(l => l.team.id)
+        const teamRows = await allRows(() => db.from('attendance')
+          .select('id,coach_id,game_id,coaches!inner(school_id,first_name,last_name,title,is_active),games!inner(team_id)')
+          .in('games.team_id', line).order('id'))
+        const ref = await refData(db)
+        let list = inviteList(pastRows, teamRows, ref.byId, gender)
+        if (school) {
+          const only = new Set(matchSchools(ref, school, gender).map(x => x.id))
+          list = list.filter(x => only.has(x.school_id))
+        }
+        return {
+          team: chosen.name,
+          event: { name: ev.event_name, dates: `${ev.start_date} to ${ev.end_date}`, location: ev.location || null,
+            earlier_editions_logged: past.map(e => seasonName.get(String(e.season_id)) || e.start_date) },
+          games: games.length ? games : undefined,
+          games_note: games.length ? (isShowcase(ev) ? undefined : 'A season-long league: the next three games.') : 'The team\'s games at this event are not in PitchSide yet.',
+          other_upcoming_events: upcoming.filter(e => e.id !== ev.id).slice(0, 5).map(describe),
+          matched: list.length,
+          note: list.length ? undefined : 'No college coaches are logged at earlier editions of this event or at this team\'s games yet.',
+          programs: list.slice(0, MAX_ROWS).map(x => ({
+            ...x, state: stateAbbr(x.state), event_name: ev.event_name,
+            card: x.watched_your_team ? { value: x.watched_your_team.games, label: x.watched_your_team.games === 1 ? 'game of yours' : 'games of yours' }
+              : { value: x.at_event_before.coaches.length, label: x.at_event_before.coaches.length === 1 ? 'coach at event' : 'coaches at event' },
+          })),
         }
       }),
     }),
@@ -1232,11 +1340,17 @@ function instructions() {
     '- If outreach_facts has no email address, leave out the To and Cc lines and say PitchSide has no published email for this staff; suggest the program\'s athletics site.',
     '- After the draft, one short line: read it over and make it your own before sending. The 120-word limit below does not count the email. STATUS: answered. FOLLOW-UPS: offer drafts for other programs from the conversation ("Draft an email to Ball State").',
     '',
+    'EVENT INVITES ("who should I invite to the Florida showcase", "which coaches should I invite to watch me", "invite coaches to my event")',
+    '- Call event_invite_facts (event words, and team if they name one). If it returns event_choices or team_choices, ask which one in one short message listing them, and stop (STATUS: clarify).',
+    '- Answer: one sentence with the event, its dates and the team\'s games there (the games lines exactly as given, or that the schedule is not posted yet). Then name the top three programs and each one\'s reason (why) in one sentence each; the cards show the full list, each with a Draft an invite button. Add one line of advice: invite coaches a week or two ahead with your schedule, and follow up after the event with highlights. If no programs are returned, say so and suggest inviting programs from their shortlist.',
+    '- An invite email ("draft an invite to the Dayton coaches", the Draft an invite button) needs the same four details as an outreach email (name, class, position, club team); ask once for any that are missing, inviting the optional details (jersey color and number, field numbers, highlight video link, phone), and stop. With them: call outreach_facts (school, gender, position) and event_invite_facts (event, and school) at the same time.',
+    '- Write the invite in the player\'s voice, plain text, at most about 180 words, in the same ---EMAIL--- format as an outreach email (To and Cc from outreach_facts). Subject: <player name> | <class> <position word> | <club team> | <event name> schedule. Body: the greeting from outreach_facts; one or two sentences on who I am and one true specific about the program; "I will be playing at <event> (<location>, <dates>)" and each game line exactly as given, adding field and jersey only if given (if the schedule is not posted, say I will send it when it is); an invitation to come watch; the highlight video link if given; thanks; sign-off (name, class and position, club team, phone if given). If watched_your_team lists this program, add one line thanking that coach by name for watching before. Never mention PitchSide, attendance logs, or that their staff was at the event before.',
+    '',
     'CALL PREP ("prepare me for a call with Dayton", "what should I ask the Toledo coach", the Prepare for a call button)',
     '- Needs the player\'s position and graduating class; take them from anywhere in the conversation (quiz answers, earlier messages). If either is missing, ask for it in one short question and stop (STATUS: clarify).',
     '- Call call_prep_facts (school, gender, position, hs_class). Then write a call sheet, at most about 350 words, in two parts:',
     '  ### What PitchSide already knows: four to seven short bullets from the look-up only, quoting its counts and words (never work out a percentage or a class year yourself): the roster at the position by class year and, from when_you_arrive, who is still there in the player\'s freshman fall; the estimated freshman openings for the class (say estimated); how players at the position have stayed or moved on and how newcomers arrived; the recruiting style; the latest results; graduation rate and academics; the head coach, and for goalkeepers whether a goalkeeper coach is listed. Leave out anything the look-up does not have.',
-    '  ### Questions to ask: eight to twelve questions in short groups (Your position and class; Team and coaching; Academics and support; Recruiting process and next steps). Make two or three of them follow from the facts above, using when_you_arrive for who will still be there (for example, with one goalkeeper who would be a senior: "How do you see the goalkeeper group in my freshman year?"; with mostly transfer newcomers: "How many freshmen do you plan to bring in for my class?"). Never describe current players as still ahead of the player unless when_you_arrive says they will still be there. For goalkeepers include: what they look for in a goalkeeper, how many goalkeepers they are recruiting in the class, and when they expect to make offers at the position. Always include asking where the player stands in their recruiting and what the next steps are, what a typical in-season and off-season week looks like, how academics and travel are handled, and how athletes do in the player\'s intended major (if one was given). For NCAA D3 programs ask about merit and need-based aid instead of athletic scholarships.',
+    '  ### Questions to ask: eight to twelve questions in short groups (Your position and class; Team and coaching; Academics and support; Recruiting process and next steps). Make two or three of them follow from the facts above, using when_you_arrive for who will still be there (for example, with one goalkeeper who would be a senior: "How do you see the goalkeeper group in my freshman year?"; with mostly transfer newcomers: "How many freshmen do you plan to bring in for my class?"). Never describe current players as still ahead of the player unless when_you_arrive says they will still be there. For goalkeepers include: what they look for in a goalkeeper, how many goalkeepers they are recruiting in the class, and when they expect to make offers at the position. Always include asking where the player stands in their recruiting and what the next steps are, what a typical in-season and off-season week looks like, how academics and travel are handled, and, only if the conversation names an intended major, how athletes do in that major. For NCAA D3 programs ask about merit and need-based aid instead of athletic scholarships.',
     '- End with one line: the call is a two-way interview, so take notes and ask what matters to you. No disclaimers about NCAA rules. STATUS: answered. FOLLOW-UPS: offer an email draft to the same program, a call sheet for another program, or a related look-up.',
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
@@ -1465,7 +1579,7 @@ export default async function handler(req, res) {
   }
   // For usage tracking: the saved chat this question belongs to, and how it started.
   const conversationId = /^[A-Za-z0-9_-]{1,64}$/.test(String(body.context?.conversationId || '')) ? body.context.conversationId : null
-  const source = ['typed', 'suggestion', 'followup', 'quiz', 'email', 'callprep'].includes(body.context?.source) ? body.context.source : null
+  const source = ['typed', 'suggestion', 'followup', 'quiz', 'email', 'callprep', 'invite'].includes(body.context?.source) ? body.context.source : null
   const record = (text, usage, err, costUsd = null) => {
     const { status, gap } = readStatus(text)
     return logAsk({

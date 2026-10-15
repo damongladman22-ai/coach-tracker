@@ -433,4 +433,41 @@ async function run(tool, input) {
   assert.equal(r.recent_seasons[0].wins, 12)
 }
 
+// ── event invites ───────────────────────────────────────────────────────────
+{
+  const today = new Date().toISOString().slice(0, 10)
+  const y = Number(today.slice(0, 4))
+  const future = `${y + 1}-01-10`, futureEnd = `${y + 1}-01-12`
+  const E = {
+    ...tables,
+    seasons: [{ id: 's1', name: 'Last season', start_date: `${y - 1}-08-01`, is_active: false },
+      { id: 's2', name: 'This season', start_date: `${y}-08-01`, is_active: true }],
+    teams: [
+      { id: 't1', name: 'U16 Girls ECNL', gender: 'Girls', season_id: 's1', program_id: 'p1', active: true, age_groups: { name: 'U16' } },
+      { id: 't2', name: 'U17 Girls ECNL', gender: 'Girls', season_id: 's2', program_id: 'p1', active: true, age_groups: { name: 'U17' } },
+      { id: 't3', name: 'U17 Boys ECNL', gender: 'Boys', season_id: 's1', program_id: 'p1', active: true, age_groups: { name: 'U17' } },
+    ],
+    events: [
+      { id: 'e1', event_name: `Winter Showcase ${y}`, start_date: `${y - 1}-12-01`, end_date: `${y - 1}-12-03`, season_id: 's1' },
+      { id: 'e2', event_name: 'Winter Showcase', start_date: future, end_date: futureEnd, location: 'Orlando, FL', season_id: 's2' },
+    ],
+    games: [
+      { id: 'g1', team_id: 't3', event_id: 'e1', game_date: `${y - 1}-12-01` },
+      { id: 'g2', team_id: 't1', event_id: 'e1', game_date: `${y - 1}-12-02` },
+      { id: 'g3', team_id: 't2', event_id: 'e2', game_date: future, game_time: '09:00:00', timezone: 'America/New_York', opponent: 'Rivals FC' },
+    ],
+    attendance: [
+      { id: 1, coach_id: 1, game_id: 'g2', coaches: { school_id: 'osu-w', first_name: 'Ann', last_name: 'One', title: 'Assistant Coach', is_active: true }, games: { team_id: 't1' } },
+      { id: 2, coach_id: 2, game_id: 'g1', coaches: { school_id: 'wis-w', first_name: 'Bo', last_name: 'Two', title: 'Head Coach', is_active: true }, games: { team_id: 't3' } },
+    ],
+  }
+  T.resetCache()
+  const r = await T.buildTools(fakeDb(E), [], { favoriteTeamIds: ['t2'] }).event_invite_facts.execute({}, { toolCallId: 't', messages: [] })
+  assert.equal(r.event.name, 'Winter Showcase', 'the upcoming showcase')
+  assert.deepEqual(r.games, ['Sun, Jan 10, 9:00 AM ET vs Rivals FC'.replace('Sun', ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][new Date(Date.UTC(y + 1, 0, 10)).getUTCDay()])])
+  assert.deepEqual(r.programs.map(p => p.school_id), ['osu-w'], 'girls coaches at last year\'s edition and at the team\'s games; the boys game is ignored')
+  assert.ok(r.programs[0].watched_your_team && r.programs[0].at_event_before)
+  assert.equal(r.programs[0].event_name, 'Winter Showcase')
+}
+
 console.log('ask.test.mjs: all assertions passed')

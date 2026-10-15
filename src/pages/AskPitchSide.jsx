@@ -122,7 +122,7 @@ const md = {
   code: ({ children }) => <code className="px-1 py-0.5 rounded bg-[#F2F3F5] text-[13px]">{children}</code>,
 }
 
-function ProgramCards({ items, logosEnabled, onDraft, onPrep, busy }) {
+function ProgramCards({ items, logosEnabled, onDraft, onPrep, onInvite, busy }) {
   const [all, setAll] = useState(false)
   if (!items.length) return null
   const shown = all ? items : items.slice(0, 6)
@@ -149,7 +149,13 @@ function ProgramCards({ items, logosEnabled, onDraft, onPrep, busy }) {
               </Link>
               {(onDraft || onPrep) && (
                 <div className="flex flex-wrap gap-x-3 mx-3 mb-2 -mt-0.5">
-                  {onDraft && (
+                  {onInvite && p.kind === 'event_invite_facts' && p.event_name && (
+                    <button type="button" disabled={busy} onClick={() => onInvite(p)}
+                      className="text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
+                      Draft an invite
+                    </button>
+                  )}
+                  {onDraft && p.kind !== 'event_invite_facts' && (
                     <button type="button" disabled={busy} onClick={() => onDraft(p)}
                       className="text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
                       Draft an email to the coaches
@@ -284,7 +290,7 @@ function EmailCard({ email, lookups }) {
   )
 }
 
-function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, onPrep, busy }) {
+function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, onPrep, onInvite, busy }) {
   const [showData, setShowData] = useState(false)
   const [copied, setCopied] = useState(false)
   const { body, followups } = splitAnswer(m.content)
@@ -316,7 +322,7 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, onPrep
           </div>
         )}
 
-        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} onDraft={onDraft} onPrep={onPrep} busy={busy} />}
+        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} onDraft={onDraft} onPrep={onPrep} onInvite={onInvite} busy={busy} />}
 
         {!streaming && m.status === 'done' && (
           <>
@@ -609,7 +615,7 @@ export default function AskPitchSide({ session }) {
 
   const update = (id, fn) => setMsgs(list => list.map(m => (m.id === id ? fn(m) : m)))
 
-  // source: how the question started (typed | suggestion | followup | quiz | email | callprep), for pilot usage tracking.
+  // source: how the question started (typed | suggestion | followup | quiz | email | callprep | invite), for pilot usage tracking.
   async function send(text, source = 'typed') {
     const q = String(text || '').trim()
     if (!q || busy) return
@@ -705,7 +711,8 @@ export default function AskPitchSide({ session }) {
                   </div>)
                 : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={q => send(q, 'followup')} onRate={rate}
                     onDraft={p => send(`Draft a first email to the ${p.school} coaches.`, 'email')}
-                    onPrep={p => send(`Prepare me for a call with the ${p.school} coaches.`, 'callprep')} busy={busy} />))}
+                    onPrep={p => send(`Prepare me for a call with the ${p.school} coaches.`, 'callprep')}
+                    onInvite={p => send(`Draft an invite to the ${p.school} coaches to watch me play at ${p.event_name}.`, 'invite')} busy={busy} />))}
               <div ref={endRef} style={{ scrollMarginBottom: 150 }} />
             </div>
           )}
