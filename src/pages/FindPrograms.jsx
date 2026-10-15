@@ -23,6 +23,8 @@ import { locatePlace, programPoints } from '../lib/geoSearch'
 import { milesBetween } from '../lib/geo'
 import { strengthIndex, fitFor, satEquivalent, tierCounts, TIER_LABEL } from '../lib/fitTier'
 import FitBadge from '../components/FitBadge'
+import { ORDERS, valueLine, orderPrograms } from '../lib/collegeValue'
+import { AWARDS_NOTE, AWARDS_SCOPE, awardsByUnit, collegeAwards, shortLine } from '../lib/actionAwards'
 
 /**
  * FindPrograms — "Find programs" (backlog F3, Targeting: ranked fit list).
@@ -76,6 +78,15 @@ import FitBadge from '../components/FitBadge'
  * level and the program's strength in its division (RPI or record over the
  * latest two seasons) and its estimated freshman openings. Chips filter by
  * label. Ranking is unchanged.
+ *
+ * EARNINGS, DEBT AND AWARDS (backlog F19, Damon 2026-10-15). Each row shows the
+ * college's median earnings and median debt at graduation (College Scorecard,
+ * as on the Campus and cost card), and any campus visit or other action award
+ * the college publishes (college_action_awards; Ohio D2, D3 and NAIA so far).
+ * An "Order" choice can list by highest median earnings or lowest median debt
+ * instead of openings; openings stay the default. Rules in
+ * src/lib/collegeValue.js and src/lib/actionAwards.js. If these cannot be read
+ * the lines and the extra orders are simply not shown.
  */
 const PAGE = 1000
 const STEP = 25
@@ -152,6 +163,24 @@ async function fetchFitData() {
   const programOf = new Map(results.map(r => [r.school_id, { division: r.schools?.division, gender: r.schools?.program_gender }]))
   const facts = new Map(links.filter(l => l.college_facts).map(l => [l.school_id, l.college_facts]))
   return { strength: strengthIndex(results, programOf), facts }
+}
+
+// Earnings, debt and visit or action awards for every program. Awards are a
+// small curated table; if it cannot be read there are simply no award lines.
+async function fetchValueData() {
+  const [links, awardRows] = await Promise.all([
+    fetchAllRows(supabase, 'school_federal_college',
+      'school_id,unitid,college_facts(median_earnings_10yr,median_debt,median_debt_monthly)', q => q.order('school_id'), PAGE),
+    fetchAllRows(supabase, 'college_action_awards',
+      'id,unitid,award_type,name,amount,per_year,amount_total,amount_text,condition_text,deadline,deadline_text,entry_year,url,checked,confidence',
+      q => q.order('id'), PAGE).catch(() => []),
+  ])
+  const facts = new Map(), units = new Map()
+  for (const l of links) {
+    units.set(l.school_id, l.unitid)
+    if (l.college_facts) facts.set(l.school_id, l.college_facts)
+  }
+  return { facts, units, awards: awardsByUnit(awardRows) }
 }
 
 async function fetchCatalog() {
@@ -267,6 +296,9 @@ export default function FindPrograms() {
   const [score, setScore] = useState('')
   const [fitData, setFitData] = useState({ data: null, err: '' })
   const [tiers, setTiers] = useState(() => new Set())   // empty = every label
+  // Earnings, debt and awards (F19)
+  const [valueData, setValueData] = useState(null)   // null until loaded; stays null on failure
+  const [order, setOrder] = useState('openings')
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -283,6 +315,9 @@ export default function FindPrograms() {
     fetchClubTeams()
       .then(t => { if (!cancelled) setClubTeams(t) })
       .catch(() => { /* no teams: the team picker is not shown */ })
+    fetchValueData()
+      .then(v => { if (!cancelled) setValueData(v) })
+      .catch(() => { /* no figures: no earnings, debt or award lines */ })
     return () => { cancelled = true }
   }, [status])
 
@@ -421,6 +456,18 @@ export default function FindPrograms() {
   // Labels on the list, then the label filter (counts are before the filter).
   const counts = useMemo(() => (fitOf ? tierCounts(ranked.map(fitOf)) : null), [ranked, fitOf])
   const listed = useMemo(() => (fitOf && tiers.size ? ranked.filter(r => tiers.has(fitOf(r)?.tier)) : ranked), [ranked, fitOf, tiers])
+  // The chosen order: openings (the ranking), or earnings or debt once the figures are in.
+  const activeOrder = valueData ? order : 'openings'
+  const ordered = useMemo(
+    () => orderPrograms(listed, activeOrder, id => valueData?.facts.get(id) || null),
+    [listed, activeOrder, valueData],
+  )
+  const today = new Date().toISOString().slice(0, 10)
+  const awardLines = id => {
+    if (!valueData) return []
+    const c = collegeAwards(valueData.awards.get(Number(valueData.units.get(id))), today)
+    return c.checked && !c.nothing_published ? c.awards.map(a => shortLine(a, today)) : []
+  }
 
   const years = latest != null ? [latest + 1, latest + 2, latest + 3, latest + 4] : []
   const pos = POSITIONS.find(p => p.code === position)
@@ -455,7 +502,8 @@ export default function FindPrograms() {
   }
 
   const selectCls = 'text-sm border border-gray-300 rounded-lg px-2.5 py-2 bg-white text-gray-800'
-  const shown = listed.slice(0, limit)
+  const shown = ordered.slice(0, limit)
+  const anyAwards = shown.some(r => awardLines(r.school_id).length > 0)
   const stateSummary = states.size === 0
     ? 'Anywhere'
     : states.size <= 6 ? [...states].sort().join(', ') : `${states.size} states`
@@ -691,12 +739,21 @@ export default function FindPrograms() {
 
         {!err && ready && !loading && rows && (
           <>
-            <p className="text-sm text-gray-600 mb-2 px-1">
-              {listed.length.toLocaleString()} {listed.length === 1 ? 'program' : 'programs'}{tiers.size ? ` labeled ${[...tiers].map(t => TIER_LABEL[t]).join(' or ')}` : ''}, ranked by estimated
-              openings for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}
-              {filterWatched ? <>, whose coaches have watched {team.name}</> : null}
-              {place ? <>, within {radius} miles of {place.name}</> : null}.
-            </p>
+            <div className="flex flex-wrap items-end justify-between gap-2 mb-2 px-1">
+              <p className="text-sm text-gray-600 flex-1 min-w-[240px]">
+                {listed.length.toLocaleString()} {listed.length === 1 ? 'program' : 'programs'}{tiers.size ? ` labeled ${[...tiers].map(t => TIER_LABEL[t]).join(' or ')}` : ''}, {activeOrder === 'earnings'
+                  ? 'ordered by highest median earnings'
+                  : activeOrder === 'debt' ? 'ordered by lowest median debt' : 'ranked by estimated openings'}{' '}
+                for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}
+                {filterWatched ? <>, whose coaches have watched {team.name}</> : null}
+                {place ? <>, within {radius} miles of {place.name}</> : null}.
+              </p>
+              {valueData && (
+                <select className={selectCls} value={order} onChange={e => setOrder(e.target.value)} aria-label="Order">
+                  {ORDERS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+              )}
+            </div>
             <div className="bg-white border border-gray-200 rounded-xl divide-y divide-gray-100 overflow-hidden">
               {shown.map((r, i) => {
                 const s = r.schools || {}
@@ -756,6 +813,12 @@ export default function FindPrograms() {
                       {styleData && styleReason(styleData.get(r.school_id), s.division) && (
                         <li className="text-xs text-gray-600">{styleReason(styleData.get(r.school_id), s.division)}</li>
                       )}
+                      {valueData && valueLine(valueData.facts.get(r.school_id)) && (
+                        <li className="text-xs text-gray-600">{valueLine(valueData.facts.get(r.school_id))}</li>
+                      )}
+                      {awardLines(r.school_id).map((t, k) => (
+                        <li key={'aw' + k} className="text-xs text-emerald-800">{t}</li>
+                      ))}
                       {isBehind(r, latest) && (
                         <li className="text-xs text-amber-700">
                           Newest roster on file is {r.current_season}; these numbers may be a year behind.
@@ -799,6 +862,11 @@ export default function FindPrograms() {
               them is a reach and one below them a safety; within them, its place in its division by RPI or record over the last
               two seasons decides, and under half an estimated freshman opening counts toward reach. A balanced list has some of
               each.</>}
+              {valueData && <> Median earnings are for former students who received federal aid, 10 years after starting;
+              median debt is the federal loan debt of students who completed, with the monthly payment over 10 years
+              (College Scorecard). Earnings depend heavily on the major. When ordering by earnings or debt, programs
+              without the figure come last.</>}
+              {anyAwards && <> Visit and action awards: {AWARDS_NOTE} Checked so far: {AWARDS_SCOPE}.</>}
               {styleData && <> Recruiting styles compare each program with the middle half of other programs in its
               division, as on its College Profile; a program with too little data for a chosen style is left out.</>}
             </p>
