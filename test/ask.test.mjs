@@ -315,4 +315,66 @@ async function run(tool, input) {
   assert.equal(historyContent('Hi.\nSTATUS: answered', []), 'Hi.')
 }
 
+// ── outreach email drafts (backlog F4) ──────────────────────────────────────
+{
+  const A = T.outreachAddresses
+  const staff = [
+    { name: 'Ann Lead', title: 'Head Coach', email: 'alead@wis.edu' },
+    { name: 'Gil Keep', title: 'Assistant Coach / Goalkeepers', email: 'gkeep@wis.edu' },
+    { name: 'Rae Cruit', title: 'Associate Head Coach / Recruiting Coordinator', email: 'rcruit@wis.edu' },
+    { name: 'No Mail', title: 'Assistant Coach', email: null },
+  ]
+  let r = A(staff, 'GK')
+  assert.deepEqual(r.to.map(c => c.email), ['alead@wis.edu'], 'to the head coach')
+  assert.deepEqual(r.cc.map(c => c.email), ['gkeep@wis.edu', 'rcruit@wis.edu'], 'cc the goalkeeper coach and the recruiter')
+  assert.equal(r.greeting, 'Coach Lead')
+  r = A(staff, 'F')
+  assert.deepEqual(r.cc.map(c => c.email), ['rcruit@wis.edu'], 'no goalkeeper coach for a forward')
+  assert.ok(!r.to.some(c => /Associate/.test(c.title)), 'an associate head coach is not the head coach')
+  r = A([{ name: 'Gil Keep', title: 'Goalkeeper Coach', email: 'g@x.edu' }, { name: 'Ann Lead', title: 'Head Coach', email: null }], 'GK')
+  assert.deepEqual(r.to.map(c => c.email), ['g@x.edu'], 'no head coach email: the position coach')
+  assert.equal(r.greeting, 'Coach Keep')
+  r = A([{ name: 'Ann Lead', title: 'Head Coach', email: null }], 'GK')
+  assert.deepEqual(r.to, [], 'no published email: nobody')
+
+  const O = {
+    ...tables,
+    coaches: [
+      { school_id: 'wis-w', first_name: 'Ann', last_name: 'Lead', title: 'Head Coach', email: 'alead@wis.edu', is_active: true },
+      { school_id: 'wis-w', first_name: 'Gil', last_name: 'Keep', title: 'Goalkeeper Coach', email: 'gkeep@wis.edu', is_active: true },
+      { school_id: 'wis-w', first_name: 'Old', last_name: 'Gone', title: 'Head Coach', email: 'old@wis.edu', is_active: false },
+    ],
+    college_rosters: [
+      { school_id: 'wis-w', roster_season: 2026, class_year: 'SR', position: 'GK', is_active: true },
+      { school_id: 'wis-w', roster_season: 2026, class_year: 'FR', position: 'GK', is_active: true },
+      { school_id: 'wis-w', roster_season: 2025, class_year: 'JR', position: 'GK', is_active: true },
+    ],
+    program_results: [{ school_id: 'wis-w', season: 2025, wins: 12, losses: 5, ties: 2 }],
+  }
+  T.resetCache()
+  const f = await T.buildTools(fakeDb(O), [], {}).outreach_facts.execute({ school_id: 'wis-w', position: 'GK' }, { toolCallId: 't', messages: [] })
+  assert.deepEqual(f.to.map(c => c.email), ['alead@wis.edu'], 'switched-off coaches are left out')
+  assert.deepEqual(f.cc.map(c => c.email), ['gkeep@wis.edu'])
+  assert.deepEqual(f.position_roster, { roster_season: 2026, position: 'GK', players: 2, by_class_year: { SR: 1, FR: 1 } }, 'latest roster season only')
+  assert.equal(f.program.state, 'Wisconsin')
+  assert.equal(f.recent_seasons[0].wins, 12)
+
+  const { splitEmail, knownEmails, addressList, mailtoHref, emailText } = await import('../src/ask/answerText.js')
+  const text = 'Here is a first email.\n\n---EMAIL---\nTo: alead@wis.edu, made.up@nowhere.com\nCc: gkeep@wis.edu\nSubject: 2028 Goalkeeper | Jane Smith | Ohio Premier ECNL\n\nCoach Lead,\n\nMy name is Jane.\n\nJane Smith\n---END EMAIL---\n\nRead it over before sending.'
+  const e = splitEmail(text)
+  assert.equal(e.before, 'Here is a first email.')
+  assert.equal(e.after, 'Read it over before sending.')
+  assert.equal(e.email.subject, '2028 Goalkeeper | Jane Smith | Ohio Premier ECNL')
+  assert.equal(e.email.body, 'Coach Lead,\n\nMy name is Jane.\n\nJane Smith')
+  assert.equal(e.email.complete, true)
+  assert.equal(splitEmail('Intro\n---EMAIL---\nTo: a@b.edu\nSubject: S\n\nCoach').email.complete, false, 'still streaming')
+  assert.equal(splitEmail('No draft here.').email, null)
+  const known = knownEmails([{ tool: 'outreach_facts', output: f }])
+  assert.deepEqual(addressList(e.email.to, known), ['alead@wis.edu'], 'a made-up address is dropped')
+  assert.deepEqual(addressList('<GKeep@wis.edu>; gkeep@wis.edu', known), ['GKeep@wis.edu'], 'brackets trimmed, duplicates once')
+  const href = mailtoHref({ to: ['alead@wis.edu'], cc: ['gkeep@wis.edu'], subject: 'A & B', body: 'Line 1\nLine 2' })
+  assert.equal(href, 'mailto:alead@wis.edu?cc=gkeep@wis.edu&subject=A%20%26%20B&body=Line%201%0D%0ALine%202')
+  assert.equal(emailText({ to: ['a@b.edu'], cc: [], subject: 'S', body: 'Hi' }), 'To: a@b.edu\nSubject: S\n\nHi')
+}
+
 console.log('ask.test.mjs: all assertions passed')

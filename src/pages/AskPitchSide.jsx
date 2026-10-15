@@ -8,7 +8,8 @@ import { useCollegeProfileLogos } from '../college-profiles/access/useCollegePro
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import { PageLoader } from '../components/LoadingStates'
 import OPLogo from '../components/OPLogo'
-import { streamAsk, splitAnswer, historyContent, lookupLabel, sourceLabels, programCards } from '../ask/askClient'
+import { streamAsk, splitAnswer, historyContent, lookupLabel, sourceLabels, programCards,
+  splitEmail, knownEmails, addressList, mailtoHref, emailText } from '../ask/askClient'
 import { getFavorites } from '../hooks/useFavorite'
 import { loadChats, saveChats, putChat, dropChat, newChatId, whenLabel } from '../ask/chatStore'
 import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
@@ -27,7 +28,11 @@ import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
  *    the rows; three follow-up suggestions follow each answer;
  *  - conversations are kept in this browser: up to 30, listed under "Chats"
  *    with their first question and date, each reopened or deleted there
- *    (Damon 2026-10-14; src/ask/chatStore.js).
+ *    (Damon 2026-10-14; src/ask/chatStore.js);
+ *  - every program card has "Draft an email to the coaches" (backlog F4,
+ *    Damon 2026-10-15): the assistant asks once for the player's details, then
+ *    writes a first email shown as an email card with "Open in email app" and
+ *    "Copy email". To and Cc keep only addresses the look-ups returned.
  *
  * Owner and pilot users only while in preview (Damon, 2026-10-13 and 14 Oct:
  * personal pilot links, no login; src/ask/askAccess.js). /owner/ask stays as the
@@ -115,7 +120,7 @@ const md = {
   code: ({ children }) => <code className="px-1 py-0.5 rounded bg-[#F2F3F5] text-[13px]">{children}</code>,
 }
 
-function ProgramCards({ items, logosEnabled }) {
+function ProgramCards({ items, logosEnabled, onDraft, busy }) {
   const [all, setAll] = useState(false)
   if (!items.length) return null
   const shown = all ? items : items.slice(0, 6)
@@ -126,18 +131,26 @@ function ProgramCards({ items, logosEnabled }) {
           const big = p.card ? p.card.value : (p.rpi_rank != null ? `#${p.rpi_rank}` : p.record)
           const small = p.card ? p.card.label : (p.rpi_rank != null ? `RPI · ${p.record}` : 'record')
           return (
-            <Link key={p.school_id} to={`/school/${p.school_id}`}
-              className="flex items-center gap-3 bg-white border border-[#E5E8EB] rounded-xl px-3 py-2.5 hover:border-gray-400 hover:shadow-sm transition">
-              <Crest id={p.school_id} name={p.school} logosEnabled={logosEnabled} />
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{p.school}</div>
-                <div className="text-xs text-gray-500 truncate">{[p.division, p.conference, p.state].filter(Boolean).join(' · ')}</div>
-              </div>
-              <div className="text-right flex-shrink-0">
-                <div className="text-base font-semibold text-gray-900 leading-tight">{big ?? '—'}</div>
-                <div className="text-[11px] text-gray-500 leading-tight whitespace-nowrap">{small}</div>
-              </div>
-            </Link>
+            <div key={p.school_id}
+              className="flex flex-col bg-white border border-[#E5E8EB] rounded-xl hover:border-gray-400 hover:shadow-sm transition">
+              <Link to={`/school/${p.school_id}`} className="flex items-center gap-3 px-3 pt-2.5 pb-2">
+                <Crest id={p.school_id} name={p.school} logosEnabled={logosEnabled} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-gray-900 leading-snug line-clamp-2">{p.school}</div>
+                  <div className="text-xs text-gray-500 truncate">{[p.division, p.conference, p.state].filter(Boolean).join(' · ')}</div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <div className="text-base font-semibold text-gray-900 leading-tight">{big ?? '—'}</div>
+                  <div className="text-[11px] text-gray-500 leading-tight whitespace-nowrap">{small}</div>
+                </div>
+              </Link>
+              {onDraft && (
+                <button type="button" disabled={busy} onClick={() => onDraft(p)}
+                  className="self-start mx-3 mb-2 -mt-0.5 text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
+                  Draft an email to the coaches
+                </button>
+              )}
+            </div>
           )
         })}
       </div>
@@ -220,10 +233,49 @@ function Thumb({ up, on, onClick }) {
   )
 }
 
-function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
+// An outreach email draft (backlog F4) as an email the family can open in
+// their email app or copy. To and Cc keep only addresses the look-ups returned.
+function EmailCard({ email, lookups }) {
+  const [copied, setCopied] = useState(false)
+  const known = useMemo(() => knownEmails(lookups), [lookups])
+  const to = addressList(email.to, known)
+  const cc = addressList(email.cc, known).filter(a => !to.some(t => t.toLowerCase() === a.toLowerCase()))
+  const draft = { to, cc, subject: email.subject, body: email.body }
+  const row = (label, value) => (
+    <div className="flex gap-2 px-4 py-1.5 border-b border-[#F0F2F4] text-sm">
+      <span className="w-16 flex-shrink-0 text-gray-500">{label}</span>
+      <span className="min-w-0 break-words text-gray-900">{value}</span>
+    </div>
+  )
+  return (
+    <div className="my-3 bg-white border border-[#D9DEE3] rounded-xl overflow-hidden shadow-sm">
+      <div className="px-4 py-2 bg-[#F7F8FA] border-b border-[#E5E8EB] text-xs font-semibold text-gray-600">Email draft</div>
+      {row('To', to.length ? to.join(', ') : <span className="text-gray-500">No published email address</span>)}
+      {cc.length > 0 && row('Cc', cc.join(', '))}
+      {email.subject && row('Subject', email.subject)}
+      <div className="px-4 py-3 text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap">{email.body}</div>
+      {email.complete && (
+        <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 border-t border-[#E5E8EB] bg-[#FAFBFC]">
+          <a href={mailtoHref(draft)}
+            className="text-sm font-medium bg-[#0a1628] text-white rounded-full px-3.5 py-1.5 hover:bg-[#1a2a44]">
+            Open in email app
+          </a>
+          <button type="button"
+            onClick={() => { navigator.clipboard?.writeText(emailText(draft)); setCopied(true); setTimeout(() => setCopied(false), 1500) }}
+            className="text-sm bg-white border border-[#D9DEE3] rounded-full px-3.5 py-1.5 text-gray-700 hover:border-gray-500">
+            {copied ? 'Copied' : 'Copy email'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, busy }) {
   const [showData, setShowData] = useState(false)
   const [copied, setCopied] = useState(false)
   const { body, followups } = splitAnswer(m.content)
+  const parts = splitEmail(body)
   const cards = useMemo(() => programCards(m.lookups), [m.lookups])
   const sources = sourceLabels(m.lookups)
   const streaming = m.status === 'streaming'
@@ -233,7 +285,14 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
       <div className="flex-shrink-0 mt-1"><OPLogo className="h-7 w-7" /></div>
       <div className="min-w-0 flex-1 text-[15px] text-gray-800">
         {streaming && !body && <Thinking lookups={m.lookups} />}
-        {body && <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{body}</ReactMarkdown>}
+        {parts.email
+          ? (
+            <>
+              {parts.before && <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{parts.before}</ReactMarkdown>}
+              <EmailCard email={parts.email} lookups={m.lookups} />
+              {parts.after && <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{parts.after}</ReactMarkdown>}
+            </>)
+          : body && <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{body}</ReactMarkdown>}
         {streaming && body && m.lookups?.some(l => !l.output) && <Thinking lookups={m.lookups} />}
         {m.status === 'error' && m.limit && (
           <div className="mt-1 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">{m.error}</div>
@@ -244,7 +303,7 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
           </div>
         )}
 
-        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} />}
+        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} onDraft={onDraft} busy={busy} />}
 
         {!streaming && m.status === 'done' && (
           <>
@@ -256,7 +315,13 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, busy }) {
                 </button>
               )}
               <button type="button" className="hover:text-gray-800"
-                onClick={() => { navigator.clipboard?.writeText(body); setCopied(true); setTimeout(() => setCopied(false), 1500) }}>
+                onClick={() => {
+                  const e = parts.email
+                  const text = e
+                    ? [parts.before, emailText({ to: addressList(e.to, knownEmails(m.lookups)), cc: addressList(e.cc, knownEmails(m.lookups)), subject: e.subject, body: e.body }), parts.after].filter(Boolean).join('\n\n')
+                    : body
+                  navigator.clipboard?.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 1500)
+                }}>
                 {copied ? 'Copied' : 'Copy'}
               </button>
               {m.logId && (
@@ -531,7 +596,7 @@ export default function AskPitchSide({ session }) {
 
   const update = (id, fn) => setMsgs(list => list.map(m => (m.id === id ? fn(m) : m)))
 
-  // source: how the question started (typed | suggestion | followup), for pilot usage tracking.
+  // source: how the question started (typed | suggestion | followup | quiz | email), for pilot usage tracking.
   async function send(text, source = 'typed') {
     const q = String(text || '').trim()
     if (!q || busy) return
@@ -625,7 +690,8 @@ export default function AskPitchSide({ session }) {
                   <div key={m.id} className="flex justify-end">
                     <div className="max-w-[85%] bg-[#0a1628] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] whitespace-pre-wrap">{m.content}</div>
                   </div>)
-                : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={q => send(q, 'followup')} onRate={rate} busy={busy} />))}
+                : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={q => send(q, 'followup')} onRate={rate}
+                    onDraft={p => send(`Draft a first email to the ${p.school} coaches.`, 'email')} busy={busy} />))}
               <div ref={endRef} style={{ scrollMarginBottom: 150 }} />
             </div>
           )}

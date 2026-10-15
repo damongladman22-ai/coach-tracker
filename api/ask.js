@@ -284,6 +284,38 @@ async function pickSchool(db, { school_id, school, gender }) {
   return { result: { matches: found.map(matchRow), note: 'Several programs match. Call again with the school_id of the one the person means (or ask, if it is unclear, e.g. men\'s or women\'s).' } }
 }
 const GK_TITLE = /goal ?keep|keeper|\bgk\b/i
+// Outreach emails (backlog F4): who to write to on a staff.
+const HEAD_TITLE = t => /\bhead\b/i.test(t || '') && /coach/i.test(t || '') && !/assistant|associate|volunteer|graduate/i.test(t || '')
+const RECRUIT_TITLE = /recruit/i
+const lastName = n => String(n || '').trim().split(/\s+/).pop() || ''
+/**
+ * From a staff list [{ name, title, email }] -> who a first email goes to.
+ *   to: the head coach (or co-head coaches); without a published head coach
+ *       email, the position coach, then the recruiting coordinator, then any coach.
+ *   cc: the position coach (goalkeepers only; other positions are rarely in a
+ *       title) and the recruiting coordinator, when they are someone else.
+ * Only coaches with a published email address are used.
+ */
+function outreachAddresses(coaches, position) {
+  const withEmail = (coaches || []).filter(c => c && /@/.test(c.email || ''))
+  const heads = withEmail.filter(c => HEAD_TITLE(c.title)).slice(0, 2)
+  const posCoach = position === 'GK' ? withEmail.filter(c => GK_TITLE.test(c.title || '') && !heads.includes(c)) : []
+  const recruiter = withEmail.filter(c => RECRUIT_TITLE.test(c.title || '') && !heads.includes(c) && !posCoach.includes(c))
+  let to = heads
+  if (!to.length) to = (posCoach.length ? posCoach : recruiter.length ? recruiter : withEmail).slice(0, 1)
+  const seen = new Set(to.map(c => c.email.toLowerCase()))
+  const cc = []
+  for (const c of [...posCoach.slice(0, 1), ...recruiter.slice(0, 1)]) {
+    const k = c.email.toLowerCase()
+    if (!seen.has(k)) { seen.add(k); cc.push(c) }
+  }
+  const pick = c => ({ name: c.name, title: c.title || null, email: c.email })
+  const greet = heads.length ? heads : to
+  return {
+    to: to.map(pick), cc: cc.map(pick),
+    greeting: greet.length ? greet.map(c => `Coach ${lastName(c.name)}`).join(' and ') : 'Coach',
+  }
+}
 const programHead = s => ({ school_id: s.id, school: s.school, gender: s.program_gender, division: s.division, conference: s.conference })
 const SCHOOL_INPUT = {
   school: z.string().optional().describe('College name as the person wrote it (typos fine); use this OR school_id'),
@@ -716,6 +748,47 @@ function buildToolSet(db, log, ctx) {
       }),
     }),
 
+    outreach_facts: tool({
+      description: 'Everything needed to draft a first outreach email from a recruit to ONE program\'s coaches: the program (division, conference, city, state), ' +
+        'who to address (to: the head coach; cc: the goalkeeper coach and the recruiting coordinator when listed; only published email addresses), ' +
+        'the greeting to use, the current roster at the player\'s position by class year, and the last two seasons\' records. ' +
+        'Use it whenever asked to draft, write or prepare an email or message to a program or its coaches.',
+      inputSchema: z.object({ ...SCHOOL_INPUT, position: z.enum(['GK', 'D', 'M', 'F']).optional().describe('The player\'s position, when known') }),
+      execute: run('outreach_facts', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const s = p.s
+        const [co, ros, res] = await Promise.all([
+          db.from('coaches').select('first_name, last_name, title, email').eq('school_id', s.id).eq('is_active', true),
+          a.position
+            ? db.from('college_rosters').select('roster_season, class_year').eq('school_id', s.id).eq('position', a.position)
+              .eq('is_active', true).order('roster_season', { ascending: false }).limit(60)
+            : Promise.resolve({ data: null, error: null }),
+          db.from('program_results').select('season, wins, losses, ties, conf_wins, conf_losses, conf_ties, rpi_rank')
+            .eq('school_id', s.id).order('season', { ascending: false }).limit(2),
+        ])
+        if (co.error) throw new Error(co.error.message)
+        const staff = (co.data || []).map(c => ({ name: `${c.first_name} ${c.last_name}`.trim(), title: c.title, email: c.email || null }))
+        const addr = outreachAddresses(staff, a.position)
+        let roster = null
+        if (ros.data?.length) {
+          const latest = ros.data[0].roster_season
+          const now = ros.data.filter(r => r.roster_season === latest)
+          const byClass = {}
+          for (const r of now) byClass[r.class_year || 'unknown'] = (byClass[r.class_year || 'unknown'] || 0) + 1
+          roster = { roster_season: latest, position: a.position, players: now.length, by_class_year: byClass }
+        }
+        return {
+          program: { ...programHead(s), city: s.city, state: s.state },
+          to: addr.to, cc: addr.cc, greeting: addr.greeting,
+          email_note: addr.to.length ? undefined : 'No published email address for this staff in PitchSide. Write the draft without a To line and say so.',
+          staff_listed: staff.length,
+          position_roster: roster,
+          recent_seasons: res.data || [],
+        }
+      }),
+    }),
+
     program_position_history: tool({
       description: 'How one program\'s players at a POSITION (default GK, goalkeepers) have stayed or moved on, pooled over its last few ' +
         'roster seasons: how many returned the next season, transferred to another college (traced), left after their final year, or left otherwise, ' +
@@ -966,6 +1039,23 @@ function instructions() {
     '- Questions about the family\'s own club team ("who has watched us", "which coaches came to our games") use programs_watching_team. PitchSide logs WHICH coaches attended: name them from coaches_seen (name, title, games attended, latest game). For each program you show, list EVERY coach in its coaches_seen, in the order given, with their games; add "(no longer on staff)" exactly when still_on_staff is false, and never otherwise. Show at most 5 programs and offer more. For one college, pass school. Never say names are not logged. If it cannot tell which team, ask which one and offer the teams it lists with coach visits logged; never say a team is missing when it is in the list returned.',
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
+    'OUTREACH EMAILS ("draft an email to Dayton", "write to the Toledo coaches", the Draft an email button)',
+    '- A first email needs four things: the player\'s name, graduating class, position, and club team (club and team or league). Look for them anywhere in the conversation, including quick quiz answers and earlier drafts, and reuse them; never ask again for something already given.',
+    '- If any of the four is missing, ask for the missing ones in ONE short message, and in the same message invite the optional details: high school, GPA, SAT or ACT score, highlight video link, upcoming tournaments or showcases (event and dates), and a phone number. Say the optional ones can be skipped. Call no look-ups, and stop (STATUS: clarify). When they reply, draft the email for the program they asked about.',
+    '- With the four known: call outreach_facts (school, gender, position) and, at the same time, programs_watching_team with school. If an intended major was given, also call program_majors with search to check the college offers it.',
+    '- Write the email in the PLAYER\'s voice (first person; the player sends it from their own email), 120 to 200 words, plain text with no Markdown inside it. Sincere and specific, no flattery. In order: the greeting from outreach_facts; who I am (name, class, position, club team and league, high school if given); why this program, with one or two true specifics from the look-ups (conference, location, the major if program_majors shows it, a winning season or RPI rank from recent_seasons, or the roster at the position, for example a senior goalkeeper graduating, only when position_roster shows it); academics if given; the highlight video link if given; upcoming events if given; a clear close asking the staff to evaluate them or to learn more about the program; sign-off with name, class, position, club team, and the phone number if given.',
+    '- If programs_watching_team shows this program\'s coaches at the family\'s games, add one line thanking that coach by name for coming to watch. If it finds no team or asks which team, ignore it and do not ask.',
+    '- Never mention PitchSide, estimates, openings, transfers or other players in the email. Never mention a losing record. Never invent a statistic, date, event, link, phone number or email address. Leave out anything not given; never write blanks or [brackets].',
+    '- Format the draft EXACTLY like this, after one short sentence introducing it:',
+    '  ---EMAIL---',
+    '  To: the email addresses from outreach_facts "to", separated by commas',
+    '  Cc: the email addresses from outreach_facts "cc" (leave this line out when there are none)',
+    '  Subject: <class> <position word> | <player name> | <club team>, for example "2028 Goalkeeper | Jane Smith | Ohio Premier ECNL"',
+    '  (a blank line, then the email body)',
+    '  ---END EMAIL---',
+    '- If outreach_facts has no email address, leave out the To and Cc lines and say PitchSide has no published email for this staff; suggest the program\'s athletics site.',
+    '- After the draft, one short line: read it over and make it your own before sending. The 120-word limit below does not count the email. STATUS: answered. FOLLOW-UPS: offer drafts for other programs from the conversation ("Draft an email to Ball State").',
+    '',
     'FORMAT (Markdown; it is rendered for the reader)',
     '- Write nothing before or between look-ups ("I will search…"): call the look-ups first, then write only the answer.',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
@@ -977,7 +1067,7 @@ function instructions() {
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for); when you name the leaders, keep that order and quote the freshman figure.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
-    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words.',
+    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words (an outreach email draft does not count).',
     '- After the answer, on its own line, write: STATUS: answered | partial | unavailable | clarify, followed by " - " and the missing topic in a few words when not fully answered (for example "STATUS: unavailable - ID camps"). The app hides this line and logs it so PitchSide can fill data gaps. Use "answered" when you answered what was asked, even if you showed only the top of a long list (showing 5 of 226 programs is "answered", not "partial"); "partial" only when the DATA could not answer part of the question (for example "STATUS: partial - incoming commits").',
     '- Then, on the very last line, write exactly: FOLLOW-UPS: question one | question two | question three',
     '  These are three short follow-up questions the reader might ask next that the look-ups can answer. The app turns them into buttons and hides this line.',
@@ -1192,7 +1282,7 @@ export default async function handler(req, res) {
   }
   // For usage tracking: the saved chat this question belongs to, and how it started.
   const conversationId = /^[A-Za-z0-9_-]{1,64}$/.test(String(body.context?.conversationId || '')) ? body.context.conversationId : null
-  const source = ['typed', 'suggestion', 'followup', 'quiz'].includes(body.context?.source) ? body.context.source : null
+  const source = ['typed', 'suggestion', 'followup', 'quiz', 'email'].includes(body.context?.source) ? body.context.source : null
   const record = (text, usage, err, costUsd = null) => {
     const { status, gap } = readStatus(text)
     return logAsk({
@@ -1276,4 +1366,4 @@ export default async function handler(req, res) {
 }
 
 // For test/ask.test.mjs only (no network): the pieces that can be checked offline.
-export const _internals = { modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; REF_LOADING = null; CATALOG = null } }
+export const _internals = { outreachAddresses, modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; REF_LOADING = null; CATALOG = null } }

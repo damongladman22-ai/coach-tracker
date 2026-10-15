@@ -43,7 +43,7 @@ export async function streamAsk(messages, { signal, onEvent, context }) {
 /** Split the model's text into the visible answer and its FOLLOW-UPS line.
  *  The STATUS line (answered / partial / unavailable, for the question log)
  *  and the FOLLOW-UPS line are never shown as text. */
-export { stripMeta, splitAnswer, historyContent } from './answerText.js'
+export { stripMeta, splitAnswer, historyContent, splitEmail, knownEmails, addressList, mailtoHref, emailText } from './answerText.js'
 
 const LOOKUP_LABEL = {
   find_school: i => `Finding ${i?.name || 'the program'}`,
@@ -52,6 +52,7 @@ const LOOKUP_LABEL = {
   rank_by_results: i => (i?.sort === 'rpi' ? 'Ranking programs by RPI' : 'Ranking programs by record'),
   program_transfers: () => 'Checking transfers in and out',
   program_coaches: () => 'Looking up the coaching staff',
+  outreach_facts: () => 'Looking up who to email',
   program_profile: () => 'Reading the program profile',
   program_majors: i => (i?.search ? `Checking majors for "${i.search}"` : 'Checking majors offered'),
   programs_watching_team: () => 'Checking which college coaches watched your team',
@@ -64,6 +65,7 @@ const SOURCE_LABEL = {
   rank_by_results: 'Season results and RPI',
   program_transfers: 'Transfers traced between college rosters',
   program_coaches: 'PitchSide coach directory',
+  outreach_facts: 'PitchSide coach directory and current rosters',
   program_profile: 'Program profile and U.S. College Scorecard',
   program_majors: 'U.S. College Scorecard majors',
   programs_watching_team: 'Coach attendance logged at your games',
