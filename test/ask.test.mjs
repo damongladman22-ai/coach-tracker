@@ -325,17 +325,21 @@ async function run(tool, input) {
     { name: 'No Mail', title: 'Assistant Coach', email: null },
   ]
   let r = A(staff, 'GK')
-  assert.deepEqual(r.to.map(c => c.email), ['alead@wis.edu'], 'to the head coach')
-  assert.deepEqual(r.cc.map(c => c.email), ['gkeep@wis.edu', 'rcruit@wis.edu'], 'cc the goalkeeper coach and the recruiter')
-  assert.equal(r.greeting, 'Coach Lead')
+  assert.deepEqual(r.to.map(c => c.email), ['alead@wis.edu', 'gkeep@wis.edu', 'rcruit@wis.edu'], 'every coach with an email, head coach first')
+  assert.deepEqual(r.cc, [])
+  assert.equal(r.greeting, 'Coach Lead, Coach Keep, and Coach Cruit')
   r = A(staff, 'F')
-  assert.deepEqual(r.cc.map(c => c.email), ['rcruit@wis.edu'], 'no goalkeeper coach for a forward')
-  assert.ok(!r.to.some(c => /Associate/.test(c.title)), 'an associate head coach is not the head coach')
+  assert.deepEqual(r.to.map(c => c.email), ['alead@wis.edu', 'rcruit@wis.edu', 'gkeep@wis.edu'], 'recruiter before other assistants for a forward')
   r = A([{ name: 'Gil Keep', title: 'Goalkeeper Coach', email: 'g@x.edu' }, { name: 'Ann Lead', title: 'Head Coach', email: null }], 'GK')
-  assert.deepEqual(r.to.map(c => c.email), ['g@x.edu'], 'no head coach email: the position coach')
+  assert.deepEqual(r.to.map(c => c.email), ['g@x.edu'], 'no head coach email: the coaches who have one')
   assert.equal(r.greeting, 'Coach Keep')
   r = A([{ name: 'Ann Lead', title: 'Head Coach', email: null }], 'GK')
   assert.deepEqual(r.to, [], 'no published email: nobody')
+  assert.equal(r.greeting, 'Coach')
+  r = A([{ name: 'Ann Smith', title: 'Head Coach', email: 'a@x.edu' }, { name: 'Bo Smith', title: 'Assistant Coach', email: 'b@x.edu' },
+    { name: 'Ops Person', title: 'Director of Operations', email: 'o@x.edu' }], 'D')
+  assert.equal(r.greeting, 'Coach Ann Smith and Coach Bo Smith', 'shared last names use full names')
+  assert.ok(!r.to.some(c => c.email === 'o@x.edu'), 'non-coaching staff left out when coaches have addresses')
 
   const O = {
     ...tables,
@@ -353,8 +357,8 @@ async function run(tool, input) {
   }
   T.resetCache()
   const f = await T.buildTools(fakeDb(O), [], {}).outreach_facts.execute({ school_id: 'wis-w', position: 'GK' }, { toolCallId: 't', messages: [] })
-  assert.deepEqual(f.to.map(c => c.email), ['alead@wis.edu'], 'switched-off coaches are left out')
-  assert.deepEqual(f.cc.map(c => c.email), ['gkeep@wis.edu'])
+  assert.deepEqual(f.to.map(c => c.email), ['alead@wis.edu', 'gkeep@wis.edu'], 'switched-off coaches are left out')
+  assert.equal(f.greeting, 'Coach Lead and Coach Keep')
   assert.deepEqual(f.position_roster, { roster_season: 2026, position: 'GK', players: 2, by_class_year: { SR: 1, FR: 1 } }, 'latest roster season only')
   assert.equal(f.program.state, 'Wisconsin')
   assert.equal(f.recent_seasons[0].wins, 12)

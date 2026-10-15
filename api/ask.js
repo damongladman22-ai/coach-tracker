@@ -290,31 +290,41 @@ const RECRUIT_TITLE = /recruit/i
 const lastName = n => String(n || '').trim().split(/\s+/).pop() || ''
 /**
  * From a staff list [{ name, title, email }] -> who a first email goes to.
- *   to: the head coach (or co-head coaches); without a published head coach
- *       email, the position coach, then the recruiting coordinator, then any coach.
- *   cc: the position coach (goalkeepers only; other positions are rarely in a
- *       title) and the recruiting coordinator, when they are someone else.
- * Only coaches with a published email address are used.
+ * Every coach with a published email address (recruiting guidance: write to
+ * the whole staff, not one coach), head coach first, then the position coach
+ * (goalkeepers only; other positions are rarely in a title), the recruiting
+ * coordinator, then the other coaches; at most 8. Non-coaching staff (operations,
+ * trainers) only when no coach has an address.
+ *   greeting: "Coach Lead, Coach Keep, and Coach Cruit" (full names where two
+ *   coaches share a last name).
  */
 function outreachAddresses(coaches, position) {
   const withEmail = (coaches || []).filter(c => c && /@/.test(c.email || ''))
-  const heads = withEmail.filter(c => HEAD_TITLE(c.title)).slice(0, 2)
-  const posCoach = position === 'GK' ? withEmail.filter(c => GK_TITLE.test(c.title || '') && !heads.includes(c)) : []
-  const recruiter = withEmail.filter(c => RECRUIT_TITLE.test(c.title || '') && !heads.includes(c) && !posCoach.includes(c))
-  let to = heads
-  if (!to.length) to = (posCoach.length ? posCoach : recruiter.length ? recruiter : withEmail).slice(0, 1)
-  const seen = new Set(to.map(c => c.email.toLowerCase()))
-  const cc = []
-  for (const c of [...posCoach.slice(0, 1), ...recruiter.slice(0, 1)]) {
-    const k = c.email.toLowerCase()
-    if (!seen.has(k)) { seen.add(k); cc.push(c) }
+  const coachLike = withEmail.filter(c => /coach/i.test(c.title || ''))
+  const pool = coachLike.length ? coachLike : withEmail
+  const rank = c => {
+    const t = c.title || ''
+    if (HEAD_TITLE(t)) return 0
+    if (position === 'GK' && GK_TITLE.test(t)) return 1
+    if (RECRUIT_TITLE.test(t)) return 2
+    if (/associate/i.test(t)) return 3
+    if (/assistant/i.test(t)) return 4
+    return 5
   }
+  const seen = new Set()
+  const to = pool.map((c, i) => ({ c, i, r: rank(c) }))
+    .sort((x, y) => x.r - y.r || x.i - y.i)
+    .map(x => x.c)
+    .filter(c => { const k = c.email.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true })
+    .slice(0, 8)
+  const lasts = to.map(c => lastName(c.name))
+  const names = to.map((c, i) => `Coach ${lasts.filter(l => l === lasts[i]).length > 1 ? String(c.name).trim() : lasts[i]}`)
+  const greeting = !names.length ? 'Coach'
+    : names.length === 1 ? names[0]
+    : names.length === 2 ? `${names[0]} and ${names[1]}`
+    : `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`
   const pick = c => ({ name: c.name, title: c.title || null, email: c.email })
-  const greet = heads.length ? heads : to
-  return {
-    to: to.map(pick), cc: cc.map(pick),
-    greeting: greet.length ? greet.map(c => `Coach ${lastName(c.name)}`).join(' and ') : 'Coach',
-  }
+  return { to: to.map(pick), cc: [], greeting }
 }
 const programHead = s => ({ school_id: s.id, school: s.school, gender: s.program_gender, division: s.division, conference: s.conference })
 const SCHOOL_INPUT = {
@@ -750,8 +760,8 @@ function buildToolSet(db, log, ctx) {
 
     outreach_facts: tool({
       description: 'Everything needed to draft a first outreach email from a recruit to ONE program\'s coaches: the program (division, conference, city, state), ' +
-        'who to address (to: the head coach; cc: the goalkeeper coach and the recruiting coordinator when listed; only published email addresses), ' +
-        'the greeting to use, the current roster at the player\'s position by class year, and the last two seasons\' records. ' +
+        'who to address (to: every coach on the staff with a published email address, head coach first), ' +
+        'the greeting naming each of them, the current roster at the player\'s position by class year, and the last two seasons\' records. ' +
         'Use it whenever asked to draft, write or prepare an email or message to a program or its coaches.',
       inputSchema: z.object({ ...SCHOOL_INPUT, position: z.enum(['GK', 'D', 'M', 'F']).optional().describe('The player\'s position, when known') }),
       execute: run('outreach_facts', async (a) => {
@@ -1040,20 +1050,28 @@ function instructions() {
     `- Positions: ${POSITIONS.map(p => `${p.code}=${p.one}`).join(', ')}. Divisions: ${DIVISIONS.join(', ')}.`,
     '',
     'OUTREACH EMAILS ("draft an email to Dayton", "write to the Toledo coaches", the Draft an email button)',
-    '- A first email needs four things: the player\'s name, graduating class, position, and club team (club and team or league). Look for them anywhere in the conversation, including quick quiz answers and earlier drafts, and reuse them; never ask again for something already given.',
-    '- If any of the four is missing, ask for the missing ones in ONE short message, and in the same message invite the optional details: high school, GPA, SAT or ACT score, highlight video link, upcoming tournaments or showcases (event and dates), and a phone number. Say the optional ones can be skipped. Call no look-ups, and stop (STATUS: clarify). When they reply, draft the email for the program they asked about.',
+    '- A first email needs four things: the player\'s name, graduating class, position, and club team (club and team or league). Look for them anywhere in the conversation, including quick quiz answers and earlier drafts, and reuse everything already given; never ask again for something already given.',
+    '- If any of the four is missing, ask for the missing ones in ONE short message, and in the same message invite the optional details as a short bulleted list: hometown; high school; GPA; SAT or ACT score; two to four strengths as a player; highlight video link; a full-game video link with jersey color and number; high school season stats or honors; school activities or honor societies; recruiting profile link; schedule link or upcoming events (event and dates); club coach and high school coach name and email or phone, for coaches to contact; the player\'s phone number. Say any of them can be skipped. Call no look-ups, and stop (STATUS: clarify). When they reply, draft the email for the program they asked about.',
     '- With the four known: call outreach_facts (school, gender, position) and, at the same time, programs_watching_team with school. If an intended major was given, also call program_majors with search to check the college offers it.',
-    '- Write the email in the PLAYER\'s voice (first person; the player sends it from their own email), 120 to 200 words, plain text with no Markdown inside it. Sincere and specific, no flattery. In order: the greeting from outreach_facts; who I am (name, class, position, club team and league, high school if given); why this program, with one or two true specifics from the look-ups (conference, location, the major if program_majors shows it, a winning season or RPI rank from recent_seasons, or the roster at the position, for example a senior goalkeeper graduating, only when position_roster shows it); academics if given; the highlight video link if given; upcoming events if given; a clear close asking the staff to evaluate them or to learn more about the program; sign-off with name, class, position, club team, and the phone number if given.',
-    '- If programs_watching_team shows this program\'s coaches at the family\'s games, add one line thanking that coach by name for coming to watch. If it finds no team or asks which team, ignore it and do not ask.',
+    '- Write the email in the PLAYER\'s voice (first person; the player sends it from their own email), plain text with no Markdown inside it, at most about 350 words. Sincere and specific, no flattery. Use these parts in this order, leaving out any part whose details were not given:',
+    '  1. "Dear " + the greeting from outreach_facts + ",".',
+    '  2. Who I am: name, position, hometown if given, and that I am writing in hopes of being considered for the recruiting class of <class> at <program>.',
+    '  3. Why this program, with one or two true specifics from the look-ups (conference, location, the major if program_majors shows it, a winning season or RPI rank from recent_seasons, or the roster at the position, for example a senior goalkeeper graduating, only when position_roster shows it).',
+    '  4. Club team, and the strengths given.',
+    '  5. The highlight video link; the full-game link with jersey color and number.',
+    '  6. School: high school, activities, GPA, test score, season stats and honors.',
+    '  7. Recruiting profile link and schedule or upcoming events; a request to talk and learn more about the program.',
+    '  8. If coach contacts were given: "If you would like to contact my coaches:" then one line per coach (role - name | email | phone).',
+    '  9. Thanks, then the sign-off on separate lines: name, "<class> <position>", club team, phone number if given.',
+    '- If programs_watching_team shows this program\'s coaches at the family\'s games, add one line in part 3 thanking that coach by name for coming to watch. If it finds no visit, no team, or asks which team, leave it out and do not mention it anywhere.',
     '- Never mention PitchSide, estimates, openings, transfers or other players in the email. Never mention a losing record. Never invent a statistic, date, event, link, phone number or email address. Leave out anything not given; never write blanks or [brackets].',
-    '- Format the draft EXACTLY like this, after one short sentence introducing it:',
+    '- Format the draft EXACTLY like this, after one short sentence introducing it (who it is addressed to; do not describe the look-ups):',
     '  ---EMAIL---',
-    '  To: the email addresses from outreach_facts "to", separated by commas',
-    '  Cc: the email addresses from outreach_facts "cc" (leave this line out when there are none)',
-    '  Subject: <class> <position word> | <player name> | <club team>, for example "2028 Goalkeeper | Jane Smith | Ohio Premier ECNL"',
+    '  To: every email address in outreach_facts "to", separated by commas',
+    '  Subject: <player name> | <class> <position word> | <club team>, for example "Jane Smith | 2028 Goalkeeper | Ohio Premier 2010 ECNL"',
     '  (a blank line, then the email body)',
     '  ---END EMAIL---',
-    '- If outreach_facts has no email address, leave out the To and Cc lines and say PitchSide has no published email for this staff; suggest the program\'s athletics site.',
+    '- If outreach_facts has no email address, leave out the To line and say PitchSide has no published email for this staff; suggest the program\'s athletics site.',
     '- After the draft, one short line: read it over and make it your own before sending. The 120-word limit below does not count the email. STATUS: answered. FOLLOW-UPS: offer drafts for other programs from the conversation ("Draft an email to Ball State").',
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
