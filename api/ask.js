@@ -12,6 +12,7 @@ import { styleReason } from '../src/lib/styleFilter.js'
 import { eventKey, isShowcase, pickEvent, gameLine, inviteList } from '../src/lib/eventInvites.js'
 import { recruitingYear } from '../src/lib/recruitingYear.js'
 import { similarPrograms } from '../src/lib/similarPrograms.js'
+import { soccerFacts } from '../src/lib/soccerFacts.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 import { summarizeUsage } from '../server/ask/usage.js'
@@ -1058,6 +1059,14 @@ function buildToolSet(db, log, ctx) {
       }),
     }),
 
+    college_soccer_facts: tool({
+      description: 'Dated, sourced college soccer facts PitchSide may quote: official NCAA program counts by division (2025-26), Division I scholarship and roster-limit rules from 2025-26, ' +
+        'Division II scholarship limits, Division III aid, the share of athletes who get athletic aid, and the odds of playing in college. ' +
+        'Use for "how many scholarships", "are there scholarship limits", "how many NCAA programs are there", "what are the odds of playing in college".',
+      inputSchema: z.object({}),
+      execute: run('college_soccer_facts', async () => soccerFacts()),
+    }),
+
     division_facts: tool({
       description: 'Live counts and typical rosters from PitchSide\'s own data: how many active programs there are by division and men\'s / women\'s, ' +
         'and for the latest roster season the typical (median) roster size, goalkeepers per roster, and international and in-state shares per program. ' +
@@ -1107,7 +1116,7 @@ function buildToolSet(db, log, ctx) {
           active_programs: counts,
           roster_season: season,
           typical_rosters: typical,
-          note: 'Counts are the active programs PitchSide tracks (NCAA D1 to D3, NAIA and junior colleges). Roster figures are per program for the latest roster season: the median program, the middle half, and for international share also the average across programs. Scholarship and roster-limit rules are not in PitchSide.',
+          note: 'Counts are the active programs PitchSide tracks (NCAA D1 to D3, NAIA and junior colleges). Roster figures are per program for the latest roster season: the median program, the middle half, and for international share also the average across programs. Official NCAA counts and scholarship rules: college_soccer_facts.',
         }
       }),
     }),
@@ -1438,7 +1447,7 @@ function instructions() {
     '- After the draft, one short line: read it over and make it your own before sending. The 120-word limit below does not count the email. STATUS: answered. FOLLOW-UPS: offer drafts for other programs from the conversation ("Draft an email to Ball State").',
     '',
     'NUMBERS AND SIMILAR PROGRAMS',
-    '- "How many D1 women\'s programs are there", roster sizes, goalkeepers per roster, international or in-state share by division: call division_facts and quote its figures (median and middle half as given; say "per program" for shares). Scholarship and roster-limit rules are not in PitchSide; say so and point to the NCAA, NAIA or NJCAA.',
+    '- "How many D1 women\'s programs are there", roster sizes, goalkeepers per roster, international or in-state share by division: call division_facts and quote its figures (median and middle half as given; say "per program" for shares). For official NCAA program counts, scholarships, roster limits, athletic aid shares and the odds of playing in college, call college_soccer_facts and quote each fact with its source and date; when PitchSide\'s own count differs from the NCAA\'s, give both and say PitchSide counts the programs it tracks. Anything not in college_soccer_facts (including NAIA and junior college limits): say so and point to the NCAA, NAIA or NJCAA, or the college\'s compliance office.',
     '- "More like this", "schools like X", "other schools in the same conference": call similar_programs. The cards show the list; name the top three with their reasons in one sentence each, and offer the other tools (a shortlist with Reach / Good fit / Safety, an email, a call sheet).',
     '',
     'RECRUITING YEAR ("what should we be doing now", "what is the timeline", "when can coaches contact her")',
