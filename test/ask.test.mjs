@@ -470,4 +470,51 @@ async function run(tool, input) {
   assert.equal(r.programs[0].event_name, 'Winter Showcase')
 }
 
+// visit and action awards: checked colleges, none published, not checked
+{
+  const y = new Date().getUTCFullYear()
+  const A = { ...tables,
+    college_action_awards: [
+      { id: 1, unitid: 102, award_type: 'visit', name: 'Visit Award', amount: 2000, per_year: true, amount_total: 8000,
+        amount_text: '$2,000 a year ($8,000 over four years)', condition_text: 'Visit in person.', deadline: `${y + 1}-12-05`,
+        deadline_text: `Visit by Dec 5, ${y + 1}`, entry_year: y + 2, url: 'https://den.example/visit', checked: `${y}-01-02`, confidence: 'high' },
+      { id: 2, unitid: 102, award_type: 'referral', name: 'Referral Award', amount: 500, per_year: false,
+        amount_text: '$500 one time', condition_text: 'Be referred.', deadline: `${y - 1}-11-01`,
+        deadline_text: `Referral by Nov 1, ${y - 1}`, url: 'https://den.example/ref', checked: `${y}-01-02`, confidence: 'high' },
+      { id: 3, unitid: 103, award_type: 'none_found', url: 'https://ken.example/aid', checked: `${y}-01-02`, confidence: 'high' },
+    ],
+  }
+  const go = async (tool, input) => { T.resetCache(); return T.buildTools(fakeDb(A), [], {})[tool].execute(input, { toolCallId: 't', messages: [] }) }
+
+  let r = await go('action_awards', { gender: 'W', schools: ['Denison', 'Kenyon', 'Vanderbilt'] })
+  const by = Object.fromEntries(r.programs.map(p => [p.school_id, p]))
+  assert.equal(by['den-w'].awards[0].type, 'Campus visit award', 'visit award first')
+  assert.equal(by['den-w'].awards[1].deadline_status, 'passed')
+  assert.equal(by['den-w'].card.value, '$2,000/yr')
+  assert.equal(by['ken-w'].nothing_published, true, 'checked, none published')
+  assert.deepEqual(r.not_checked_yet, ['Vanderbilt University'], 'never claimed to have none')
+  assert.equal(r.upcoming_deadlines.length, 1, 'only the open deadline')
+  assert.equal(r.with_awards, 1)
+
+  r = await go('action_awards', { gender: 'W', types: ['visit'] })
+  assert.deepEqual(r.programs.map(p => p.school_id), ['den-w'], 'list mode: only colleges with an award of that kind')
+
+  r = await go('find_programs', { gender: 'W', states: ['OH'] })
+  const den = r.programs.find(p => p.school_id === 'den-w')
+  assert.match(den.action_awards[0], /^Campus visit award: \$2,000 a year/, 'award lines on find_programs rows')
+  assert.equal(r.programs.find(p => p.school_id === 'ken-w').action_awards, undefined, 'none published: no line')
+  assert.ok(r.awards_note)
+
+  r = await go('program_profile', { school_id: 'ken-w' })
+  assert.equal(r.action_awards.nothing_published, true)
+  assert.equal(r.action_awards.page_checked, 'https://ken.example/aid')
+  r = await go('program_profile', { school_id: 'van-w' })
+  assert.equal(r.action_awards.checked, false)
+
+  // a missing table means no awards, never an error
+  T.resetCache()
+  r = await T.buildTools(fakeDb(tables), [], {}).find_programs.execute({ gender: 'W', states: ['OH'] }, { toolCallId: 't', messages: [] })
+  assert.ok(r.programs.length && r.programs.every(p => !p.action_awards))
+}
+
 console.log('ask.test.mjs: all assertions passed')

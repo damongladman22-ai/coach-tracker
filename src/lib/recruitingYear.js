@@ -21,6 +21,11 @@
  *    NCAA Eligibility Center (fall enrollees).
  * Rules change: every answer says to confirm with the NCAA's recruiting guide
  * for the division or the college's compliance office. Review each August.
+ *
+ * Junior and senior years also carry a step on campus visit grants (Chad's
+ * visit and action awards, 2026-10-15): many small colleges pay for a visit made
+ * by a deadline, often in November or December of senior year. The awards
+ * themselves come from the action_awards look-up, not from here.
  */
 
 export const RULES_AS_OF = '2025-26'
@@ -82,12 +87,14 @@ const STEPS = {
     'Promote yourself: email coaches with your schedule and video before each event, and follow up after.',
     'Prepare for phone calls with coaches: know your questions, and remember you are interviewing them too.',
     'Visit campuses (unofficial and official visits) and go to ID camps where the staff has shown interest.',
+    'Ask admissions at each college on your list whether it gives a campus visit grant: some pay $1,000 or more a year for a visit made by a deadline, often in the fall of senior year.',
     'Narrow your list: start from about 20 schools and keep subtracting.',
     'Share your NCAA ID with schools recruiting you, and ask your counselor to upload your transcript at the end of the year.',
     'Offers and commitments often start this year.',
   ],
   12: [
     'Narrow to your top 3 to 5 and set your own timeline; understand each coach\'s timeline too.',
+    'Check campus visit grant deadlines for the colleges on your list: several fall in November and December of senior year.',
     'Apply to the colleges on your list; take official and overnight visits.',
     'File the FAFSA in the fall and compare financial aid packages side by side.',
     'Commit, and tell the other coaches you have been talking with.',

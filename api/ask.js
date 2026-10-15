@@ -13,6 +13,7 @@ import { eventKey, isShowcase, pickEvent, gameLine, inviteList } from '../src/li
 import { recruitingYear } from '../src/lib/recruitingYear.js'
 import { similarPrograms } from '../src/lib/similarPrograms.js'
 import { soccerFacts } from '../src/lib/soccerFacts.js'
+import { AWARDS_SCOPE, AWARDS_NOTE, TYPE_LABEL, awardsByUnit, collegeAwards, shortLine, cardValue, upcomingDeadlines } from '../src/lib/actionAwards.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 import { summarizeUsage } from '../server/ask/usage.js'
@@ -192,6 +193,47 @@ function strengthData(db) {
   return STRENGTH_LOADING
 }
 
+// Visit and action awards (src/lib/actionAwards.js) from college_action_awards,
+// a small curated table; cached like REF, and a load under way is shared. A
+// missing or unreadable table means no awards listed, never an error.
+let AWARDS = null, AWARDS_LOADING = null
+function awardsData(db) {
+  if (AWARDS && Date.now() - AWARDS.at < 15 * 60 * 1000) return Promise.resolve(AWARDS.map)
+  if (!AWARDS_LOADING) {
+    AWARDS_LOADING = (async () => {
+      let rows = []
+      try {
+        rows = await allRows(() => db.from('college_action_awards')
+          .select('id,unitid,award_type,name,amount,per_year,amount_total,amount_text,condition_text,deadline,deadline_text,entry_year,url,checked,confidence')
+          .order('id'))
+      } catch { rows = [] }
+      const map = awardsByUnit(rows)
+      AWARDS = { at: Date.now(), map }
+      return map
+    })().finally(() => { AWARDS_LOADING = null })
+  }
+  return AWARDS_LOADING
+}
+const DEADLINE_WORDS = { passed: 'passed', soon: 'coming up within 30 days', open: 'open', none: 'no deadline stated' }
+// One college's awards as the model reads them (program_profile, call_prep_facts).
+function awardsView(map, unitid) {
+  const today = new Date().toISOString().slice(0, 10)
+  const list = map?.get(Number(unitid))
+  const c = collegeAwards(list, today)
+  if (!c.checked) return { checked: false, note: `PitchSide has not checked this college's visit and action awards yet (checked so far: ${AWARDS_SCOPE}).` }
+  return {
+    checked_on: c.checked_on,
+    nothing_published: c.nothing_published || undefined,
+    page_checked: c.nothing_published ? (list.find(a => a.type === 'none_found')?.url || undefined) : undefined,
+    awards: c.awards.map(awardOut),
+    note: AWARDS_NOTE,
+  }
+}
+const awardOut = a => ({
+  type: a.label, name: a.name, amount: a.amount_text, what_to_do: a.condition,
+  deadline: a.deadline_text, deadline_status: DEADLINE_WORDS[a.status], entry_year: a.entry_year, official_page: a.url,
+})
+
 // Loads every question's search may need, started as soon as a question
 // arrives so they run while the model is still planning its first step.
 // Best effort: a failure here is retried by the look-up that needs it.
@@ -199,6 +241,7 @@ function warmUp(db) {
   refData(db).then(ref => programPointsFor(db, ref)).catch(() => {})
   majorCatalog(db).catch(() => {})
   strengthData(db).catch(() => {})
+  awardsData(db).catch(() => {})
 }
 // A promise whose failure is reported only where it is awaited.
 const quiet = p => { p.catch(() => {}); return p }
@@ -478,6 +521,7 @@ function buildToolSet(db, log, ctx) {
         const refP = quiet(refData(db))
         const wantFit = a.student_sat != null || !!a.divisions?.length
         const strengthP = wantFit ? quiet(strengthData(db)) : null
+        const awardsP = awardsData(db).catch(() => new Map())
         const locP = a.near ? quiet(locate(db, a.near)) : null
         const latestP = openings ? quiet((async () => {
           const { data: lat } = await db.from('program_openings_outlook').select('current_season')
@@ -610,6 +654,8 @@ function buildToolSet(db, log, ctx) {
         if (sort !== 'openings') out.sort(cmp)
 
         const n = Math.min(a.limit || MAX_ROWS, MAX_ROWS)
+        const awards = await awardsP
+        const today = new Date().toISOString().slice(0, 10)
         const toRow = ({ r, s, f, majorNote, dist, fit }) => {
           const row = {
             school_id: r.school_id, school: s.school, division: s.division, conference: s.conference, state: stateAbbr(s.state),
@@ -621,6 +667,8 @@ function buildToolSet(db, log, ctx) {
           if (dist != null) row.distance_miles = Math.round(dist)
           if (majorNote) row.major = majorNote
           if (fit) row.fit = { tier: fit.tier, label: fit.label, why: fit.why }
+          const aw = collegeAwards(awards.get(ref.unitOf.get(r.school_id)), today)
+          if (aw.checked && !aw.nothing_published) row.action_awards = aw.awards.map(x => shortLine(x, today))
           if (openings) {
             Object.assign(row, {
               est_freshman_openings: round(r.est_freshman), est_total_openings: round(r.est_spots),
@@ -675,6 +723,7 @@ function buildToolSet(db, log, ctx) {
           }
         }
 
+        const rows = out.slice(0, n).map(toRow)
         return {
           matched: out.length,
           highlights: highlightsFor(out, { center, openings }),
@@ -691,7 +740,8 @@ function buildToolSet(db, log, ctx) {
           without_location: center && noLocation ? noLocation : undefined,
           academics_note: 'Admission rate, average SAT, graduation rate, net price, median earnings 10 years after starting (former students who received federal aid) and median debt at graduation (federal loans of completers) are from the U.S. College Scorecard (2026 release). GPA is not available.',
           asked_about: asked,
-          programs: out.slice(0, n).map(toRow),
+          awards_note: rows.some(x => x.action_awards) ? `action_awards: ${AWARDS_NOTE} Checked so far: ${AWARDS_SCOPE}.` : undefined,
+          programs: rows,
         }
       }),
     }),
@@ -884,7 +934,7 @@ function buildToolSet(db, log, ctx) {
         const s = p.s
         const ref = await refData(db)
         const f = ref.facts.get(s.id) || null
-        const [co, ros, hist, outlook, style, res] = await Promise.all([
+        const [co, ros, hist, outlook, style, res, awardsMap] = await Promise.all([
           db.from('coaches').select('first_name, last_name, title').eq('school_id', s.id).eq('is_active', true),
           db.from('college_rosters').select('roster_season, class_year').eq('school_id', s.id).eq('position', a.position)
             .eq('is_active', true).order('roster_season', { ascending: false }).limit(60),
@@ -896,6 +946,7 @@ function buildToolSet(db, log, ctx) {
           db.from('program_recruiting_style').select('*').eq('school_id', s.id).maybeSingle(),
           db.from('program_results').select('season, wins, losses, ties, conf_wins, conf_losses, conf_ties, rpi_rank')
             .eq('school_id', s.id).order('season', { ascending: false }).limit(2),
+          awardsData(db).catch(() => null),
         ])
         if (co.error) throw new Error(co.error.message)
         const staff = (co.data || []).map(c => ({ name: `${c.first_name} ${c.last_name}`.trim(), title: c.title }))
@@ -958,6 +1009,7 @@ function buildToolSet(db, log, ctx) {
             graduation_rate: f.graduation_rate ?? null, sat_average: f.sat_average ?? null, admission_rate: f.admission_rate ?? null,
             avg_net_price: f.avg_net_price ?? null, undergrads: f.undergrad_enrollment ?? null, type: controlLabel(f.control),
             median_earnings_10yr: f.median_earnings_10yr ?? null, median_debt: f.median_debt ?? null,
+            action_awards: awardsView(awardsMap, ref.unitOf.get(s.id)),
           } : null,
           note: 'Openings are estimates; incoming commits are not known. Position counts are pooled across seasons, never individual players; traced transfers are minimums.',
         }
@@ -1003,7 +1055,8 @@ function buildToolSet(db, log, ctx) {
     program_profile: tool({
       description: 'Profile facts for one program: location and division, recruiting style (freshmen vs transfers, in-state reach, ' +
         'international share, roster stability, each read against similar programs), expected early-departure rate, ' +
-        'and campus facts from the U.S. College Scorecard (undergraduates, average net price, admission rate, average SAT, graduation rate). ' +
+        'and campus facts from the U.S. College Scorecard (undergraduates, average net price, admission rate, average SAT, graduation rate), ' +
+        'plus any campus visit or other action award the college publishes (action_awards). ' +
         'Pass "near" (the family\'s town and state, or ZIP) to get distance_miles from home.',
       inputSchema: z.object({ ...SCHOOL_INPUT, near: z.string().optional().describe('A town with its state or a ZIP code; adds distance_miles') }),
       execute: run('program_profile', async (a) => {
@@ -1018,12 +1071,13 @@ function buildToolSet(db, log, ctx) {
             if (pt) distance = { distance_miles: Math.round(milesBetween(loc.point, pt)), from: loc.point.name, note: 'Straight-line miles; driving distance is longer.' }
           }
         }
-        const [s, style, dep, link] = await Promise.all([
+        const [s, style, dep, link, awardsMap] = await Promise.all([
           db.from('schools').select('school, program_gender, division, conference, city, state').eq('id', school_id).maybeSingle(),
           db.from('program_recruiting_style').select('build_band, reach_band, abroad_band, stability_band').eq('school_id', school_id).maybeSingle(),
           db.from('program_departure_outlook').select('outlook_rate, transitions, basis').eq('school_id', school_id).maybeSingle(),
           db.from('school_federal_college').select('unitid, college_facts(federal_name, undergrad_enrollment, avg_net_price, cost_of_attendance, admission_rate, sat_average, graduation_rate, locale, control, median_earnings_10yr, median_debt, median_debt_monthly)')
             .eq('school_id', school_id).maybeSingle(),
+          awardsData(db).catch(() => null),
         ])
         if (!s.data) return { error: 'No program with that id.' }
         return {
@@ -1035,6 +1089,7 @@ function buildToolSet(db, log, ctx) {
           } : null,
           expected_early_departure_rate: dep.data ? { rate: round(dep.data.outlook_rate, 3), seasons_tracked: dep.data.transitions, basis: dep.data.basis } : null,
           college_facts: link.data?.college_facts || null,
+          action_awards: link.data?.unitid != null ? awardsView(awardsMap, link.data.unitid) : undefined,
           distance: distance || undefined,
         }
       }),
@@ -1055,6 +1110,78 @@ function buildToolSet(db, log, ctx) {
           matched: list.length,
           note: list.length ? 'Ranked by how many ways each program is like it; reasons in "why".' : 'No similar programs found in the same division.',
           programs: list.map(x => ({ ...x, state: stateAbbr(x.state), card: { value: x.distance_miles != null ? `${x.distance_miles} mi` : '—', label: 'from it' } })),
+        }
+      }),
+    }),
+
+    action_awards: tool({
+      description: 'Small awards colleges publish on their own websites for an ACTION a family can take: a campus visit (visit grants), filing the FAFSA, ' +
+        'a referral, applying by a date, or attending an event, with the amount, what to do, the deadline (and whether it has passed) and the official page. ' +
+        `Checked so far: ${AWARDS_SCOPE}; any other college comes back as not checked yet. ` +
+        'Use for "which colleges pay me to visit", "visit grants", "money for visiting campus", "FAFSA grant", "award deadlines", and for the programs on the family\'s list.',
+      inputSchema: z.object({
+        gender: z.enum(['M', 'W']).optional().describe('M = men\'s program, W = women\'s program'),
+        schools: z.array(z.string()).optional().describe('College names or school_ids from the conversation (their list). Leave out to list every checked college with an award'),
+        states: z.array(z.string()).optional().describe('Two-letter state codes to keep, e.g. ["OH"]'),
+        divisions: z.array(z.enum(DIVISIONS)).optional(),
+        types: z.array(z.enum(['visit', 'fafsa', 'referral', 'apply_by', 'event'])).optional().describe('Kinds of award to keep; default all'),
+      }),
+      execute: run('action_awards', async (a) => {
+        const [ref, awards] = await Promise.all([refData(db), awardsData(db)])
+        const today = new Date().toISOString().slice(0, 10)
+        const types = a.types?.length ? a.types : null
+        const byList = !!a.schools?.length
+        let picked = []
+        const unmatched = []
+        if (byList) {
+          for (const name of a.schools.slice(0, 12)) {
+            let hit = ref.byId.has(name) ? [ref.byId.get(name)] : matchSchools(ref, name, a.gender)
+            if (hit.length > 1) {
+              const flagship = hit.filter(h => norm(h.school) === `university of ${norm(name)}`)
+              if (flagship.length === 1) hit = flagship
+            }
+            if (!hit.length) { unmatched.push(name); continue }
+            picked.push(...hit.slice(0, 2))
+          }
+        } else {
+          const sts = a.states?.length ? new Set(a.states.map(x => x.toUpperCase())) : null
+          const divs = a.divisions?.length ? new Set(a.divisions) : null
+          picked = ref.schools.filter(s => (!a.gender || s.program_gender === a.gender) &&
+            (!sts || sts.has(stateAbbr(s.state))) && (!divs || divs.has(s.division)) && awards.has(ref.unitOf.get(s.id)))
+        }
+        const seen = new Set(), notChecked = [], programs = []
+        for (const s of picked) {
+          const unit = ref.unitOf.get(s.id)
+          // Without a gender, one program per college (the awards are the college's).
+          const key = a.gender || byList ? s.id : `u${unit ?? s.id}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          const c = collegeAwards(awards.get(unit), today, types)
+          if (!c.checked) { notChecked.push(s.school); continue }
+          if (!byList && c.nothing_published) continue
+          const top = c.awards[0]
+          programs.push({
+            school_id: s.id, school: s.school, gender: s.program_gender, division: s.division, conference: s.conference, state: stateAbbr(s.state),
+            checked_on: c.checked_on,
+            nothing_published: c.nothing_published || undefined,
+            awards: c.awards.map(awardOut),
+            card: top ? { value: cardValue(top), label: (TYPE_LABEL[top.type] || 'award').toLowerCase() } : { value: '—', label: 'none published' },
+            _awards: c.awards,
+            _top: top ? (top.per_year === false ? (top.amount || 0) / 4 : top.amount || 0) : -1,
+          })
+        }
+        if (!byList) programs.sort((x, y) => y._top - x._top || String(x.school).localeCompare(String(y.school)))
+        const upcoming = upcomingDeadlines(programs.map(p => ({ school: p.school, awards: p._awards })), today)
+        for (const p of programs) { delete p._awards; delete p._top }
+        return {
+          checked_so_far: AWARDS_SCOPE,
+          matched: programs.length,
+          with_awards: programs.filter(p => !p.nothing_published).length,
+          upcoming_deadlines: upcoming.length ? upcoming.map(u => ({ school: u.school, award: u.name, amount: u.amount_text, deadline: u.deadline_text, days_left: u.days_left })) : undefined,
+          not_checked_yet: notChecked.length ? notChecked : undefined,
+          no_program_matched: unmatched.length ? unmatched : undefined,
+          note: AWARDS_NOTE,
+          programs: programs.slice(0, MAX_ROWS),
         }
       }),
     }),
@@ -1451,7 +1578,15 @@ function instructions() {
     '- "More like this", "schools like X", "other schools in the same conference": call similar_programs. The cards show the list; name the top three with their reasons in one sentence each, and offer the other tools (a shortlist with Reach / Good fit / Safety, an email, a call sheet).',
     '',
     'RECRUITING YEAR ("what should we be doing now", "what is the timeline", "when can coaches contact her")',
-    '- Needs the graduating class; take it from the conversation, else ask in one short question and stop. Call recruiting_year (hs_class, gender). Answer with where they are (now), the steps for this year as a short list (this_year, in your words but adding nothing), the key dates (say which have passed), the commitment timing if given, and one line with the source. Offer follow-ups PitchSide can run (a shortlist, an outreach email, an event invite list).',
+    '- Needs the graduating class; take it from the conversation, else ask in one short question and stop. Call recruiting_year (hs_class, gender). Answer with where they are (now), the steps for this year as a short list (this_year, in your words but adding nothing), the key dates (say which have passed), the commitment timing if given, and one line with the source. If the conversation already names programs on their list, also call action_awards with them at the same time and add each open award deadline (from upcoming_deadlines) to the key dates. Offer follow-ups PitchSide can run (a shortlist, an outreach email, an event invite list).',
+    '',
+    'VISIT AND ACTION AWARDS ("which colleges pay me to visit", "visit grants", "money for visiting", "FAFSA grant", "award deadlines")',
+    '- Call action_awards: schools = the programs named in the conversation (their shortlist) when there are any, else states, divisions and gender from the conversation.',
+    '- For each program with awards: the award name, the amount, what to do, and the deadline with its deadline_status (say plainly when it has passed); link the official page as [college page](official_page). Lead with the soonest open deadlines (upcoming_deadlines). Then one line: these come from each college\'s own website (checked on checked_on); amounts and deadlines change every year, so confirm with the admissions office.',
+    '- nothing_published: the college publishes no such award on its website (as of checked_on). not_checked_yet: PitchSide has not checked that college yet (so far it has checked checked_so_far); suggest asking its admissions office whether it gives a visit grant. Never say a college has no award when it was not checked.',
+    '- An athletic official visit counts only when what_to_do says so; otherwise suggest asking admissions whether a visit with the coaches counts.',
+    '- Grants for also considering a rival or conference school, or matching another college\'s offer: none of the colleges PitchSide has checked publishes one. Say so, and suggest asking each admissions office whether it will review offers from other colleges.',
+    '- When find_programs rows carry action_awards, mention them in a few words for the programs you recommend (for example "pays $2,000 a year for a campus visit by Dec 5, 2026"). In the quick quiz, add the nearest open award deadline of a shortlisted program to the "This year" list.',
     '',
     'EVENT INVITES ("who should I invite to the Florida showcase", "which coaches should I invite to watch me", "invite coaches to my event")',
     '- Call event_invite_facts (event words, and team if they name one). If it returns event_choices or team_choices, ask which one in one short message listing them, and stop (STATUS: clarify).',
@@ -1462,7 +1597,7 @@ function instructions() {
     'CALL PREP ("prepare me for a call with Dayton", "what should I ask the Toledo coach", the Prepare for a call button)',
     '- Needs the player\'s position and graduating class; take them from anywhere in the conversation (quiz answers, earlier messages). If either is missing, ask for it in one short question and stop (STATUS: clarify).',
     '- Call call_prep_facts (school, gender, position, hs_class). Then write a call sheet, at most about 350 words, in two parts:',
-    '  ### What PitchSide already knows: four to seven short bullets from the look-up only, quoting its counts and words (never work out a percentage or a class year yourself): the roster at the position by class year and, from when_you_arrive, who is still there in the player\'s freshman fall; the estimated freshman openings for the class (say estimated); how players at the position have stayed or moved on and how newcomers arrived; the recruiting style; the latest results; graduation rate and academics; the head coach, and for goalkeepers whether a goalkeeper coach is listed. Leave out anything the look-up does not have.',
+    '  ### What PitchSide already knows: four to seven short bullets from the look-up only, quoting its counts and words (never work out a percentage or a class year yourself): the roster at the position by class year and, from when_you_arrive, who is still there in the player\'s freshman fall; the estimated freshman openings for the class (say estimated); how players at the position have stayed or moved on and how newcomers arrived; the recruiting style; the latest results; graduation rate and academics; the head coach, and for goalkeepers whether a goalkeeper coach is listed; any campus visit or other award in campus.action_awards with its deadline (say if it has passed). Leave out anything the look-up does not have.',
     '  ### Questions to ask: eight to twelve questions in short groups (Your position and class; Team and coaching; Academics and support; Recruiting process and next steps). Make two or three of them follow from the facts above, using when_you_arrive for who will still be there (for example, with one goalkeeper who would be a senior: "How do you see the goalkeeper group in my freshman year?"; with mostly transfer newcomers: "How many freshmen do you plan to bring in for my class?"). Never describe current players as still ahead of the player unless when_you_arrive says they will still be there. For goalkeepers include: what they look for in a goalkeeper, how many goalkeepers they are recruiting in the class, and when they expect to make offers at the position. Always include asking where the player stands in their recruiting and what the next steps are, what a typical in-season and off-season week looks like, how academics and travel are handled, and, only if the conversation names an intended major, how athletes do in that major. For NCAA D3 programs ask about merit and need-based aid instead of athletic scholarships.',
     '- End with one line: the call is a two-way interview, so take notes and ask what matters to you. No disclaimers about NCAA rules. STATUS: answered. FOLLOW-UPS: offer an email draft to the same program, a call sheet for another program, or a related look-up.',
     '',
@@ -1776,4 +1911,4 @@ export default async function handler(req, res) {
 }
 
 // For test/ask.test.mjs only (no network): the pieces that can be checked offline.
-export const _internals = { outreachAddresses, modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; REF_LOADING = null; CATALOG = null; STRENGTH = null; STRENGTH_LOADING = null } }
+export const _internals = { outreachAddresses, modelView, buildTools, readStatus, visibleAnswer, confMatcher, cardMetric, resetCache: () => { REF = null; REF_LOADING = null; CATALOG = null; STRENGTH = null; STRENGTH_LOADING = null; AWARDS = null; AWARDS_LOADING = null } }

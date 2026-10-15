@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { AWARDS_NOTE, collegeAwards } from '../../lib/actionAwards.js'
 
 /**
  * CampusAndCost — the college behind the program, from the U.S. Department of
@@ -13,6 +14,11 @@ import { useMemo, useState } from 'react'
  * The federal college is named on the card because several programs share one
  * (men's and women's teams; branch campuses reported with their parent; the
  * Pennsylvania schools that merged in 2022).
+ *
+ * Visit and action awards (2026-10-15): campus visit grants and other awards the
+ * college publishes for an action (FAFSA, referral, applying by a date, an
+ * event), curated from its own website. Shown only for colleges PitchSide has
+ * checked; a checked college with none says so, with the page checked.
  */
 
 const LOCALE = {
@@ -48,6 +54,53 @@ function Tile({ value, label, sub }) {
       <span className="cp-cc-tv cp-num">{value}</span>
       <span className="cp-cc-tl">{label}</span>
       {sub ? <span className="cp-cc-ts">{sub}</span> : null}
+    </div>
+  )
+}
+
+const STATUS = { passed: 'Passed', soon: 'Coming up', open: 'Open' }
+function dateWords(d) {
+  if (!d) return null
+  const [y, m, day] = d.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, day)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+}
+
+function Awards({ awards }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const c = collegeAwards(awards, today)
+  if (!c.checked) return null
+  const checked = dateWords(c.checked_on)
+  const page = awards.find(a => a.type === 'none_found')?.url
+  return (
+    <div className="cp-cc-awards">
+      <p className="cp-eyebrow">Visit and action awards</p>
+      {c.nothing_published ? (
+        <p className="cp-cc-awnone">
+          PitchSide checked this college&rsquo;s website{checked ? ` on ${checked}` : ''} and found no published award for a campus visit, filing the FAFSA, a referral or applying early.
+          {' '}Ask the admissions office whether it offers one.
+          {page && <> <a href={page} target="_blank" rel="noreferrer">Page checked</a></>}
+        </p>
+      ) : (
+        <ul className="cp-cc-awlist">
+          {c.awards.map((a, i) => (
+            <li key={i} className="cp-cc-aw">
+              <div className="cp-cc-awhead">
+                <span className="cp-cc-awname">{a.label}{a.name ? <span className="cp-cc-awsub"> &middot; {a.name}</span> : null}</span>
+                <span className="cp-cc-awamt">{a.amount_text}</span>
+              </div>
+              {a.condition && <p className="cp-cc-awcond">{a.condition}</p>}
+              <div className="cp-cc-awmeta">
+                {a.deadline_text && <span>{a.deadline_text}</span>}
+                {STATUS[a.status] && <span className={`cp-cc-awpill cp-cc-awpill--${a.status}`}>{STATUS[a.status]}</span>}
+                {a.url && <a href={a.url} target="_blank" rel="noreferrer">Official page</a>}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      {!c.nothing_published && (
+        <p className="cp-cc-awfoot">{AWARDS_NOTE}{checked ? ` Checked ${checked}.` : ''}</p>
+      )}
     </div>
   )
 }
@@ -147,7 +200,7 @@ function Majors({ majors }) {
   )
 }
 
-export default function CampusAndCost({ facts, majors }) {
+export default function CampusAndCost({ facts, majors, awards }) {
   if (!facts) return null
   const f = facts
   const setting = LOCALE[f.locale] || null
@@ -218,6 +271,8 @@ export default function CampusAndCost({ facts, majors }) {
             sub={f.median_debt_monthly != null ? `about ${money(Math.round(f.median_debt_monthly))} a month over 10 years` : 'federal loans'} />
         </dl>
       </div>
+
+      <Awards awards={awards || []} />
 
       <Majors majors={majors || []} />
 

@@ -616,6 +616,24 @@
 .cp-cc-chev{font-size:16px; color:var(--slate); text-align:center}
 .cp-cc-progs{list-style:none; margin:0 0 10px; padding:0 0 0 2px; display:flex; flex-wrap:wrap; gap:6px}
 .cp-cc-progs li{font-size:12.5px; background:var(--paper); border:1px solid var(--line); border-radius:999px; padding:4px 10px; color:var(--ink)}
+.cp-cc-awards{border-top:1px solid var(--line); padding-top:16px; margin-bottom:20px}
+.cp-cc-awards .cp-eyebrow{margin-bottom:6px}
+.cp-cc-awnone{font-size:12.5px; color:var(--slate); line-height:1.5; margin:0}
+.cp-cc-awnone a, .cp-cc-awmeta a{color:var(--accent-deep); font-weight:600; text-decoration:none}
+.cp-cc-awnone a:hover, .cp-cc-awmeta a:hover{text-decoration:underline}
+.cp-cc-awlist{list-style:none; margin:0; padding:0}
+.cp-cc-aw{padding:10px 0; border-bottom:1px solid var(--line)}
+.cp-cc-aw:last-child{border-bottom:none}
+.cp-cc-awhead{display:flex; justify-content:space-between; align-items:baseline; gap:12px}
+.cp-cc-awname{font-size:13.5px; font-weight:600; color:var(--ink)}
+.cp-cc-awsub{font-weight:400; color:var(--slate)}
+.cp-cc-awamt{font-size:13.5px; font-weight:700; color:var(--ink); text-align:right}
+.cp-cc-awcond{font-size:12.5px; color:var(--slate); line-height:1.45; margin:4px 0 0}
+.cp-cc-awmeta{display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; margin-top:6px; font-size:12px; color:var(--slate-2)}
+.cp-cc-awpill{font-size:11px; font-weight:700; padding:1px 8px; border-radius:999px; border:1px solid var(--line); background:var(--paper); color:var(--slate)}
+.cp-cc-awpill--soon{border-color:var(--accent); color:var(--accent-deep); background:var(--accent-soft)}
+.cp-cc-awpill--passed{text-decoration:line-through}
+.cp-cc-awfoot{font-size:11.5px; color:var(--slate-2); margin:8px 0 0; line-height:1.5}
 .cp-cc-note{margin:16px 0 0; padding-top:12px; border-top:1px solid var(--line); font-size:11.5px; color:var(--slate-2); line-height:1.5}
 @media (max-width:900px){
   .cp-cc-tiles{grid-template-columns:repeat(2,1fr)}
@@ -626,4 +644,6 @@
   .cp-cc-search{margin-left:0; width:100%; min-width:0}
   .cp-cc-famrow{grid-template-columns:minmax(0,1fr) 60px 30px 16px; gap:8px}
   .cp-cc-links{display:flex; margin:6px 0 0}
+  .cp-cc-awhead{flex-direction:column; gap:2px}
+  .cp-cc-awamt{text-align:left}
 }

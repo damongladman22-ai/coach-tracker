@@ -231,7 +231,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             </div>
             {college.facts && (
               <div id="sec-campus" className="cp-anchor cp-sec">
-                <CampusAndCost facts={college.facts} majors={college.majors} />
+                <CampusAndCost facts={college.facts} majors={college.majors} awards={college.awards} />
               </div>
             )}
             <div id="sec-staff" className="cp-anchor cp-sec">

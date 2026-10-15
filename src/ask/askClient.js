@@ -57,6 +57,7 @@ const LOOKUP_LABEL = {
   event_invite_facts: () => 'Finding the event and the coaches to invite',
   recruiting_year: () => 'Checking the recruiting timeline for your class',
   similar_programs: () => 'Finding programs like it',
+  action_awards: () => 'Checking visit and action awards',
   division_facts: () => 'Counting programs and typical rosters',
   college_soccer_facts: () => 'Checking official NCAA figures',
   program_profile: () => 'Reading the program profile',
@@ -76,6 +77,7 @@ const SOURCE_LABEL = {
   event_invite_facts: 'Your club schedule and coach attendance logged at your games and events',
   recruiting_year: 'Recruiting timelines by grade; NCAA Guide for the College-Bound Student-Athlete 2025-26',
   similar_programs: 'PitchSide programs and U.S. College Scorecard',
+  action_awards: 'Each college\'s own website (visit and action awards, checked by PitchSide)',
   division_facts: 'PitchSide programs and current rosters',
   college_soccer_facts: 'NCAA.org and the NCAA Guide for the College-Bound Student-Athlete 2025-26',
   program_profile: 'Program profile and U.S. College Scorecard',
@@ -104,7 +106,7 @@ export function programCards(lookups) {
   const seen = new Set()
   for (const l of lookups || []) {
     const list = l.output?.programs
-    if (!Array.isArray(list) || !['find_programs', 'rank_by_results', 'programs_watching_team', 'event_invite_facts', 'similar_programs'].includes(l.tool)) continue
+    if (!Array.isArray(list) || !['find_programs', 'rank_by_results', 'programs_watching_team', 'event_invite_facts', 'similar_programs', 'action_awards'].includes(l.tool)) continue
     for (const p of list) {
       if (!p?.school_id || seen.has(p.school_id)) continue
       seen.add(p.school_id)

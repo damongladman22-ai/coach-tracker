@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { awardsByUnit } from '../../lib/actionAwards.js'
 
 /**
  * useCollegeFacts — the federal college behind this program, its College
@@ -10,6 +11,9 @@ import { useEffect, useState } from 'react'
  *   college_facts           one row per federal college
  *   college_majors          undergraduate programs with graduates in the two
  *                           most recent award years
+ *   college_action_awards   campus visit and other action awards the college
+ *                           publishes (curated; pipeline out_sql/31, 2026-10-15).
+ *                           Empty when the college has not been checked.
  *
  * Several programs can share one federal college (men's and women's teams;
  * campuses the federal data reports as one college), so the card names the
@@ -20,7 +24,8 @@ import { useEffect, useState } from 'react'
  *
  * Supabase returns numeric columns as strings, so every number is coerced.
  * Portable: takes the injected Supabase `client`; imports no app internals.
- * Returns { loading, error, facts, majors }.
+ * Returns { loading, error, facts, majors, awards } (awards: normalized rows
+ * from src/lib/actionAwards.js; a failed awards read leaves it empty).
  */
 const NUM = [
   'latitude', 'longitude', 'locale', 'control', 'predominant_degree', 'undergrad_enrollment',
@@ -37,15 +42,15 @@ function coerce(row) {
 }
 
 export function useCollegeFacts(client, schoolId) {
-  const [state, setState] = useState({ loading: false, error: null, facts: null, majors: [] })
+  const [state, setState] = useState({ loading: false, error: null, facts: null, majors: [], awards: [] })
 
   useEffect(() => {
     if (!client || !schoolId) {
-      setState({ loading: false, error: null, facts: null, majors: [] })
+      setState({ loading: false, error: null, facts: null, majors: [], awards: [] })
       return
     }
     let cancelled = false
-    setState({ loading: true, error: null, facts: null, majors: [] })
+    setState({ loading: true, error: null, facts: null, majors: [], awards: [] })
 
     ;(async () => {
       try {
@@ -57,16 +62,23 @@ export function useCollegeFacts(client, schoolId) {
         if (link.error) throw link.error
         const facts = coerce(link.data?.college_facts)
         if (!facts) {
-          setState({ loading: false, error: null, facts: null, majors: [] })
+          setState({ loading: false, error: null, facts: null, majors: [], awards: [] })
           return
         }
         // A large university lists 200+ programs; one request covers it.
-        const maj = await client.from('college_majors')
-          .select('cip_code, title, family_code, family_title, credential_level, graduates_2yr')
-          .eq('unitid', facts.unitid)
-          .limit(2000)
+        const [maj, aw] = await Promise.all([
+          client.from('college_majors')
+            .select('cip_code, title, family_code, family_title, credential_level, graduates_2yr')
+            .eq('unitid', facts.unitid)
+            .limit(2000),
+          client.from('college_action_awards')
+            .select('unitid, award_type, name, amount, per_year, amount_total, amount_text, condition_text, deadline, deadline_text, entry_year, url, checked, confidence')
+            .eq('unitid', facts.unitid)
+            .order('id'),
+        ])
         if (cancelled) return
         if (maj.error) throw maj.error
+        const awards = aw.error ? [] : (awardsByUnit(aw.data || []).get(Number(facts.unitid)) || [])
         const majors = (maj.data || []).map(m => ({
           cip: m.cip_code,
           title: m.title,
@@ -75,9 +87,9 @@ export function useCollegeFacts(client, schoolId) {
           level: Number(m.credential_level),
           graduates: m.graduates_2yr == null ? null : Number(m.graduates_2yr),
         }))
-        setState({ loading: false, error: null, facts, majors })
+        setState({ loading: false, error: null, facts, majors, awards })
       } catch (e) {
-        if (!cancelled) setState({ loading: false, error: e?.message || String(e), facts: null, majors: [] })
+        if (!cancelled) setState({ loading: false, error: e?.message || String(e), facts: null, majors: [], awards: [] })
       }
     })()
 
