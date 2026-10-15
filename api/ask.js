@@ -10,6 +10,7 @@ import { milesBetween } from '../src/lib/geo.js'
 import { strengthIndex, fitFor, tierCounts } from '../src/lib/fitTier.js'
 import { styleReason } from '../src/lib/styleFilter.js'
 import { eventKey, isShowcase, pickEvent, gameLine, inviteList } from '../src/lib/eventInvites.js'
+import { recruitingYear } from '../src/lib/recruitingYear.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 import { summarizeUsage } from '../server/ask/usage.js'
@@ -1031,6 +1032,17 @@ function buildToolSet(db, log, ctx) {
       }),
     }),
 
+    recruiting_year: tool({
+      description: 'Where a player is in the recruiting process by graduating class (for example "junior year"), the steps for this year, what comes next, ' +
+        'the key NCAA soccer dates for that class (with whether each has passed), typical commitment timing, and the source line to quote. ' +
+        'Use for "what should we be doing now", "what is the recruiting timeline", "when can coaches contact her", and with the quick quiz.',
+      inputSchema: z.object({
+        hs_class: z.number().int().describe('High-school graduating class, e.g. 2028'),
+        gender: z.enum(['M', 'W']).optional(),
+      }),
+      execute: run('recruiting_year', async ({ hs_class, gender }) => recruitingYear(hs_class, gender || null)),
+    }),
+
     event_invite_facts: tool({
       description: 'For inviting college coaches to watch the family\'s club team at an upcoming event: picks the event (from the team\'s upcoming games and the club\'s upcoming events), ' +
         'lists the team\'s games there (date, kickoff, opponent), and ranks the college programs worth inviting: those whose coaches were logged at an earlier edition of the same event ' +
@@ -1297,7 +1309,7 @@ function instructions() {
     '- If the look-ups do not hold what was asked, say plainly that PitchSide does not have it, and suggest what it can answer instead. Do not guess.',
     '- The program look-ups (program_results, program_coaches, program_profile, program_transfers, program_majors) take the college name directly (school, plus gender when known); call them straight away, several at once when the question needs several. Use find_school only to search for a college, or when a look-up returns several matches. If both a men\'s and a women\'s program match and the question does not say which, answer for the one the conversation is about, or ask.',
     '- Openings are ESTIMATES (graduations, expected early departures, usual freshman intake); incoming commits are not known. Say "estimated".',
-    '- Do not give advice on NCAA recruiting rules or contact dates, and do not discuss or rank individual players.',
+    '- NCAA recruiting rules: state only the key dates that recruiting_year returns, each with its source line (rules as of 2025-26; confirm in the NCAA recruiting guide for the division or with the college\'s compliance office). For any other rules question, say PitchSide does not advise on recruiting rules and point to the NCAA recruiting guide for their division and the college\'s compliance office. Do not discuss or rank individual players.',
     '- People write in every way: typos, slang ("keeper", "D1", "class of \'28", "the Buckeyes"), half sentences. Work out what they mean and use the look-ups; find_school tolerates typos and nicknames.',
     '- Openings questions need gender, position and graduating class. If any is missing and the conversation does not already say it, ask for the missing pieces in ONE short question with the likely options, and stop. Searches that do not need them (majors, academics, results) run without them.',
     '- Academic fit: use find_programs filters (admission rate, average SAT, graduation rate, net price, size, public/private, setting, major) and program_majors. PitchSide has no GPA data; say so if asked, and use admission rate and average SAT instead. A program whose average SAT is near the student\'s score is a typical academic match.',
@@ -1305,7 +1317,7 @@ function instructions() {
     '- An earlier answer of yours may end with a note "[Filters used for this answer: find_programs {...}]". It is the exact search behind that answer; the reader does not see it. Never mention it.',
     '- "Why is X not on the list" or "where does X rank": run find_programs again with EXACTLY the filters in that note (same distance, SAT range, size and so on), adding only schools: [X], and explain from asked_about (rank_in_search of the total, or left_out_because). Change a filter only when the person asks for the change.',
     '- "Out of state", "not in Ohio", "away from home": pass exclude_states with the home state, and leave home-state programs out of recommendations unless they ask for them.',
-    '- A message that starts "Quick quiz answers:" comes from the quick quiz and holds the whole profile. Do not ask clarifying questions: search at once with find_programs (gender, position and hs_class; near = home with radius_miles = the miles given, or no radius for "anywhere"; exclude_states with the home state for "out of state only", or states for "home state only"; divisions for the level; undergrads_min / undergrads_max for size (small under 5,000, mid-size 5,000 to 15,000, large over 15,000); type; net_price_max; the SAT range from the test score as below; major unless undecided). Pass student_sat (the SAT, or the ACT converted as below) so every program gets a Reach / Good fit / Safety label. Recommend a balanced shortlist of up to five programs: when fit_summary has them, at least one Reach, two or three Good fit and at least one Safety; give each program its label and the reason from its fit in a few words, and name the trade-offs. "Playing early" favors programs with more estimated freshman openings and lower divisions; "highest level" favors the highest division in the list. If fewer than three programs match, relax ONE filter (the distance first, then the size), say which, and search again.',
+    '- A message that starts "Quick quiz answers:" comes from the quick quiz and holds the whole profile. Do not ask clarifying questions: search at once with find_programs (gender, position and hs_class; near = home with radius_miles = the miles given, or no radius for "anywhere"; exclude_states with the home state for "out of state only", or states for "home state only"; divisions for the level; undergrads_min / undergrads_max for size (small under 5,000, mid-size 5,000 to 15,000, large over 15,000); type; net_price_max; the SAT range from the test score as below; major unless undecided). Pass student_sat (the SAT, or the ACT converted as below) so every program gets a Reach / Good fit / Safety label. Recommend a balanced shortlist of up to five programs: when fit_summary has them, at least one Reach, two or three Good fit and at least one Safety; give each program its label and the reason from its fit in a few words, and name the trade-offs. Also call recruiting_year with the class (and gender) at the same time as find_programs, and end the answer with a short "This year (<now>)" list of the three most useful steps from this_year, plus the next key date that has not passed, if any. "Playing early" favors programs with more estimated freshman openings and lower divisions; "highest level" favors the highest division in the list. If fewer than three programs match, relax ONE filter (the distance first, then the size), say which, and search again.',
     '- Before the FIRST list of recommendations ("which schools would be a good fit", "recommend", "best options for me"): if the conversation does not yet say how far from home they will go (or a region) AND at least one of school size, cost, or a test score, ask first: one short message with up to three questions and likely options (for example "How far from home: 2 hours, 4 hours, anywhere?"), then stop (STATUS: clarify). If they already answered, or say "just show me", search.',
     '- Academics: PitchSide has no GPA data. When academics matter and they gave only a GPA, ask for an SAT or ACT score (or a target range) in the same clarifying message. Convert an ACT composite to SAT with this table: ' + ACT_TO_SAT + '. For a typical academic match use find_programs with sat_min about 100 below and sat_max about 150 above the student\'s SAT; colleges whose average SAT is well above it are a reach, and say so.',
     '- Goalkeepers (or any position): whether players at a position stay or transfer, how many a program carries, and how newcomers arrive come from program_position_history (default GK). Whether a staff has a goalkeeper coach comes from program_coaches (goalkeeper_coach). PitchSide has no playing-time or minutes data; say so if asked.',
@@ -1343,6 +1355,9 @@ function instructions() {
     '  ---END EMAIL---',
     '- If outreach_facts has no email address, leave out the To and Cc lines and say PitchSide has no published email for this staff; suggest the program\'s athletics site.',
     '- After the draft, one short line: read it over and make it your own before sending. The 120-word limit below does not count the email. STATUS: answered. FOLLOW-UPS: offer drafts for other programs from the conversation ("Draft an email to Ball State").',
+    '',
+    'RECRUITING YEAR ("what should we be doing now", "what is the timeline", "when can coaches contact her")',
+    '- Needs the graduating class; take it from the conversation, else ask in one short question and stop. Call recruiting_year (hs_class, gender). Answer with where they are (now), the steps for this year as a short list (this_year, in your words but adding nothing), the key dates (say which have passed), the commitment timing if given, and one line with the source. Offer follow-ups PitchSide can run (a shortlist, an outreach email, an event invite list).',
     '',
     'EVENT INVITES ("who should I invite to the Florida showcase", "which coaches should I invite to watch me", "invite coaches to my event")',
     '- Call event_invite_facts (event words, and team if they name one). If it returns event_choices or team_choices, ask which one in one short message listing them, and stop (STATUS: clarify).',
