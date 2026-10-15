@@ -8,6 +8,7 @@ import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason
 import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender } from '../src/lib/attendanceSignal.js'
 import { milesBetween } from '../src/lib/geo.js'
 import { strengthIndex, fitFor, tierCounts } from '../src/lib/fitTier.js'
+import { styleReason } from '../src/lib/styleFilter.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 import { summarizeUsage } from '../server/ask/usage.js'
@@ -857,6 +858,75 @@ function buildToolSet(db, log, ctx) {
       }),
     }),
 
+    call_prep_facts: tool({
+      description: 'Everything PitchSide knows to prepare a player for a phone call or visit with ONE program\'s coaches, for the player\'s position and class: ' +
+        'the coaching staff (head coach, goalkeeper coach if any), the current roster at the position by class year and how many finish before the player arrives, ' +
+        'the estimated freshman openings for that class, how players at the position have stayed or moved on and how newcomers arrived, ' +
+        'the recruiting style, the last two seasons\' results, and campus facts (graduation rate, average SAT, admission rate, net price, size). ' +
+        'Use it for "prepare me for a call with X", "what should I ask the X coach", the Prepare for a call button.',
+      inputSchema: z.object({
+        ...SCHOOL_INPUT,
+        position: z.enum(['GK', 'D', 'M', 'F']).describe('The player\'s position'),
+        hs_class: z.number().int().optional().describe('High-school graduating class, e.g. 2028'),
+      }),
+      execute: run('call_prep_facts', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const s = p.s
+        const ref = await refData(db)
+        const f = ref.facts.get(s.id) || null
+        const [co, ros, hist, outlook, style, res] = await Promise.all([
+          db.from('coaches').select('first_name, last_name, title').eq('school_id', s.id).eq('is_active', true),
+          db.from('college_rosters').select('roster_season, class_year').eq('school_id', s.id).eq('position', a.position)
+            .eq('is_active', true).order('roster_season', { ascending: false }).limit(60),
+          db.from('program_position_retention').select('*').eq('school_id', s.id).eq('position', a.position).maybeSingle(),
+          a.hs_class
+            ? db.from('program_openings_outlook').select('school_id,entry_season,position,current_season,graduating,continuing,early_rate,transitions,fresh_share,est_spots,est_freshman')
+              .eq('school_id', s.id).eq('position', a.position).eq('entry_season', a.hs_class).maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+          db.from('program_recruiting_style').select('*').eq('school_id', s.id).maybeSingle(),
+          db.from('program_results').select('season, wins, losses, ties, conf_wins, conf_losses, conf_ties, rpi_rank')
+            .eq('school_id', s.id).order('season', { ascending: false }).limit(2),
+        ])
+        if (co.error) throw new Error(co.error.message)
+        const staff = (co.data || []).map(c => ({ name: `${c.first_name} ${c.last_name}`.trim(), title: c.title }))
+        let roster = null
+        if (ros.data?.length) {
+          const latest = ros.data[0].roster_season
+          const now = ros.data.filter(r => r.roster_season === latest)
+          const byClass = {}
+          for (const r of now) byClass[r.class_year || 'unknown'] = (byClass[r.class_year || 'unknown'] || 0) + 1
+          roster = { roster_season: latest, players: now.length, by_class_year: byClass }
+        }
+        const h = hist.data
+        const o = outlook.data
+        return {
+          program: { ...programHead(s), city: s.city, state: s.state },
+          position: a.position, hs_class: a.hs_class ?? null,
+          staff,
+          goalkeeper_coach: a.position === 'GK' ? (staff.filter(c => GK_TITLE.test(c.title || '')).map(c => c.name)[0] || 'none listed') : undefined,
+          position_roster: roster,
+          openings_for_class: o ? {
+            est_freshman_openings: round(o.est_freshman), est_total_openings: round(o.est_spots),
+            finishing_before_entry: o.graduating, roster_season: o.current_season,
+            in_words: reasons(o, a.position, a.hs_class),
+          } : (a.hs_class ? 'no openings estimate for this class' : 'no class given'),
+          position_history: h ? {
+            seasons: `${h.first_season} to ${h.last_season}`, players_followed: h.on_roster, returned: h.returned,
+            transferred_to_another_college: h.transferred_out, left_after_final_year: h.left_after_final_year, left_otherwise: h.left_otherwise,
+            newcomers: { freshmen: h.arrived_as_freshmen, transfers_in: h.arrived_by_transfer, other: h.arrived_other },
+          } : null,
+          recruiting_style: styleReason(style.data, s.division) || null,
+          recent_seasons: res.data || [],
+          campus: f ? {
+            graduation_rate: f.graduation_rate ?? null, sat_average: f.sat_average ?? null, admission_rate: f.admission_rate ?? null,
+            avg_net_price: f.avg_net_price ?? null, undergrads: f.undergrad_enrollment ?? null, type: controlLabel(f.control),
+          } : null,
+          note: 'Openings are estimates; incoming commits are not known. Position counts are pooled across seasons, never individual players; traced transfers are minimums.',
+        }
+      }),
+    }),
+
     program_position_history: tool({
       description: 'How one program\'s players at a POSITION (default GK, goalkeepers) have stayed or moved on, pooled over its last few ' +
         'roster seasons: how many returned the next season, transferred to another college (traced), left after their final year, or left otherwise, ' +
@@ -1135,6 +1205,13 @@ function instructions() {
     '- If outreach_facts has no email address, leave out the To and Cc lines and say PitchSide has no published email for this staff; suggest the program\'s athletics site.',
     '- After the draft, one short line: read it over and make it your own before sending. The 120-word limit below does not count the email. STATUS: answered. FOLLOW-UPS: offer drafts for other programs from the conversation ("Draft an email to Ball State").',
     '',
+    'CALL PREP ("prepare me for a call with Dayton", "what should I ask the Toledo coach", the Prepare for a call button)',
+    '- Needs the player\'s position and graduating class; take them from anywhere in the conversation (quiz answers, earlier messages). If either is missing, ask for it in one short question and stop (STATUS: clarify).',
+    '- Call call_prep_facts (school, gender, position, hs_class). Then write a call sheet, at most about 350 words, in two parts:',
+    '  ### What PitchSide already knows: four to seven short bullets from the look-up only: the roster at the position by class year and how many finish before the player arrives; the estimated freshman openings for the class (say estimated); how players at the position have stayed or moved on and how newcomers arrived; the recruiting style; the latest results; graduation rate and academics; the head coach, and for goalkeepers whether a goalkeeper coach is listed. Leave out anything the look-up does not have.',
+    '  ### Questions to ask: eight to twelve questions in short groups (Your position and class; Team and coaching; Academics and support; Recruiting process and next steps). Make two or three of them follow from the facts above (for example, with two junior goalkeepers on the roster: "How do you see the goalkeeper group when I arrive?"; with mostly transfer newcomers: "How many freshmen do you plan to bring in for my class?"). For goalkeepers include: what they look for in a goalkeeper, how many goalkeepers they are recruiting in the class, and when they expect to make offers at the position. Always include asking where the player stands in their recruiting and what the next steps are, what a typical in-season and off-season week looks like, how academics and travel are handled, and how athletes do in the player\'s intended major (if one was given). For NCAA D3 programs ask about merit and need-based aid instead of athletic scholarships.',
+    '- End with one line: the call is a two-way interview, so take notes and ask what matters to you. No disclaimers about NCAA rules. STATUS: answered. FOLLOW-UPS: offer an email draft to the same program, a call sheet for another program, or a related look-up.',
+    '',
     'FORMAT (Markdown; it is rendered for the reader)',
     '- Write nothing before or between look-ups ("I will search…"): call the look-ups first, then write only the answer.',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
@@ -1146,7 +1223,7 @@ function instructions() {
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for); when you name the leaders, keep that order and quote the freshman figure.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
     '- End with one short line saying what the numbers are based on (for example "Based on 2026 rosters; openings are estimates.").',
-    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words (an outreach email draft does not count).',
+    '- Write in American English ("program", not "programme"), with no em dashes. Keep the whole answer under about 120 words (an outreach email draft or a call sheet does not count).',
     '- After the answer, on its own line, write: STATUS: answered | partial | unavailable | clarify, followed by " - " and the missing topic in a few words when not fully answered (for example "STATUS: unavailable - ID camps"). The app hides this line and logs it so PitchSide can fill data gaps. Use "answered" when you answered what was asked, even if you showed only the top of a long list (showing 5 of 226 programs is "answered", not "partial"); "partial" only when the DATA could not answer part of the question (for example "STATUS: partial - incoming commits").',
     '- Then, on the very last line, write exactly: FOLLOW-UPS: question one | question two | question three',
     '  These are three short follow-up questions the reader might ask next that the look-ups can answer. The app turns them into buttons and hides this line.',
@@ -1361,7 +1438,7 @@ export default async function handler(req, res) {
   }
   // For usage tracking: the saved chat this question belongs to, and how it started.
   const conversationId = /^[A-Za-z0-9_-]{1,64}$/.test(String(body.context?.conversationId || '')) ? body.context.conversationId : null
-  const source = ['typed', 'suggestion', 'followup', 'quiz', 'email'].includes(body.context?.source) ? body.context.source : null
+  const source = ['typed', 'suggestion', 'followup', 'quiz', 'email', 'callprep'].includes(body.context?.source) ? body.context.source : null
   const record = (text, usage, err, costUsd = null) => {
     const { status, gap } = readStatus(text)
     return logAsk({

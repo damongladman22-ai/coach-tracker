@@ -398,4 +398,35 @@ async function run(tool, input) {
   assert.equal(none.fit_summary, undefined)
 }
 
+// ── call prep (Prepare for a call) ─────────────────────────────────────────
+{
+  const C = {
+    ...tables,
+    coaches: [
+      { school_id: 'wis-w', first_name: 'Ann', last_name: 'Lead', title: 'Head Coach', is_active: true },
+      { school_id: 'wis-w', first_name: 'Gil', last_name: 'Keep', title: 'Goalkeeper Coach', is_active: true },
+    ],
+    college_rosters: [
+      { school_id: 'wis-w', roster_season: 2026, class_year: 'SR', position: 'GK', is_active: true },
+      { school_id: 'wis-w', roster_season: 2026, class_year: 'SO', position: 'GK', is_active: true },
+    ],
+    program_position_retention: [{ school_id: 'wis-w', position: 'GK', first_season: 2022, last_season: 2026, season_pairs: 4,
+      on_roster: 10, returned: 6, transferred_out: 1, left_after_final_year: 2, left_otherwise: 1,
+      arrived_as_freshmen: 3, arrived_by_transfer: 1, arrived_other: 0 }],
+    program_openings_outlook: [{ school_id: 'wis-w', entry_season: 2028, position: 'GK', current_season: 2026, graduating: 1,
+      continuing: 1, early_rate: 0.1, transitions: 20, fresh_share: 0.8, est_spots: 1.4, est_freshman: 1.1 }],
+    program_recruiting_style: [],
+    program_results: [{ school_id: 'wis-w', season: 2025, wins: 12, losses: 5, ties: 2 }],
+  }
+  T.resetCache()
+  const r = await T.buildTools(fakeDb(C), [], {}).call_prep_facts.execute({ school_id: 'wis-w', position: 'GK', hs_class: 2028 }, { toolCallId: 't', messages: [] })
+  assert.equal(r.goalkeeper_coach, 'Gil Keep')
+  assert.deepEqual(r.position_roster, { roster_season: 2026, players: 2, by_class_year: { SR: 1, SO: 1 } })
+  assert.equal(r.openings_for_class.est_freshman_openings, 1.1)
+  assert.ok(Array.isArray(r.openings_for_class.in_words) && r.openings_for_class.in_words.length > 0)
+  assert.equal(r.position_history.returned, 6)
+  assert.equal(r.campus.sat_average, 1400)
+  assert.equal(r.recent_seasons[0].wins, 12)
+}
+
 console.log('ask.test.mjs: all assertions passed')

@@ -30,7 +30,8 @@ import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
  *  - conversations are kept in this browser: up to 30, listed under "Chats"
  *    with their first question and date, each reopened or deleted there
  *    (Damon 2026-10-14; src/ask/chatStore.js);
- *  - every program card has "Draft an email to the coaches" (backlog F4,
+ *  - every program card has "Prepare for a call" (a call sheet: what PitchSide
+ *    knows, then questions to ask; Damon 2026-10-15) and "Draft an email to the coaches" (backlog F4,
  *    Damon 2026-10-15): the assistant asks once for the player's details, then
  *    writes a first email shown as an email card with "Open in email app" and
  *    "Copy email". To and Cc keep only addresses the look-ups returned.
@@ -121,7 +122,7 @@ const md = {
   code: ({ children }) => <code className="px-1 py-0.5 rounded bg-[#F2F3F5] text-[13px]">{children}</code>,
 }
 
-function ProgramCards({ items, logosEnabled, onDraft, busy }) {
+function ProgramCards({ items, logosEnabled, onDraft, onPrep, busy }) {
   const [all, setAll] = useState(false)
   if (!items.length) return null
   const shown = all ? items : items.slice(0, 6)
@@ -146,11 +147,21 @@ function ProgramCards({ items, logosEnabled, onDraft, busy }) {
                   <div className="text-[11px] text-gray-500 leading-tight whitespace-nowrap">{small}</div>
                 </div>
               </Link>
-              {onDraft && (
-                <button type="button" disabled={busy} onClick={() => onDraft(p)}
-                  className="self-start mx-3 mb-2 -mt-0.5 text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
-                  Draft an email to the coaches
-                </button>
+              {(onDraft || onPrep) && (
+                <div className="flex flex-wrap gap-x-3 mx-3 mb-2 -mt-0.5">
+                  {onDraft && (
+                    <button type="button" disabled={busy} onClick={() => onDraft(p)}
+                      className="text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
+                      Draft an email to the coaches
+                    </button>
+                  )}
+                  {onPrep && (
+                    <button type="button" disabled={busy} onClick={() => onPrep(p)}
+                      className="text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
+                      Prepare for a call
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           )
@@ -273,7 +284,7 @@ function EmailCard({ email, lookups }) {
   )
 }
 
-function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, busy }) {
+function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, onPrep, busy }) {
   const [showData, setShowData] = useState(false)
   const [copied, setCopied] = useState(false)
   const { body, followups } = splitAnswer(m.content)
@@ -305,7 +316,7 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, busy }
           </div>
         )}
 
-        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} onDraft={onDraft} busy={busy} />}
+        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} onDraft={onDraft} onPrep={onPrep} busy={busy} />}
 
         {!streaming && m.status === 'done' && (
           <>
@@ -598,7 +609,7 @@ export default function AskPitchSide({ session }) {
 
   const update = (id, fn) => setMsgs(list => list.map(m => (m.id === id ? fn(m) : m)))
 
-  // source: how the question started (typed | suggestion | followup | quiz | email), for pilot usage tracking.
+  // source: how the question started (typed | suggestion | followup | quiz | email | callprep), for pilot usage tracking.
   async function send(text, source = 'typed') {
     const q = String(text || '').trim()
     if (!q || busy) return
@@ -693,7 +704,8 @@ export default function AskPitchSide({ session }) {
                     <div className="max-w-[85%] bg-[#0a1628] text-white rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] whitespace-pre-wrap">{m.content}</div>
                   </div>)
                 : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={q => send(q, 'followup')} onRate={rate}
-                    onDraft={p => send(`Draft a first email to the ${p.school} coaches.`, 'email')} busy={busy} />))}
+                    onDraft={p => send(`Draft a first email to the ${p.school} coaches.`, 'email')}
+                    onPrep={p => send(`Prepare me for a call with the ${p.school} coaches.`, 'callprep')} busy={busy} />))}
               <div ref={endRef} style={{ scrollMarginBottom: 150 }} />
             </div>
           )}
