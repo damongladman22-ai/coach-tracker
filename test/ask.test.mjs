@@ -325,13 +325,13 @@ async function run(tool, input) {
     { name: 'No Mail', title: 'Assistant Coach', email: null },
   ]
   let r = A(staff, 'GK')
-  assert.deepEqual(r.to.map(c => c.email), ['alead@wis.edu', 'gkeep@wis.edu', 'rcruit@wis.edu'], 'every coach with an email, head coach first')
-  assert.deepEqual(r.cc, [])
+  assert.deepEqual(r.to.map(c => c.email), ['alead@wis.edu'], 'To the head coach')
+  assert.deepEqual(r.cc.map(c => c.email), ['gkeep@wis.edu', 'rcruit@wis.edu'], 'Cc every other coach with an email, goalkeeper coach first')
   assert.equal(r.greeting, 'Coach Lead, Coach Keep, and Coach Cruit')
   r = A(staff, 'F')
-  assert.deepEqual(r.to.map(c => c.email), ['alead@wis.edu', 'rcruit@wis.edu', 'gkeep@wis.edu'], 'recruiter before other assistants for a forward')
+  assert.deepEqual(r.cc.map(c => c.email), ['rcruit@wis.edu', 'gkeep@wis.edu'], 'recruiter before other assistants for a forward')
   r = A([{ name: 'Gil Keep', title: 'Goalkeeper Coach', email: 'g@x.edu' }, { name: 'Ann Lead', title: 'Head Coach', email: null }], 'GK')
-  assert.deepEqual(r.to.map(c => c.email), ['g@x.edu'], 'no head coach email: the coaches who have one')
+  assert.deepEqual(r.to.map(c => c.email), ['g@x.edu'], 'no head coach email: the first coach who has one')
   assert.equal(r.greeting, 'Coach Keep')
   r = A([{ name: 'Ann Lead', title: 'Head Coach', email: null }], 'GK')
   assert.deepEqual(r.to, [], 'no published email: nobody')
@@ -357,7 +357,8 @@ async function run(tool, input) {
   }
   T.resetCache()
   const f = await T.buildTools(fakeDb(O), [], {}).outreach_facts.execute({ school_id: 'wis-w', position: 'GK' }, { toolCallId: 't', messages: [] })
-  assert.deepEqual(f.to.map(c => c.email), ['alead@wis.edu', 'gkeep@wis.edu'], 'switched-off coaches are left out')
+  assert.deepEqual(f.to.map(c => c.email), ['alead@wis.edu'], 'switched-off coaches are left out')
+  assert.deepEqual(f.cc.map(c => c.email), ['gkeep@wis.edu'])
   assert.equal(f.greeting, 'Coach Lead and Coach Keep')
   assert.deepEqual(f.position_roster, { roster_season: 2026, position: 'GK', players: 2, by_class_year: { SR: 1, FR: 1 } }, 'latest roster season only')
   assert.equal(f.program.state, 'Wisconsin')
