@@ -122,7 +122,7 @@ const md = {
   code: ({ children }) => <code className="px-1 py-0.5 rounded bg-[#F2F3F5] text-[13px]">{children}</code>,
 }
 
-function ProgramCards({ items, logosEnabled, onDraft, onPrep, onInvite, busy }) {
+function ProgramCards({ items, logosEnabled, onDraft, onPrep, onInvite, onSimilar, busy }) {
   const [all, setAll] = useState(false)
   if (!items.length) return null
   const shown = all ? items : items.slice(0, 6)
@@ -147,7 +147,7 @@ function ProgramCards({ items, logosEnabled, onDraft, onPrep, onInvite, busy }) 
                   <div className="text-[11px] text-gray-500 leading-tight whitespace-nowrap">{small}</div>
                 </div>
               </Link>
-              {(onDraft || onPrep) && (
+              {(onDraft || onPrep || onSimilar) && (
                 <div className="flex flex-wrap gap-x-3 mx-3 mb-2 -mt-0.5">
                   {onInvite && p.kind === 'event_invite_facts' && p.event_name && (
                     <button type="button" disabled={busy} onClick={() => onInvite(p)}
@@ -165,6 +165,12 @@ function ProgramCards({ items, logosEnabled, onDraft, onPrep, onInvite, busy }) 
                     <button type="button" disabled={busy} onClick={() => onPrep(p)}
                       className="text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
                       Prepare for a call
+                    </button>
+                  )}
+                  {onSimilar && (
+                    <button type="button" disabled={busy} onClick={() => onSimilar(p)}
+                      className="text-xs text-[#1d4ed8] hover:underline disabled:opacity-50 disabled:no-underline">
+                      More like this
                     </button>
                   )}
                 </div>
@@ -290,7 +296,7 @@ function EmailCard({ email, lookups }) {
   )
 }
 
-function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, onPrep, onInvite, busy }) {
+function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, onPrep, onInvite, onSimilar, busy }) {
   const [showData, setShowData] = useState(false)
   const [copied, setCopied] = useState(false)
   const { body, followups } = splitAnswer(m.content)
@@ -322,7 +328,7 @@ function AssistantMessage({ m, logosEnabled, onFollowUp, onRate, onDraft, onPrep
           </div>
         )}
 
-        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} onDraft={onDraft} onPrep={onPrep} onInvite={onInvite} busy={busy} />}
+        {!streaming && <ProgramCards items={cards} logosEnabled={logosEnabled} onDraft={onDraft} onPrep={onPrep} onInvite={onInvite} onSimilar={onSimilar} busy={busy} />}
 
         {!streaming && m.status === 'done' && (
           <>
@@ -615,7 +621,7 @@ export default function AskPitchSide({ session }) {
 
   const update = (id, fn) => setMsgs(list => list.map(m => (m.id === id ? fn(m) : m)))
 
-  // source: how the question started (typed | suggestion | followup | quiz | email | callprep | invite), for pilot usage tracking.
+  // source: how the question started (typed | suggestion | followup | quiz | email | callprep | invite | similar), for pilot usage tracking.
   async function send(text, source = 'typed') {
     const q = String(text || '').trim()
     if (!q || busy) return
@@ -712,7 +718,8 @@ export default function AskPitchSide({ session }) {
                 : <AssistantMessage key={m.id} m={m} logosEnabled={logosEnabled} onFollowUp={q => send(q, 'followup')} onRate={rate}
                     onDraft={p => send(`Draft a first email to the ${p.school} coaches.`, 'email')}
                     onPrep={p => send(`Prepare me for a call with the ${p.school} coaches.`, 'callprep')}
-                    onInvite={p => send(`Draft an invite to the ${p.school} coaches to watch me play at ${p.event_name}.`, 'invite')} busy={busy} />))}
+                    onInvite={p => send(`Draft an invite to the ${p.school} coaches to watch me play at ${p.event_name}.`, 'invite')}
+                    onSimilar={p => send(`Show me programs like ${p.school}.`, 'similar')} busy={busy} />))}
               <div ref={endRef} style={{ scrollMarginBottom: 150 }} />
             </div>
           )}

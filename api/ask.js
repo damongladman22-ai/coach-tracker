@@ -11,6 +11,7 @@ import { strengthIndex, fitFor, tierCounts } from '../src/lib/fitTier.js'
 import { styleReason } from '../src/lib/styleFilter.js'
 import { eventKey, isShowcase, pickEvent, gameLine, inviteList } from '../src/lib/eventInvites.js'
 import { recruitingYear } from '../src/lib/recruitingYear.js'
+import { similarPrograms } from '../src/lib/similarPrograms.js'
 import { locatePlace, programPoints } from '../src/lib/geoSearch.js'
 import { PILOT_HEADER, PILOT_BUDGET_USD, findPilot, pilotUsage, limitMessage, listPilots, pilotAdmin } from '../server/ask/pilots.js'
 import { summarizeUsage } from '../server/ask/usage.js'
@@ -1032,6 +1033,79 @@ function buildToolSet(db, log, ctx) {
       }),
     }),
 
+    similar_programs: tool({
+      description: 'Programs like one the family already likes ("more like this", "schools like Dayton", "other schools in the same conference"): ' +
+        'the same division and men\'s / women\'s program, scored on the same conference, similar average SAT and admission rate, size, net price, ' +
+        'public or private, setting and distance from that campus. Each comes with its reasons.',
+      inputSchema: z.object(SCHOOL_INPUT),
+      execute: run('similar_programs', async (a) => {
+        const p = await pickSchool(db, a)
+        if (p.result) return p.result
+        const ref = await refData(db)
+        const list = similarPrograms(p.s, ref.facts.get(p.s.id) || null, ref.schools, ref.facts, MAX_ROWS)
+        return {
+          like: { ...programHead(p.s), state: stateAbbr(p.s.state) },
+          matched: list.length,
+          note: list.length ? 'Ranked by how many ways each program is like it; reasons in "why".' : 'No similar programs found in the same division.',
+          programs: list.map(x => ({ ...x, state: stateAbbr(x.state), card: { value: x.distance_miles != null ? `${x.distance_miles} mi` : '—', label: 'from it' } })),
+        }
+      }),
+    }),
+
+    division_facts: tool({
+      description: 'Live counts and typical rosters from PitchSide\'s own data: how many active programs there are by division and men\'s / women\'s, ' +
+        'and for the latest roster season the typical (median) roster size, goalkeepers per roster, and international and in-state shares per program. ' +
+        'Use for "how many D1 women\'s programs are there", "how big are D2 rosters", "how many keepers do D3 teams carry", "how international is men\'s D1".',
+      inputSchema: z.object({
+        gender: z.enum(['M', 'W']).optional(),
+        division: z.enum(DIVISIONS).optional(),
+      }),
+      execute: run('division_facts', async ({ gender, division }) => {
+        const ref = await refData(db)
+        const counts = {}
+        for (const x of ref.schools) {
+          if (gender && x.program_gender !== gender) continue
+          if (division && x.division !== division) continue
+          const k = `${x.division || 'Unknown'} ${x.program_gender === 'M' ? 'men' : 'women'}`
+          counts[k] = (counts[k] || 0) + 1
+        }
+        const top = await db.from('program_benchmarks').select('roster_season').eq('conference', 'ALL')
+          .order('roster_season', { ascending: false }).limit(1)
+        const season = top.data?.[0]?.roster_season ?? null
+        let typical = []
+        if (season != null) {
+          let q = db.from('program_benchmarks').select('division,program_gender,dimension,bucket,metric,n,median,p25,p75,mean')
+            .eq('conference', 'ALL').eq('roster_season', season)
+          if (gender) q = q.eq('program_gender', gender)
+          if (division) q = q.eq('division', division)
+          const { data, error } = await q.limit(5000)
+          if (error) throw new Error(error.message)
+          const by = new Map()
+          const want = r => (r.dimension === 'overall' && r.metric === 'roster_size') || (r.dimension === 'position' && r.bucket === 'GK' && r.metric === 'count') ||
+            (r.dimension === 'origin' && ['international', 'in_state'].includes(r.bucket))
+          for (const r of data || []) {
+            if (!want(r)) continue
+            const k = `${r.division}|${r.program_gender}`
+            if (!by.has(k)) by.set(k, { division: r.division, program: r.program_gender === 'M' ? 'men' : 'women', programs_measured: null })
+            const o = by.get(k)
+            const pct = v => (v == null ? null : Math.round(Number(v) * 100))
+            if (r.metric === 'roster_size') { o.roster_size_median = round(r.median, 0); o.roster_size_middle_half = `${round(r.p25, 0)} to ${round(r.p75, 0)}`; o.programs_measured = r.n }
+            else if (r.dimension === 'position') o.goalkeepers_per_roster_median = round(r.median, 0)
+            else if (r.bucket === 'international' && r.metric === 'share') { o.international_share_median_pct = pct(r.median); o.international_share_average_pct = pct(r.mean) }
+            else if (r.bucket === 'international' && r.metric === 'count') o.international_players_median = round(r.median, 0)
+            else if (r.bucket === 'in_state' && r.metric === 'share') o.in_state_share_median_pct = pct(r.median)
+          }
+          typical = [...by.values()].sort((x, y) => String(x.division).localeCompare(String(y.division)) || x.program.localeCompare(y.program))
+        }
+        return {
+          active_programs: counts,
+          roster_season: season,
+          typical_rosters: typical,
+          note: 'Counts are the active programs PitchSide tracks (NCAA D1 to D3, NAIA and junior colleges). Roster figures are per program for the latest roster season: the median program, the middle half, and for international share also the average across programs. Scholarship and roster-limit rules are not in PitchSide.',
+        }
+      }),
+    }),
+
     recruiting_year: tool({
       description: 'Where a player is in the recruiting process by graduating class (for example "junior year"), the steps for this year, what comes next, ' +
         'the key NCAA soccer dates for that class (with whether each has passed), typical commitment timing, and the source line to quote. ' +
@@ -1356,6 +1430,10 @@ function instructions() {
     '- If outreach_facts has no email address, leave out the To and Cc lines and say PitchSide has no published email for this staff; suggest the program\'s athletics site.',
     '- After the draft, one short line: read it over and make it your own before sending. The 120-word limit below does not count the email. STATUS: answered. FOLLOW-UPS: offer drafts for other programs from the conversation ("Draft an email to Ball State").',
     '',
+    'NUMBERS AND SIMILAR PROGRAMS',
+    '- "How many D1 women\'s programs are there", roster sizes, goalkeepers per roster, international or in-state share by division: call division_facts and quote its figures (median and middle half as given; say "per program" for shares). Scholarship and roster-limit rules are not in PitchSide; say so and point to the NCAA, NAIA or NJCAA.',
+    '- "More like this", "schools like X", "other schools in the same conference": call similar_programs. The cards show the list; name the top three with their reasons in one sentence each, and offer the other tools (a shortlist with Reach / Good fit / Safety, an email, a call sheet).',
+    '',
     'RECRUITING YEAR ("what should we be doing now", "what is the timeline", "when can coaches contact her")',
     '- Needs the graduating class; take it from the conversation, else ask in one short question and stop. Call recruiting_year (hs_class, gender). Answer with where they are (now), the steps for this year as a short list (this_year, in your words but adding nothing), the key dates (say which have passed), the commitment timing if given, and one line with the source. Offer follow-ups PitchSide can run (a shortlist, an outreach email, an event invite list).',
     '',
@@ -1598,7 +1676,7 @@ export default async function handler(req, res) {
   }
   // For usage tracking: the saved chat this question belongs to, and how it started.
   const conversationId = /^[A-Za-z0-9_-]{1,64}$/.test(String(body.context?.conversationId || '')) ? body.context.conversationId : null
-  const source = ['typed', 'suggestion', 'followup', 'quiz', 'email', 'callprep', 'invite'].includes(body.context?.source) ? body.context.source : null
+  const source = ['typed', 'suggestion', 'followup', 'quiz', 'email', 'callprep', 'invite', 'similar'].includes(body.context?.source) ? body.context.source : null
   const record = (text, usage, err, costUsd = null) => {
     const { status, gap } = readStatus(text)
     return logAsk({

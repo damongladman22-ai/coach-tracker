@@ -56,6 +56,8 @@ const LOOKUP_LABEL = {
   call_prep_facts: () => 'Gathering what PitchSide knows about the program',
   event_invite_facts: () => 'Finding the event and the coaches to invite',
   recruiting_year: () => 'Checking the recruiting timeline for your class',
+  similar_programs: () => 'Finding programs like it',
+  division_facts: () => 'Counting programs and typical rosters',
   program_profile: () => 'Reading the program profile',
   program_majors: i => (i?.search ? `Checking majors for "${i.search}"` : 'Checking majors offered'),
   programs_watching_team: () => 'Checking which college coaches watched your team',
@@ -72,6 +74,8 @@ const SOURCE_LABEL = {
   call_prep_facts: 'Rosters, openings estimates, results and U.S. College Scorecard',
   event_invite_facts: 'Your club schedule and coach attendance logged at your games and events',
   recruiting_year: 'Recruiting timelines by grade; NCAA Guide for the College-Bound Student-Athlete 2025-26',
+  similar_programs: 'PitchSide programs and U.S. College Scorecard',
+  division_facts: 'PitchSide programs and current rosters',
   program_profile: 'Program profile and U.S. College Scorecard',
   program_majors: 'U.S. College Scorecard majors',
   programs_watching_team: 'Coach attendance logged at your games',
@@ -98,7 +102,7 @@ export function programCards(lookups) {
   const seen = new Set()
   for (const l of lookups || []) {
     const list = l.output?.programs
-    if (!Array.isArray(list) || !['find_programs', 'rank_by_results', 'programs_watching_team', 'event_invite_facts'].includes(l.tool)) continue
+    if (!Array.isArray(list) || !['find_programs', 'rank_by_results', 'programs_watching_team', 'event_invite_facts', 'similar_programs'].includes(l.tool)) continue
     for (const p of list) {
       if (!p?.school_id || seen.has(p.school_id)) continue
       seen.add(p.school_id)
