@@ -897,6 +897,32 @@ function buildToolSet(db, log, ctx) {
           const byClass = {}
           for (const r of now) byClass[r.class_year || 'unknown'] = (byClass[r.class_year || 'unknown'] || 0) + 1
           roster = { roster_season: latest, players: now.length, by_class_year: byClass }
+          // Who is still there in the player's freshman fall (fall of hs_class):
+          // a freshman in fall S plays through fall S+3, a sophomore S+2, a junior
+          // S+1, a senior S. Before early departures and redshirt years.
+          if (a.hs_class) {
+            const lastFall = { FR: 3, SO: 2, JR: 1, SR: 0 }
+            const nextYear = { FR: 'sophomore', SO: 'junior', JR: 'senior' }
+            const words = { FR: 'freshman', SO: 'sophomore', JR: 'junior', SR: 'senior', GR: 'graduate student' }
+            const gap = a.hs_class - latest
+            const stay = []
+            let gone = 0
+            for (const [cls, n] of Object.entries(byClass)) {
+              const left = lastFall[cls]
+              if (left == null) { gone += cls === 'GR' ? n : 0; continue }
+              if (left >= gap) {
+                const yearsOn = gap
+                const asWhat = yearsOn === 0 ? words[cls] : (yearsOn === 1 ? nextYear[cls] : yearsOn === 2 ? (cls === 'FR' ? 'junior' : 'senior') : 'senior')
+                stay.push(`${n} now ${n === 1 ? 'a ' + words[cls] : words[cls] + 's'} (would be ${n === 1 ? 'a ' + asWhat : asWhat + 's'})`)
+              } else gone += n
+            }
+            roster.when_you_arrive = {
+              fall: a.hs_class,
+              still_there: stay.length ? stay.join('; ') : 'none of the current players at this position',
+              finished_before_you_arrive: gone,
+              note: 'From class years alone: before early departures, transfers in or redshirt years.',
+            }
+          }
         }
         const h = hist.data
         const o = outlook.data
@@ -915,6 +941,7 @@ function buildToolSet(db, log, ctx) {
             seasons: `${h.first_season} to ${h.last_season}`, players_followed: h.on_roster, returned: h.returned,
             transferred_to_another_college: h.transferred_out, left_after_final_year: h.left_after_final_year, left_otherwise: h.left_otherwise,
             newcomers: { freshmen: h.arrived_as_freshmen, transfers_in: h.arrived_by_transfer, other: h.arrived_other },
+            newcomers_in_words: `Of ${h.arrived_as_freshmen + h.arrived_by_transfer + h.arrived_other} newcomers at this position, ${h.arrived_as_freshmen} arrived as freshmen, ${h.arrived_by_transfer} by transfer` + (h.arrived_other ? ` and ${h.arrived_other} otherwise` : ''),
           } : null,
           recruiting_style: styleReason(style.data, s.division) || null,
           recent_seasons: res.data || [],
@@ -1208,8 +1235,8 @@ function instructions() {
     'CALL PREP ("prepare me for a call with Dayton", "what should I ask the Toledo coach", the Prepare for a call button)',
     '- Needs the player\'s position and graduating class; take them from anywhere in the conversation (quiz answers, earlier messages). If either is missing, ask for it in one short question and stop (STATUS: clarify).',
     '- Call call_prep_facts (school, gender, position, hs_class). Then write a call sheet, at most about 350 words, in two parts:',
-    '  ### What PitchSide already knows: four to seven short bullets from the look-up only: the roster at the position by class year and how many finish before the player arrives; the estimated freshman openings for the class (say estimated); how players at the position have stayed or moved on and how newcomers arrived; the recruiting style; the latest results; graduation rate and academics; the head coach, and for goalkeepers whether a goalkeeper coach is listed. Leave out anything the look-up does not have.',
-    '  ### Questions to ask: eight to twelve questions in short groups (Your position and class; Team and coaching; Academics and support; Recruiting process and next steps). Make two or three of them follow from the facts above (for example, with two junior goalkeepers on the roster: "How do you see the goalkeeper group when I arrive?"; with mostly transfer newcomers: "How many freshmen do you plan to bring in for my class?"). For goalkeepers include: what they look for in a goalkeeper, how many goalkeepers they are recruiting in the class, and when they expect to make offers at the position. Always include asking where the player stands in their recruiting and what the next steps are, what a typical in-season and off-season week looks like, how academics and travel are handled, and how athletes do in the player\'s intended major (if one was given). For NCAA D3 programs ask about merit and need-based aid instead of athletic scholarships.',
+    '  ### What PitchSide already knows: four to seven short bullets from the look-up only, quoting its counts and words (never work out a percentage or a class year yourself): the roster at the position by class year and, from when_you_arrive, who is still there in the player\'s freshman fall; the estimated freshman openings for the class (say estimated); how players at the position have stayed or moved on and how newcomers arrived; the recruiting style; the latest results; graduation rate and academics; the head coach, and for goalkeepers whether a goalkeeper coach is listed. Leave out anything the look-up does not have.',
+    '  ### Questions to ask: eight to twelve questions in short groups (Your position and class; Team and coaching; Academics and support; Recruiting process and next steps). Make two or three of them follow from the facts above, using when_you_arrive for who will still be there (for example, with one goalkeeper who would be a senior: "How do you see the goalkeeper group in my freshman year?"; with mostly transfer newcomers: "How many freshmen do you plan to bring in for my class?"). Never describe current players as still ahead of the player unless when_you_arrive says they will still be there. For goalkeepers include: what they look for in a goalkeeper, how many goalkeepers they are recruiting in the class, and when they expect to make offers at the position. Always include asking where the player stands in their recruiting and what the next steps are, what a typical in-season and off-season week looks like, how academics and travel are handled, and how athletes do in the player\'s intended major (if one was given). For NCAA D3 programs ask about merit and need-based aid instead of athletic scholarships.',
     '- End with one line: the call is a two-way interview, so take notes and ask what matters to you. No disclaimers about NCAA rules. STATUS: answered. FOLLOW-UPS: offer an email draft to the same program, a call sheet for another program, or a related look-up.',
     '',
     'FORMAT (Markdown; it is rendered for the reader)',
