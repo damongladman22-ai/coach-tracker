@@ -495,9 +495,11 @@ async function run(tool, input) {
   assert.deepEqual(r.not_checked_yet, ['Vanderbilt University'], 'never claimed to have none')
   assert.equal(r.upcoming_deadlines.length, 1, 'only the open deadline')
   assert.equal(r.with_awards, 1)
+  assert.equal(r.count_line, 'Of the 2 programs asked about that PitchSide has checked, 1 publishes a visit or action award')
 
   r = await go('action_awards', { gender: 'W', types: ['visit'] })
   assert.deepEqual(r.programs.map(p => p.school_id), ['den-w'], 'list mode: only colleges with an award of that kind')
+  assert.equal(r.count_line, "1 program publishes a campus visit award on the college's own website")
 
   r = await go('find_programs', { gender: 'W', states: ['OH'] })
   const den = r.programs.find(p => p.school_id === 'den-w')

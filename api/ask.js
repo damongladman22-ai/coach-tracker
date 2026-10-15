@@ -1173,10 +1173,15 @@ function buildToolSet(db, log, ctx) {
         if (!byList) programs.sort((x, y) => y._top - x._top || String(x.school).localeCompare(String(y.school)))
         const upcoming = upcomingDeadlines(programs.map(p => ({ school: p.school, awards: p._awards })), today)
         for (const p of programs) { delete p._awards; delete p._top }
+        const withAwards = programs.filter(p => !p.nothing_published).length
+        const kind = types?.length === 1 ? (TYPE_LABEL[types[0]] || 'award').toLowerCase() : 'visit or action award'
         return {
           checked_so_far: AWARDS_SCOPE,
+          count_line: byList
+            ? `Of the ${programs.length} ${programs.length === 1 ? 'program' : 'programs'} asked about that PitchSide has checked, ${withAwards} ${withAwards === 1 ? 'publishes' : 'publish'} a ${kind}`
+            : `${withAwards} ${withAwards === 1 ? 'program publishes' : 'programs publish'} a ${kind} on the college's own website`,
           matched: programs.length,
-          with_awards: programs.filter(p => !p.nothing_published).length,
+          with_awards: withAwards,
           upcoming_deadlines: upcoming.length ? upcoming.map(u => ({ school: u.school, award: u.name, amount: u.amount_text, deadline: u.deadline_text, days_left: u.days_left })) : undefined,
           not_checked_yet: notChecked.length ? notChecked : undefined,
           no_program_matched: unmatched.length ? unmatched : undefined,
@@ -1581,8 +1586,8 @@ function instructions() {
     '- Needs the graduating class; take it from the conversation, else ask in one short question and stop. Call recruiting_year (hs_class, gender). Answer with where they are (now), the steps for this year as a short list (this_year, in your words but adding nothing), the key dates (say which have passed), the commitment timing if given, and one line with the source. If the conversation already names programs on their list, also call action_awards with them at the same time and add each open award deadline (from upcoming_deadlines) to the key dates. Offer follow-ups PitchSide can run (a shortlist, an outreach email, an event invite list).',
     '',
     'VISIT AND ACTION AWARDS ("which colleges pay me to visit", "visit grants", "money for visiting", "FAFSA grant", "award deadlines")',
-    '- Call action_awards: schools = the programs named in the conversation (their shortlist) when there are any, else states, divisions and gender from the conversation.',
-    '- For each program with awards: the award name, the amount, what to do, and the deadline with its deadline_status (say plainly when it has passed); link the official page as [college page](official_page). Lead with the soonest open deadlines (upcoming_deadlines). Then one line: these come from each college\'s own website (checked on checked_on); amounts and deadlines change every year, so confirm with the admissions office.',
+    '- Call action_awards only (not find_programs): schools = the programs named in the conversation (their shortlist) when there are any, else states, divisions and gender from the conversation; types = ["visit"] for visit questions.',
+    '- Give the count exactly as count_line says it; never count programs yourself. Then list EVERY entry in upcoming_deadlines, in the order given and skipping none (the first is the most urgent; say how many days are left when under 30): the college, the amount, and the deadline in its own words; link the official page as [college page](official_page). Then the other programs with awards in one short list: amount and deadline_text (say plainly when it has passed). Then one line: these come from each college\'s own website, checked on checked_on (never say "today"); amounts and deadlines change every year, so confirm with the admissions office.',
     '- nothing_published: the college publishes no such award on its website (as of checked_on). not_checked_yet: PitchSide has not checked that college yet (so far it has checked checked_so_far); suggest asking its admissions office whether it gives a visit grant. Never say a college has no award when it was not checked.',
     '- An athletic official visit counts only when what_to_do says so; otherwise suggest asking admissions whether a visit with the coaches counts.',
     '- Grants for also considering a rival or conference school, or matching another college\'s offer: none of the colleges PitchSide has checked publishes one. Say so, and suggest asking each admissions office whether it will review offers from other colleges.',
