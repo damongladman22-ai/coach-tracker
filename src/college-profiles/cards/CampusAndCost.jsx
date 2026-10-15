@@ -214,6 +214,8 @@ export default function CampusAndCost({ facts, majors }) {
           <Row label="Graduation rate" value={f.graduation_rate != null ? pct(f.graduation_rate) : null} />
           <Row label="Median earnings" value={f.median_earnings_10yr != null ? money(f.median_earnings_10yr) : null}
             sub="10 years after starting" />
+          <Row label="Median debt at graduation" value={f.median_debt != null ? money(f.median_debt) : null}
+            sub={f.median_debt_monthly != null ? `about ${money(Math.round(f.median_debt_monthly))} a month over 10 years` : 'federal loans'} />
         </dl>
       </div>
 
@@ -223,6 +225,7 @@ export default function CampusAndCost({ facts, majors }) {
         Net price is the average yearly cost after grants and scholarships for full-time first-year students who receive aid.
         Graduation rate counts students who finish within 150% of normal time (six years for a four-year degree).
         Majors are programs that awarded degrees in the two most recent years reported.
+        Median earnings are for former students who received federal aid; median debt is the federal loan debt of students who completed.
         Source: {f.source_release}.
       </p>
     </div>

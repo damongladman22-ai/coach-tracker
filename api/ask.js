@@ -119,7 +119,7 @@ async function loadRefData(db) {
     allRows(() => db.from('schools').select('id,school,program_gender,division,conference,city,state').neq('is_active', false).order('id')),
     allRows(() => db.from('school_aliases').select('id,school_id,alias_norm,kind').order('id')),
     allRows(() => db.from('school_federal_college')
-      .select('school_id,unitid,college_facts(undergrad_enrollment,avg_net_price,admission_rate,sat_average,graduation_rate,locale,control,latitude,longitude)')
+      .select('school_id,unitid,college_facts(undergrad_enrollment,avg_net_price,admission_rate,sat_average,graduation_rate,locale,control,latitude,longitude,median_earnings_10yr,median_debt)')
       .order('school_id')),
   ])
   const index = new Map(), common = new Map(), names = new Map()
@@ -242,6 +242,7 @@ function cardMetric(sort, row, openings) {
   if (sort === 'sat') return { value: row.sat_average, label: 'avg SAT' }
   if (sort === 'net_price') return { value: row.avg_net_price == null ? null : '$' + Math.round(row.avg_net_price / 1000) + 'k', label: 'avg net price' }
   if (sort === 'graduation_rate') return { value: pct(row.graduation_rate), label: 'graduate' }
+  if (sort === 'earnings') return { value: row.median_earnings_10yr == null ? null : '$' + Math.round(row.median_earnings_10yr / 1000) + 'k', label: 'median earnings' }
   if (sort === 'size') return { value: row.undergrads == null ? null : row.undergrads.toLocaleString('en-US'), label: 'undergrads' }
   return { value: pct(row.admission_rate), label: 'admitted' }
 }
@@ -272,6 +273,8 @@ function highlightsFor(rows, { center, openings } = {}) {
   if ((b = best(x => x.f?.admission_rate, true))) out.push(`Most selective: ${name(b.x)} (${pct(b.v)} admitted)`)
   if ((b = best(x => x.f?.sat_average, false))) out.push(`Highest average SAT: ${name(b.x)} (${b.v})`)
   if ((b = best(x => x.f?.graduation_rate, false))) out.push(`Highest graduation rate: ${name(b.x)} (${pct(b.v)})`)
+  if ((b = best(x => x.f?.median_earnings_10yr, false))) out.push(`Highest median earnings 10 years after starting: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')})`)
+  if ((b = best(x => x.f?.median_debt, true))) out.push(`Lowest median debt at graduation: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')})`)
   if ((b = best(x => x.f?.undergrad_enrollment, true))) out.push(`Smallest: ${name(b.x)} (${b.v.toLocaleString('en-US')} undergraduates)`)
   if ((b = best(x => x.f?.undergrad_enrollment, false))) out.push(`Largest: ${name(b.x)} (${b.v.toLocaleString('en-US')} undergraduates)`)
   return out.length ? out : undefined
@@ -464,7 +467,7 @@ function buildToolSet(db, log, ctx) {
         setting: z.enum(['city', 'suburb', 'town', 'rural']).optional(),
         near: z.string().optional().describe('A town with its state ("Dublin, OH") or a 5-digit ZIP code'),
         radius_miles: z.number().min(1).max(1500).optional().describe('Straight-line miles from "near"; default 100'),
-        sort: z.enum(['openings', 'distance', 'selectivity', 'sat', 'net_price', 'graduation_rate', 'size', 'name']).optional()
+        sort: z.enum(['openings', 'distance', 'selectivity', 'sat', 'net_price', 'graduation_rate', 'earnings', 'size', 'name']).optional()
           .describe('Default: openings when position and hs_class are given, else distance when near is given, else selectivity'),
         limit: z.number().int().min(1).max(MAX_ROWS).optional(),
       }),
@@ -599,6 +602,7 @@ function buildToolSet(db, log, ctx) {
           sat: (x, y) => num(y.f?.sat_average, -1) - num(x.f?.sat_average, -1),
           net_price: (x, y) => num(x.f?.avg_net_price, 1e9) - num(y.f?.avg_net_price, 1e9),
           graduation_rate: (x, y) => num(y.f?.graduation_rate, -1) - num(x.f?.graduation_rate, -1),
+          earnings: (x, y) => num(y.f?.median_earnings_10yr, -1) - num(x.f?.median_earnings_10yr, -1),
           size: (x, y) => num(y.f?.undergrad_enrollment, -1) - num(x.f?.undergrad_enrollment, -1),
           name: (x, y) => String(x.s.school).localeCompare(String(y.s.school)),
         }[sort]
@@ -611,6 +615,7 @@ function buildToolSet(db, log, ctx) {
             admission_rate: f?.admission_rate ?? null, sat_average: f?.sat_average ?? null,
             graduation_rate: f?.graduation_rate ?? null, avg_net_price: f?.avg_net_price ?? null,
             undergrads: f?.undergrad_enrollment ?? null, type: f ? controlLabel(f.control) : null, setting: f ? LOCALE[f.locale] || null : null,
+            median_earnings_10yr: f?.median_earnings_10yr ?? null, median_debt: f?.median_debt ?? null,
           }
           if (dist != null) row.distance_miles = Math.round(dist)
           if (majorNote) row.major = majorNote
@@ -683,7 +688,7 @@ function buildToolSet(db, log, ctx) {
           radius_miles: center ? radius : undefined,
           distance_note: center ? 'Straight-line miles from the place named, to the college campus (driving distance is longer).' : undefined,
           without_location: center && noLocation ? noLocation : undefined,
-          academics_note: 'Admission rate, average SAT, graduation rate and net price are from the U.S. College Scorecard (2026 release). GPA is not available.',
+          academics_note: 'Admission rate, average SAT, graduation rate, net price, median earnings 10 years after starting (former students who received federal aid) and median debt at graduation (federal loans of completers) are from the U.S. College Scorecard (2026 release). GPA is not available.',
           asked_about: asked,
           programs: out.slice(0, n).map(toRow),
         }
@@ -951,6 +956,7 @@ function buildToolSet(db, log, ctx) {
           campus: f ? {
             graduation_rate: f.graduation_rate ?? null, sat_average: f.sat_average ?? null, admission_rate: f.admission_rate ?? null,
             avg_net_price: f.avg_net_price ?? null, undergrads: f.undergrad_enrollment ?? null, type: controlLabel(f.control),
+            median_earnings_10yr: f.median_earnings_10yr ?? null, median_debt: f.median_debt ?? null,
           } : null,
           note: 'Openings are estimates; incoming commits are not known. Position counts are pooled across seasons, never individual players; traced transfers are minimums.',
         }
@@ -1015,7 +1021,7 @@ function buildToolSet(db, log, ctx) {
           db.from('schools').select('school, program_gender, division, conference, city, state').eq('id', school_id).maybeSingle(),
           db.from('program_recruiting_style').select('build_band, reach_band, abroad_band, stability_band').eq('school_id', school_id).maybeSingle(),
           db.from('program_departure_outlook').select('outlook_rate, transitions, basis').eq('school_id', school_id).maybeSingle(),
-          db.from('school_federal_college').select('unitid, college_facts(federal_name, undergrad_enrollment, avg_net_price, cost_of_attendance, admission_rate, sat_average, graduation_rate, locale, control)')
+          db.from('school_federal_college').select('unitid, college_facts(federal_name, undergrad_enrollment, avg_net_price, cost_of_attendance, admission_rate, sat_average, graduation_rate, locale, control, median_earnings_10yr, median_debt, median_debt_monthly)')
             .eq('school_id', school_id).maybeSingle(),
         ])
         if (!s.data) return { error: 'No program with that id.' }
@@ -1383,6 +1389,7 @@ function instructions() {
     '- If the look-ups do not hold what was asked, say plainly that PitchSide does not have it, and suggest what it can answer instead. Do not guess.',
     '- The program look-ups (program_results, program_coaches, program_profile, program_transfers, program_majors) take the college name directly (school, plus gender when known); call them straight away, several at once when the question needs several. Use find_school only to search for a college, or when a look-up returns several matches. If both a men\'s and a women\'s program match and the question does not say which, answer for the one the conversation is about, or ask.',
     '- Openings are ESTIMATES (graduations, expected early departures, usual freshman intake); incoming commits are not known. Say "estimated".',
+    '- Value for money ("return on investment", "earnings after college", "how much debt"): use median_earnings_10yr and median_debt from find_programs (sort earnings for the highest earnings) or program_profile; say earnings are for former students who received federal aid, 10 years after starting, and debt is federal loans of students who completed. Earnings depend heavily on the major; say so when comparing colleges.',
     '- NCAA recruiting rules: state only the key dates that recruiting_year returns, each with its source line (rules as of 2025-26; confirm in the NCAA recruiting guide for the division or with the college\'s compliance office). For any other rules question, say PitchSide does not advise on recruiting rules and point to the NCAA recruiting guide for their division and the college\'s compliance office. Do not discuss or rank individual players.',
     '- People write in every way: typos, slang ("keeper", "D1", "class of \'28", "the Buckeyes"), half sentences. Work out what they mean and use the look-ups; find_school tolerates typos and nicknames.',
     '- Openings questions need gender, position and graduating class. If any is missing and the conversation does not already say it, ask for the missing pieces in ONE short question with the likely options, and stop. Searches that do not need them (majors, academics, results) run without them.',

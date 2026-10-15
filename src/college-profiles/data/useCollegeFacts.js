@@ -26,7 +26,7 @@ const NUM = [
   'latitude', 'longitude', 'locale', 'control', 'predominant_degree', 'undergrad_enrollment',
   'share_women', 'admission_rate', 'sat_average', 'cost_of_attendance', 'tuition_in_state',
   'tuition_out_of_state', 'avg_net_price', 'net_price_low_income', 'net_price_high_income',
-  'graduation_rate', 'retention_rate', 'median_earnings_10yr',
+  'graduation_rate', 'retention_rate', 'median_earnings_10yr', 'median_debt', 'median_debt_monthly',
 ]
 
 function coerce(row) {
