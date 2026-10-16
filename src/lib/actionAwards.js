@@ -110,6 +110,16 @@ export function collegeAwards(list, today, types = null) {
   }
 }
 
+/**
+ * True when a college publishes at least one award of the kinds asked (every
+ * kind when types is null). False when it publishes none or was not checked.
+ * Used by the Find programs award filter (backlog F19 follow-up).
+ */
+export function hasAward(list, types = null) {
+  const c = collegeAwards(list, null, types)
+  return c.checked && !c.nothing_published
+}
+
 /** A short line: "Campus visit award: $2,000 a year ($8,000 over four years); visit by Dec 5, 2026". */
 export function shortLine(a, today) {
   const st = deadlineStatus(a, today)

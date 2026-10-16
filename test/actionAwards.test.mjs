@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { normalizeAward, deadlineStatus, awardsByUnit, collegeAwards, shortLine, cardValue, upcomingDeadlines, daysUntil } from '../src/lib/actionAwards.js'
+import { normalizeAward, deadlineStatus, awardsByUnit, collegeAwards, shortLine, cardValue, upcomingDeadlines, daysUntil, hasAward } from '../src/lib/actionAwards.js'
 
 const rows = [
   { unitid: 1, award_type: 'referral', name: 'Refer', amount: '500', per_year: false, amount_text: '$500 book credit', deadline: '2026-11-01', deadline_text: 'Referral form by Nov 1, 2026', checked: '2026-10-15' },
@@ -36,6 +36,13 @@ assert.deepEqual(collegeAwards(undefined, today), { checked: false })
 assert.equal(shortLine(by.get(1)[0], today), 'Campus visit award: $2,000 a year ($8,000 over four years); visit by Dec 15, 2026')
 assert.equal(shortLine(by.get(3)[0], today), 'Campus visit award: $1,000 a year', 'no deadline words when none is stated')
 assert.equal(shortLine(by.get(4)[0], today), 'Campus visit award: $1,000 one time; visit by Oct 1, 2026 (passed)')
+
+assert.equal(hasAward(by.get(1)), true)
+assert.equal(hasAward(by.get(1), ['visit']), true)
+assert.equal(hasAward(by.get(1), ['fafsa']), false, 'only the kinds asked')
+assert.equal(hasAward(by.get(2)), false, 'checked, nothing published')
+assert.equal(hasAward(by.get(4), ['visit']), true, 'a passed deadline still counts: the award recurs')
+assert.equal(hasAward(undefined), false, 'not checked')
 
 assert.equal(cardValue(by.get(1)[0]), '$2,000/yr')
 assert.equal(cardValue(by.get(4)[0]), '$1,000')

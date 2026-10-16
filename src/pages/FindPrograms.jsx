@@ -24,7 +24,7 @@ import { milesBetween } from '../lib/geo'
 import { strengthIndex, fitFor, satEquivalent, tierCounts, TIER_LABEL } from '../lib/fitTier'
 import FitBadge from '../components/FitBadge'
 import { ORDERS, valueLine, orderPrograms } from '../lib/collegeValue'
-import { AWARDS_NOTE, AWARDS_SCOPE, awardsByUnit, collegeAwards, shortLine } from '../lib/actionAwards'
+import { AWARDS_NOTE, AWARDS_SCOPE, awardsByUnit, collegeAwards, hasAward, shortLine } from '../lib/actionAwards'
 
 /**
  * FindPrograms — "Find programs" (backlog F3, Targeting: ranked fit list).
@@ -82,7 +82,9 @@ import { AWARDS_NOTE, AWARDS_SCOPE, awardsByUnit, collegeAwards, shortLine } fro
  * EARNINGS, DEBT AND AWARDS (backlog F19, Damon 2026-10-15). Each row shows the
  * college's median earnings and median debt at graduation (College Scorecard,
  * as on the Campus and cost card), and any campus visit or other action award
- * the college publishes (college_action_awards; Ohio D2, D3 and NAIA so far).
+ * the college publishes (college_action_awards; see AWARDS_SCOPE for which
+ * colleges are checked). Award chips keep only colleges that publish a campus
+ * visit award, or any visit or action award (Damon 2026-10-16).
  * An "Order" choice can list by highest median earnings or lowest median debt
  * instead of openings; openings stay the default. Rules in
  * src/lib/collegeValue.js and src/lib/actionAwards.js. If these cannot be read
@@ -299,6 +301,7 @@ export default function FindPrograms() {
   // Earnings, debt and awards (F19)
   const [valueData, setValueData] = useState(null)   // null until loaded; stays null on failure
   const [order, setOrder] = useState('openings')
+  const [awardPick, setAwardPick] = useState(null)   // null (any college) | 'visit' | 'any'
 
   useEffect(() => {
     if (status !== 'allowed') return
@@ -452,10 +455,13 @@ export default function FindPrograms() {
     const distKeep = place
       ? (points.map ? r => { const pt = points.map.get(r.school_id); return !!pt && milesBetween(place, pt) <= radius } : () => false)
       : null
-    const keeps = [majorKeep, styleKeep, watchKeep, distKeep].filter(Boolean)
+    const awardKeep = awardPick && valueData
+      ? r => hasAward(valueData.awards.get(Number(valueData.units.get(r.school_id))), awardPick === 'visit' ? ['visit'] : null)
+      : null
+    const keeps = [majorKeep, styleKeep, watchKeep, distKeep, awardKeep].filter(Boolean)
     const keep = keeps.length ? r => keeps.every(k => k(r)) : null
     return rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null, keep })
-  }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData, filterWatched, watchedMap, place, radius, points])
+  }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData, filterWatched, watchedMap, place, radius, points, awardPick, valueData])
   // Labels on the list, then the label filter (counts are before the filter).
   const counts = useMemo(() => (fitOf ? tierCounts(ranked.map(fitOf)) : null), [ranked, fitOf])
   const listed = useMemo(() => (fitOf && tiers.size ? ranked.filter(r => tiers.has(fitOf(r)?.tier)) : ranked), [ranked, fitOf, tiers])
@@ -701,6 +707,19 @@ export default function FindPrograms() {
             </div>
           )}
 
+          {valueData && (
+            <div className="mt-3">
+              <div className="text-xs text-gray-500 mb-1.5">
+                Visit and action awards {awardPick ? '' : '(any college)'}
+                <span className="text-gray-400"> · money a college gives for visiting campus, filing the FAFSA and similar steps</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Chip on={awardPick === 'visit'} onClick={() => setAwardPick(p => (p === 'visit' ? null : 'visit'))}>Campus visit award</Chip>
+                <Chip on={awardPick === 'any'} onClick={() => setAwardPick(p => (p === 'any' ? null : 'any'))}>Any visit or action award</Chip>
+              </div>
+            </div>
+          )}
+
           {offeredTeams.length > 0 && (
             <div className="mt-3">
               <div className="text-xs text-gray-500 mb-1.5">
@@ -749,7 +768,8 @@ export default function FindPrograms() {
                   : activeOrder === 'debt' ? 'ordered by lowest median debt' : 'ranked by estimated openings'}{' '}
                 for a {pos?.one} entering in fall {entry}{choice ? <>, at colleges that offer {choiceLabel(choice)}</> : null}
                 {filterWatched ? <>, whose coaches have watched {team.name}</> : null}
-                {place ? <>, within {radius} miles of {place.name}</> : null}.
+                {place ? <>, within {radius} miles of {place.name}</> : null}
+                {awardPick === 'visit' ? <>, at colleges with a campus visit award</> : awardPick === 'any' ? <>, at colleges with a visit or action award</> : null}.
               </p>
               {valueData && (
                 <select className={selectCls} value={order} onChange={e => setOrder(e.target.value)} aria-label="Order">
@@ -833,7 +853,7 @@ export default function FindPrograms() {
               })}
               {shown.length === 0 && (
                 <div className="px-3 py-10 text-center text-gray-500 text-sm">
-                  No programs match. {tiers.size ? 'Try another label, or ' : ''}Try more divisions{choice ? ', states or another major' : ' or states'}{place ? ', or a wider distance' : ''}.
+                  No programs match. {awardPick ? 'Try without the award choice, or ' : ''}{tiers.size ? 'Try another label, or ' : ''}Try more divisions{choice ? ', states or another major' : ' or states'}{place ? ', or a wider distance' : ''}.
                 </div>
               )}
             </div>
@@ -870,7 +890,7 @@ export default function FindPrograms() {
               median debt is the federal loan debt of students who completed, with the monthly payment over 10 years
               (College Scorecard). Earnings depend heavily on the major. When ordering by earnings or debt, programs
               without the figure come last.</>}
-              {anyAwards && <> Visit and action awards: {AWARDS_NOTE} Checked so far: {AWARDS_SCOPE}.</>}
+              {(anyAwards || awardPick) && <> Visit and action awards: {AWARDS_NOTE} Checked so far: {AWARDS_SCOPE}.{awardPick ? ' Colleges not checked yet are left out while an award choice is set.' : ''}</>}
               {styleData && <> Recruiting styles compare each program with the middle half of other programs in its
               division, as on its College Profile; a program with too little data for a chosen style is left out.</>}
             </p>
