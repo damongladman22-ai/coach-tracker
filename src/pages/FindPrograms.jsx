@@ -349,8 +349,11 @@ export default function FindPrograms() {
       }
       return cache.get(r.school_id)
     }
+    // The cache is per results list: each program's estimated freshman openings
+    // differ by position and class, so a new search must start a new cache
+    // (found 2026-10-15: switching goalkeeper to midfielder kept the goalkeeper labels).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wantFit, fitData, sat, targets?.join(',')])
+  }, [wantFit, fitData, sat, targets?.join(','), res.rows])
 
   // Program locations load the first time a distance is set.
   const needPoints = !!place && !points.map && !points.err
