@@ -201,6 +201,9 @@
 .csl-map svg{width:100%; height:auto; display:block}
 .csl-st{stroke:#fff; stroke-width:.6; transition:fill .18s ease; cursor:default}
 .csl-st:hover{stroke:var(--ink); stroke-width:1.2}
+.csl-st--base{pointer-events:none}
+.csl-citydot{fill:var(--accent); fill-opacity:.55; stroke:#fff; stroke-width:.35; cursor:default}
+.csl-citydot:hover{fill-opacity:.95; stroke:var(--ink); stroke-width:.8}
 .csl-borders{fill:none; stroke:rgba(0,0,0,.10); stroke-width:.5; pointer-events:none}
 .csl-heatkey{display:flex; align-items:center; gap:8px; margin-top:10px; font-size:11px; color:var(--slate)}
 .csl-heatbar{flex:0 1 160px; height:8px; border-radius:999px; background:linear-gradient(90deg,#EAEDEF,var(--accent))}

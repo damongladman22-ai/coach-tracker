@@ -472,7 +472,7 @@ export default function ProfileLens({ client, bench, geo, transfers, selection }
             <IntlShareCompare divGeo={geo} pins={active.map(a => ({ name: a.name, color: a.color, intl: a.d.intl }))} />
           )}
           <Suspense fallback={<div className="csl-card" style={{ minHeight: 360 }}><p className="csl-eyebrow">Loading map…</p></div>}>
-            <GeographyMap geo={geo} segmentLabel={segmentLabel} />
+            <GeographyMap geo={geo} segmentLabel={segmentLabel} client={client} segment={{ division, gender, season }} />
           </Suspense>
           {geoSingle && (
             <div className="csl-geosec-rail">

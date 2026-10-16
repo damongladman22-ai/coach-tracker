@@ -3,6 +3,8 @@ import { US_VIEWBOX, US_BORDERS, US_STATE_PATHS } from './data/usStatesPaths'
 import { WORLD_VIEWBOX, WORLD_BORDERS, WORLD_NAMES, WORLD_PATHS } from './data/worldCountriesPaths'
 import { COUNTRY_CODE, COUNTRY_FLAGS } from './data/countryFlags'
 import { clampTip } from './data/landscapeFormat'
+import { useLandscapeCities } from './data/useLandscapeCities'
+import { dotRadius, unplacedCount } from './data/landscapeCities'
 
 /**
  * GeographyMap — recruiting geography for a whole division/conference segment as
@@ -10,6 +12,12 @@ import { clampTip } from './data/landscapeFormat'
  * Reads pre-aggregated player-level counts from program_benchmark_geo via
  * useLandscapeGeo; the season comes from the shared control bar (no local season
  * control here). Mirrors the College Profiles footprint treatment at scale.
+ *
+ * CITIES (backlog G5, Damon 2026-10-16: both, Landscape first). On the U.S. map a
+ * States / Cities switch draws one dot per hometown across the whole segment,
+ * sized by players, with a Top cities list, from program_benchmark_city (loaded
+ * only when Cities is chosen). Counts match the state map: the same players,
+ * with hometowns that have no map position counted in a note.
  */
 function scaleFill(count, max) {
   if (!count) return '#EAEDEF'
@@ -29,9 +37,13 @@ function Flag({ code }) {
     : <span className="csl-flag csl-flag--none" aria-hidden="true" />
 }
 
-export default function GeographyMap({ geo, segmentLabel }) {
+export default function GeographyMap({ geo, segmentLabel, client = null, segment = null }) {
   const [mapMode, setMapMode] = useState('us') // 'us' | 'world'
+  const [usView, setUsView] = useState('states') // 'states' | 'cities'
   const [tip, setTip] = useState(null)
+  const canCities = !!(client && segment)
+  const showCities = canCities && mapMode === 'us' && usView === 'cities'
+  const cities = useLandscapeCities(client, { ...(segment || {}), enabled: showCities })
 
   const loading = geo?.loading
   const states = geo?.states || {}
@@ -58,6 +70,9 @@ export default function GeographyMap({ geo, segmentLabel }) {
 
   if (loading) return <div className="csl-geo-loading">Loading geography…</div>
 
+  const unplaced = showCities ? unplacedCount(states, cities.placed) : 0
+  const maxCity = cities.max || 1
+
   return (
     <div className="csl-geowrap">
       <div className="csl-geoctl">
@@ -66,17 +81,38 @@ export default function GeographyMap({ geo, segmentLabel }) {
           <button type="button" className="csl-fbtn" aria-pressed={mapMode === 'us'} onClick={() => setMapMode('us')}>U.S.</button>
           <button type="button" className="csl-fbtn" aria-pressed={mapMode === 'world'} onClick={() => setMapMode('world')}>World</button>
         </div>
+        {canCities && mapMode === 'us' && (
+          <div className="csl-fgrp">
+            <span className="csl-glabel">Show</span>
+            <button type="button" className="csl-fbtn" aria-pressed={usView === 'states'} onClick={() => setUsView('states')}>States</button>
+            <button type="button" className="csl-fbtn" aria-pressed={usView === 'cities'} onClick={() => setUsView('cities')}>Cities</button>
+          </div>
+        )}
       </div>
 
       <div className="csl-geomap">
         <div className="csl-map">
           <div className="csl-map-cap">
             {segmentLabel} · <b>{total.toLocaleString()}</b> players · {mapMode === 'us'
-              ? <><b>{rankedStates.length}</b> states{rankedIntl.length ? <> · <b>{rankedIntl.length}</b> intl</> : null}</>
+              ? (showCities
+                ? <><b>{cities.places.toLocaleString()}</b> hometowns</>
+                : <><b>{rankedStates.length}</b> states{rankedIntl.length ? <> · <b>{rankedIntl.length}</b> intl</> : null}</>)
               : <><b>{rankedCountries.length}</b> countries</>}
           </div>
 
-          {mapMode === 'us' ? (
+          {showCities ? (
+            <svg viewBox={US_VIEWBOX} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="U.S. hometowns, one dot per city sized by players">
+              {Object.entries(US_STATE_PATHS).map(([name, d]) => (
+                <path key={name} d={d} className="csl-st csl-st--base" fill="#EAEDEF" />
+              ))}
+              <path d={US_BORDERS} className="csl-borders" />
+              {cities.dots.map(c => (
+                <circle key={c.key} cx={c.x} cy={c.y} r={dotRadius(c.n, maxCity)} className="csl-citydot"
+                  onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name: c.label, c: c.n })}
+                  onMouseLeave={() => setTip(null)} />
+              ))}
+            </svg>
+          ) : mapMode === 'us' ? (
             <svg viewBox={US_VIEWBOX} xmlns="http://www.w3.org/2000/svg" role="img" aria-label="U.S. recruiting footprint heat map">
               {Object.entries(US_STATE_PATHS).map(([name, d]) => {
                 const c = states[name] || 0
@@ -101,11 +137,39 @@ export default function GeographyMap({ geo, segmentLabel }) {
               <path d={WORLD_BORDERS} className="csl-borders" />
             </svg>
           )}
-          <div className="csl-heatkey"><span>Fewer</span><i className="csl-heatbar" /><span>More</span></div>
+          {showCities
+            ? <div className="csl-heatkey"><span>Each dot is a hometown; larger dots, more players.</span></div>
+            : <div className="csl-heatkey"><span>Fewer</span><i className="csl-heatbar" /><span>More</span></div>}
         </div>
 
         <div className="csl-geo-side">
-          {mapMode === 'us' ? (
+          {showCities ? (
+            <>
+              <p className="csl-eyebrow">Top cities</p>
+              {cities.loading ? (
+                <p className="csl-muted" style={{ fontSize: 13 }}>Loading hometowns…</p>
+              ) : cities.error ? (
+                <p className="csl-muted" style={{ fontSize: 13 }}>The city view is not available right now.</p>
+              ) : (
+                <ul className="csl-geo">
+                  {cities.dots.slice(0, 10).map(c => (
+                    <li key={c.key}>
+                      <span className="csl-gname">{c.label}</span>
+                      <span className="csl-gtrack"><span className="csl-gfill" style={{ width: `${100 * c.n / maxCity}%` }} /></span>
+                      <span className="csl-gn">{c.n.toLocaleString()}</span>
+                      <span className="csl-gpct">{pctOf(c.n)}%</span>
+                    </li>
+                  ))}
+                  {cities.dots.length === 0 && <li className="csl-muted">No hometowns placed in this view.</li>}
+                </ul>
+              )}
+              {!cities.loading && !cities.error && unplaced > 0 && (
+                <p className="csl-geo-note">
+                  {unplaced.toLocaleString()} U.S. player{unplaced === 1 ? '' : 's'} ({pctOf(unplaced)}%) have a hometown with no map position (a region, or a name several towns share) — counted in the state map, not shown as a dot.
+                </p>
+              )}
+            </>
+          ) : mapMode === 'us' ? (
             <>
               <p className="csl-eyebrow">Top states</p>
               <ul className="csl-geo">
