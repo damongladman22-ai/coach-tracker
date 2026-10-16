@@ -225,6 +225,8 @@ function bucketOf(row) {
  * cities (backlog G5, 2026-10-09) counts U.S. players by 'state|city' with
  * the two values EXACTLY as stored, the key of the hometown_geocodes table;
  * a U.S. player with no city counts toward the state only.
+ * intlCities (G5 world cities, 2026-10-16) counts international players by
+ * 'country|city', EXACTLY as stored, the key of world_hometown_geocodes.
  */
 export function geographyOverTime(rosters, seasons) {
   const first = firstSeenMap(rosters)
@@ -235,7 +237,7 @@ export function geographyOverTime(rosters, seasons) {
     if (!cur || r.roster_season > cur.roster_season) repByPlayer.set(r.player_id, r)
   }
 
-  const emptyScope = () => ({ states: {}, intl: {}, cities: {}, unknown: 0, total: 0, distinctStates: 0 })
+  const emptyScope = () => ({ states: {}, intl: {}, cities: {}, intlCities: {}, unknown: 0, total: 0, distinctStates: 0 })
   const add = (scope, row) => {
     const b = bucketOf(row)
     if (b.kind === 'state') {
@@ -244,8 +246,13 @@ export function geographyOverTime(rosters, seasons) {
         const k = cityKey(row.hometown_state, row.hometown_city)
         scope.cities[k] = (scope.cities[k] || 0) + 1
       }
-    } else if (b.kind === 'intl') scope.intl[b.name] = (scope.intl[b.name] || 0) + 1
-    else scope.unknown++
+    } else if (b.kind === 'intl') {
+      scope.intl[b.name] = (scope.intl[b.name] || 0) + 1
+      if ((row.hometown_city || '').trim()) {
+        const k = cityKey(row.hometown_country, row.hometown_city)
+        scope.intlCities[k] = (scope.intlCities[k] || 0) + 1
+      }
+    } else scope.unknown++
     scope.total++
   }
   const finalize = s => { s.distinctStates = Object.keys(s.states).length; return s }

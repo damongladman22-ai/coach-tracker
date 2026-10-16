@@ -3,7 +3,7 @@ import { US_VIEWBOX, US_BORDERS, US_STATE_PATHS } from '../data/usStatesPaths'
 import { WORLD_VIEWBOX, WORLD_BORDERS, WORLD_NAMES, WORLD_PATHS } from '../data/worldCountriesPaths'
 import { clampTip } from '../data/format'
 import { COUNTRY_CODE, COUNTRY_FLAGS } from '../data/countryFlags'
-import { cityDots, dotRadius } from '../data/cityMap'
+import { cityDots, worldCityDots, dotRadius } from '../data/cityMap'
 
 /**
  * GeographyTrend — recruiting footprint as a heat map, time-aware, with a
@@ -24,6 +24,11 @@ import { cityDots, dotRadius } from '../data/cityMap'
  * Season controls. A hometown with no map position (about 2.5% of U.S.
  * players) is still listed, and the caption says how many have no dot. With
  * no positions loaded the switch does not appear.
+ *
+ * WORLD CITIES (G5, 2026-10-16): the same switch on the World map draws one dot
+ * per international hometown (world_hometown_geocodes via useWorldGeocodes ->
+ * the `worldPoints` prop; GeoNames places, CC BY 4.0, credited under the map).
+ * Spellings of one place share a dot. U.S. players stay on the U.S. map.
  */
 function scaleFill(count, max) {
   if (!count) return '#EAEDEF'
@@ -43,11 +48,11 @@ function Flag({ code }) {
     : <span className="cp-flag cp-flag--none" aria-hidden="true" />
 }
 
-export default function GeographyTrend({ data, benchmark, inState = null, schoolState = null, cityPoints = null }) {
+export default function GeographyTrend({ data, benchmark, inState = null, schoolState = null, cityPoints = null, worldPoints = null }) {
   const [mode, setMode] = useState('recruit')   // 'recruit' | 'roster'
   const [sel, setSel] = useState('all')         // 'all' | year
   const [mapMode, setMapMode] = useState('us')  // 'us' | 'world'
-  const [layer, setLayer] = useState('states')  // 'states' | 'cities' (U.S. map only)
+  const [layer, setLayer] = useState('states')  // 'states' | 'cities' (U.S. and World maps)
   const [tip, setTip] = useState(null)
 
   // international share vs peer (latest full-roster season, among known-origin players)
@@ -82,10 +87,15 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
   const rankedStates = Object.entries(states).sort((a, b) => b[1] - a[1])
   const rankedIntl = Object.entries(intl).sort((a, b) => b[1] - a[1])
 
-  // cities (G5)
-  const canCities = mapMode === 'us' && !!cityPoints && cityPoints.size > 0
+  // cities (G5): U.S. hometowns on the U.S. map, international ones on the World map
+  const canUsCities = !!cityPoints && cityPoints.size > 0
+  const canWorldCities = !!worldPoints && worldPoints.size > 0
+  const canCities = mapMode === 'us' ? canUsCities : canWorldCities
   const showCities = canCities && layer === 'cities'
-  const cd = showCities ? cityDots(scope?.cities, cityPoints) : null
+  const worldCities = showCities && mapMode === 'world'
+  const cd = showCities
+    ? (worldCities ? worldCityDots(scope?.intlCities, worldPoints) : cityDots(scope?.cities, cityPoints))
+    : null
   const maxCity = cd && cd.ranked.length ? cd.ranked[0].n : 1
 
   // world roll-up: USA = all domestic; each country = base-code sum
@@ -182,7 +192,7 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
           <div className="cp-map">
             <div className="cp-map-cap">
               {selLabel} · <b>{total}</b> players · {showCities
-                ? <><b>{cd.dots.length}</b> cities{cd.unplaced ? <> · <b>{cd.unplaced}</b> U.S. {cd.unplaced === 1 ? 'player' : 'players'} without a map position</> : null}</>
+                ? <><b>{cd.dots.length}</b> {worldCities ? 'international ' : ''}cities{cd.unplaced ? <> · <b>{cd.unplaced}</b> {worldCities ? 'international' : 'U.S.'} {cd.unplaced === 1 ? 'player' : 'players'} without a map position</> : null}</>
                 : mapMode === 'us'
                   ? <><b>{rankedStates.length}</b> states{rankedIntl.length ? <> · <b>{rankedIntl.length}</b> intl</> : null}</>
                   : <><b>{rankedCountries.length}</b> countries</>}
@@ -211,16 +221,24 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
                 {Object.entries(WORLD_PATHS).map(([code, d]) => {
                   const c = worldCounts[code] || 0
                   return (
-                    <path key={code} d={d} className="cp-st" fill={scaleFill(c, maxWorld)}
+                    <path key={code} d={d} className="cp-st" fill={worldCities ? '#EAEDEF' : scaleFill(c, maxWorld)}
                       onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name: niceCountry(code), c })}
                       onMouseLeave={() => setTip(null)} />
                   )
                 })}
                 <path d={WORLD_BORDERS} className="cp-borders" />
+                {worldCities && cd.dots.map(d => (
+                  <circle key={d.key} cx={d.x} cy={d.y} r={0.8 * dotRadius(d.n, cd.max)}
+                    fill="rgb(187,0,0)" fillOpacity={0.62} stroke="#fff" strokeWidth={0.6}
+                    onMouseMove={e => setTip({ x: e.clientX, y: e.clientY, name: d.label, c: d.n })}
+                    onMouseLeave={() => setTip(null)} />
+                ))}
               </svg>
             )}
             {showCities
-              ? <div className="cp-heatkey"><span>Dot size = players from that hometown · U.S. Census place locations</span></div>
+              ? <div className="cp-heatkey"><span>Dot size = players from that hometown · {worldCities
+                ? <>place locations from <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> (CC BY 4.0)</>
+                : 'U.S. Census place locations'}</span></div>
               : <div className="cp-heatkey"><span>Fewer</span><i className="cp-heatbar" /><span>More</span></div>}
           </div>
 
@@ -237,7 +255,7 @@ export default function GeographyTrend({ data, benchmark, inState = null, school
                       <span className="cp-gpct">{pctOf(r.n)}%</span>
                     </li>
                   ))}
-                  {cd.ranked.length === 0 && <li className="cp-muted">No U.S. hometown cities in this view.</li>}
+                  {cd.ranked.length === 0 && <li className="cp-muted">No {worldCities ? 'international' : 'U.S.'} hometown cities in this view.</li>}
                 </ul>
               </>
             ) : mapMode === 'us' ? (

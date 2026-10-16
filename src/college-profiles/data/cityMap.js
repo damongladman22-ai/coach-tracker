@@ -58,6 +58,42 @@ export function cityDots(cities, points) {
   return { dots, ranked, placed, unplaced, max }
 }
 
+/**
+ * The international cities of one scope (G5 world cities, 2026-10-16).
+ *   intlCities {'country|city': players}
+ *   points     Map('country|city' -> {x, y}) from useWorldGeocodes
+ * Spellings of one place ("Sao Paulo", "São Paulo") share a position, so they
+ * are merged into one dot labeled with the most common spelling.
+ * Returns { dots, ranked, placed, unplaced, max } like cityDots.
+ */
+export function worldCityDots(intlCities, points) {
+  const byPos = new Map()
+  const ranked = []
+  let placed = 0, unplaced = 0
+  for (const [k, n] of Object.entries(intlCities || {})) {
+    const { state: country, city } = splitKey(k)
+    const p = points ? points.get(k) : null
+    if (!p) {
+      unplaced += n
+      ranked.push({ key: k, country, city, label: `${city.trim()}, ${country.trim()}`, n, x: null, y: null })
+      continue
+    }
+    placed += n
+    const pk = `${p.x}|${p.y}`
+    const cur = byPos.get(pk) || { key: k, country, city, n: 0, best: 0, x: p.x, y: p.y }
+    cur.n += n
+    if (n > cur.best) { cur.best = n; cur.key = k; cur.country = country; cur.city = city }
+    byPos.set(pk, cur)
+  }
+  for (const d of byPos.values()) {
+    ranked.push({ key: d.key, country: d.country, city: d.city, label: `${d.city.trim()}, ${d.country.trim()}`, n: d.n, x: d.x, y: d.y })
+  }
+  ranked.sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+  const dots = ranked.filter(r => r.x != null)
+  const max = dots.reduce((m, d) => Math.max(m, d.n), 0)
+  return { dots, ranked, placed, unplaced, max }
+}
+
 /** Dot radius in map units (the map is 960 wide): area grows with players. */
 export function dotRadius(n, max) {
   if (!max) return 0

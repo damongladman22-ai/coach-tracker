@@ -315,6 +315,7 @@
 .cp-st:hover{stroke:var(--ink); stroke-width:1.2}
 .cp-borders{fill:none; stroke:rgba(0,0,0,.10); stroke-width:.5; pointer-events:none}
 .cp-heatkey{display:flex; align-items:center; gap:8px; margin-top:10px; font-size:11px; color:var(--slate)}
+.cp-heatkey a{color:inherit; text-decoration:underline}
 .cp-heatbar{flex:0 1 160px; height:8px; border-radius:999px; background:linear-gradient(90deg,#EAEDEF,var(--accent))}
 .cp-geo-side{min-width:0}
 .cp-intl{display:flex; flex-wrap:wrap; gap:6px}

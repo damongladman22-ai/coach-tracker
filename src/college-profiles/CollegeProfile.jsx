@@ -32,6 +32,7 @@ import { useEarlyDepartures } from './data/useEarlyDepartures'
 import { useDepartureOutlook } from './data/useDepartureOutlook'
 import { useCollegeFacts } from './data/useCollegeFacts'
 import { useHometownGeocodes } from './data/useHometownGeocodes'
+import { useWorldGeocodes } from './data/useWorldGeocodes'
 import { themeFromSchool, softOf } from './data/schoolBranding'
 import { classShares, inStateShare } from './data/peerOverlays'
 import { intlShareFromGeo, styleShift } from './data/recruitingStyle'
@@ -86,6 +87,8 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
   const college = useCollegeFacts(client, schoolId)
   // Map positions for the Recruiting geography Cities view (backlog G5).
   const hometownPoints = useHometownGeocodes(client, rosters)
+  // ... and for international hometowns on the World map (G5 world cities).
+  const worldPoints = useWorldGeocodes(client, rosters)
   // The Campus chip only appears when the program has a federal college to show.
   // Memoised: SectionNav rebuilds its scroll observer whenever `items` changes.
   const hasCampus = !!college.facts
@@ -226,7 +229,7 @@ export default function CollegeProfile({ client, schoolId, backTo = '/', backLab
             <div id="sec-geography" className="cp-anchor">
               <Suspense fallback={<div className="cp-panel" style={{ minHeight: 420 }}><p className="cp-panel-desc">Loading map…</p></div>}>
                 <GeographyTrend data={geoTime} benchmark={scope} inState={inState} schoolState={school.state}
-                  cityPoints={hometownPoints.points} />
+                  cityPoints={hometownPoints.points} worldPoints={worldPoints.points} />
               </Suspense>
             </div>
             {college.facts && (
