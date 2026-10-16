@@ -17,12 +17,12 @@
 
 /**
  * Which colleges have been checked so far, in words: every college behind an
- * NCAA D2, D3 or NAIA program (Ohio pilot, out_sql/31, 2026-10-15; neighbors
+ * NCAA D1, D2, D3 or NAIA program (Ohio pilot, out_sql/31, 2026-10-15; neighbors
  * plus New York, out_sql/32, 2026-10-15; every other state, out_sql/33,
- * 2026-10-16). NCAA D1 and junior colleges are not checked; nor is Wartburg
- * College, whose website could not be read.
+ * 2026-10-16; NCAA D1 and Wartburg, out_sql/36, 2026-10-16). Junior colleges are
+ * not checked; nor is Southeastern Louisiana, whose website could not be read.
  */
-export const AWARDS_SCOPE = 'colleges with NCAA Division II, Division III or NAIA soccer, nationwide (not NCAA Division I or junior colleges)'
+export const AWARDS_SCOPE = 'colleges with NCAA Division I, II or III or NAIA soccer, nationwide (not junior colleges)'
 export const AWARDS_NOTE = 'From each college\'s own website. Amounts and deadlines change every year, so confirm with the admissions office before relying on one.'
 
 export const TYPE_LABEL = {
