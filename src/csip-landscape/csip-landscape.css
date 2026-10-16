@@ -215,7 +215,8 @@
 .csl-geo li{display:flex; align-items:center; gap:10px; margin:9px 0; list-style:none}
 .csl-gname{font-size:13px; width:150px; flex:none; font-weight:500; display:flex; align-items:center; gap:6px; color:var(--ink)}
 .csl-gtrack{flex:1; height:8px; background:var(--paper); border-radius:999px; overflow:hidden}
-.csl-gfill{height:100%; background:var(--accent); border-radius:999px; opacity:.85}
+/* display:block: an inline span ignores width and height (the bars drew at zero width; same fix as College Profiles, 9 October). */
+.csl-gfill{display:block; height:100%; background:var(--accent); border-radius:999px; opacity:.85}
 .csl-gn{font-family:"Barlow Condensed",sans-serif; font-weight:700; width:30px; text-align:right; color:var(--ink)}
 .csl-gpct{font-size:11px; color:var(--slate-2); width:38px; text-align:right; flex:none; font-variant-numeric:tabular-nums}
 
