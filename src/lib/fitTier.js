@@ -12,9 +12,19 @@
  * program), many GOOD FIT schools, and some SAFETY schools (confident of
  * admission, and a player expects to make a big impact on the field).
  *
+ * TUNED 2026-10-15 (backlog F20, Damon: full proposal). Measured on live data
+ * for the class of 2028, the first rules gave about half the list as Reach for
+ * goalkeepers (women's GK, D1, SAT 1250: 52% / 32% / 17%), mostly because a
+ * goalkeeper rarely has half an estimated freshman opening and that alone made
+ * a Reach. With the rules below the same list is about 31% / 49% / 20%
+ * (midfielders about 31% / 44% / 25%). Changes: few openings can no longer make
+ * a Reach; single level top fifth / bottom 30% (was quarter / quarter); several
+ * levels top third of the highest (was top half); academic reach at 120+ SAT
+ * points (was 80+); a Safety may be at a college admitting 50%+ (was 60%).
+ *
  * ACADEMIC (from the U.S. College Scorecard)
  *  - With the player's SAT (an ACT is converted with ACT_TO_SAT):
- *      reach  : the college's average SAT is 80 or more above the player's,
+ *      reach  : the college's average SAT is 120 or more above the player's,
  *               or it admits under 25% of applicants;
  *      safety : its average SAT is 80 or more below the player's and it
  *               admits at least half (or, with no SAT published, admits 80%+);
@@ -30,23 +40,36 @@
  *  - Within the target: strength is the program's place among programs of
  *    its own division and gender, 0 (weakest) to 1 (strongest): D-I by RPI
  *    rank, otherwise by win percentage over the latest two seasons (at least
- *    MIN_GAMES games). With one target level: top quarter reach, bottom
- *    quarter safety. With several: at the top level, the stronger half is a
- *    reach; at the bottom level, the weaker half is a safety. No results
- *    (NAIA and junior colleges are not covered): good fit.
- *  - Openings: under half an estimated freshman opening at the position moves
- *    the label one step toward reach (safety to good, good to reach).
+ *    MIN_GAMES games). With one target level: top fifth reach, bottom 30%
+ *    safety. With several: at the top level, the top third is a reach; at the
+ *    bottom level, the weaker half is a safety. No results (NAIA and junior
+ *    colleges are not covered): good fit.
+ *  - Openings: under half an estimated freshman opening at the position turns
+ *    a safety into a good fit (a player is less sure to play early), but never
+ *    makes a program a reach; the reason line still mentions it.
  *  - No target level ("any level"): no athletic label.
  *
  * OVERALL
  *  - Reach if either side is a reach.
  *  - Safety if the athletic side is a safety and the academic side is a
- *    safety, or a good fit at a college admitting 60%+, or has no figures.
+ *    safety, or a good fit at a college admitting 50%+, or has no figures.
  *  - With no athletic label, the academic label alone.
  *  - Otherwise good fit. Every label comes with its reasons in plain words.
  */
 
 export const MIN_GAMES = 5
+
+// Thresholds (F20, 2026-10-15). Strength is 0 (weakest) to 1 (strongest).
+export const T = {
+  satReach: 120,       // academic reach: average SAT this many points above the player's
+  satSafety: 80,       // academic safety: this many below (and admits half or more)
+  oneLevelReach: 0.8,  // one target level: top fifth
+  oneLevelSafety: 0.3, // one target level: bottom 30%
+  topLevelReach: 2 / 3, // several levels: top third of the highest level
+  bottomLevelSafety: 0.5, // several levels: weaker half of the lowest level
+  fewOpenings: 0.5,    // estimated freshman openings below this: not a safety
+  safetyAdmit: 0.5,    // academic good fit still allows a safety at this admission rate or higher
+}
 
 // Highest first. NAIA sits with NCAA D2 (both offer partial athletic aid).
 export const DIV_RANK = { 'NCAA D1': 4, 'NCAA D2': 3, NAIA: 3, 'NCAA D3': 2, JC: 1 }
@@ -133,8 +156,8 @@ export function academicFit(f, studentSat) {
   if (studentSat != null && sat != null) {
     const diff = sat - studentSat
     const satWords = diff >= 0 ? `average SAT ${sat}, ${diff} above yours` : `average SAT ${sat}, ${-diff} below yours`
-    if (diff >= 80 || (adm != null && adm < 0.25)) return { tier: 'reach', why: [satWords, admitted].filter(Boolean).join(', ') }
-    if (diff <= -80 && (adm == null || adm >= 0.5)) return { tier: 'safety', why: [satWords, admitted].filter(Boolean).join(', ') }
+    if (diff >= T.satReach || (adm != null && adm < 0.25)) return { tier: 'reach', why: [satWords, admitted].filter(Boolean).join(', ') }
+    if (diff <= -T.satSafety && (adm == null || adm >= 0.5)) return { tier: 'safety', why: [satWords, admitted].filter(Boolean).join(', ') }
     return { tier: 'good', why: [satWords, admitted].filter(Boolean).join(', ') }
   }
   if (adm == null) return null
@@ -143,8 +166,6 @@ export function academicFit(f, studentSat) {
   if (adm >= 0.8) return { tier: 'safety', why: admitted }
   return { tier: 'good', why: admitted }
 }
-
-const STEP_UP = { safety: 'good', good: 'reach', reach: 'reach' }
 
 /**
  * Athletic side: { tier, why } or null.
@@ -166,19 +187,20 @@ export function athleticFit(division, strength, targets, estFreshman = null, gen
   else {
     const p = strength.pct
     const by = strength.basis === 'RPI' ? 'by RPI' : 'by record'
-    const where = p >= 0.75 ? `top quarter of ${group} ${by}`
-      : p >= 0.5 ? `upper half of ${group} ${by}`
-        : p > 0.25 ? `lower half of ${group} ${by}` : `bottom quarter of ${group} ${by}`
-    if (hi === lo) tier = p >= 0.75 ? 'reach' : p <= 0.25 ? 'safety' : 'good'
-    else if (r === hi) tier = p >= 0.5 ? 'reach' : 'good'
-    else if (r === lo) tier = p < 0.5 ? 'safety' : 'good'
+    const where = p >= 0.8 ? `top fifth of ${group} ${by}`
+      : p >= 2 / 3 ? `top third of ${group} ${by}`
+        : p >= 0.5 ? `upper half of ${group} ${by}`
+          : p > 0.3 ? `lower half of ${group} ${by}` : `bottom 30% of ${group} ${by}`
+    if (hi === lo) tier = p >= T.oneLevelReach ? 'reach' : p <= T.oneLevelSafety ? 'safety' : 'good'
+    else if (r === hi) tier = p >= T.topLevelReach ? 'reach' : 'good'
+    else if (r === lo) tier = p < T.bottomLevelSafety ? 'safety' : 'good'
     else tier = 'good'
     why = where
   }
   const open = num(estFreshman)
-  if (open != null && open < 0.5 && tier !== 'reach') {
-    tier = STEP_UP[tier]
-    why += '; under one estimated freshman opening at your position'
+  if (open != null && open < T.fewOpenings) {
+    if (tier === 'safety') tier = 'good'
+    why += '; under half an estimated freshman opening at your position'
   }
   return { tier, why }
 }
@@ -195,7 +217,7 @@ export function fitFor(p, strength, player) {
   let tier
   if (a?.tier === 'reach' || b?.tier === 'reach') tier = 'reach'
   else if (!b) tier = a.tier
-  else if (b.tier === 'safety' && (!a || a.tier === 'safety' || (a.tier === 'good' && num(p.admission_rate) >= 0.6))) tier = 'safety'
+  else if (b.tier === 'safety' && (!a || a.tier === 'safety' || (a.tier === 'good' && num(p.admission_rate) >= T.safetyAdmit))) tier = 'safety'
   else tier = 'good'
   const why = []
   if (b) why.push(`Athletic ${TIER_LABEL[b.tier].toLowerCase()}: ${b.why}`)

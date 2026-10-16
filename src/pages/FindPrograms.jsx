@@ -857,10 +857,11 @@ export default function FindPrograms() {
               {place && <> Distances are straight-line miles from {place.name} to the campus (driving is
               farther). Programs we cannot place on the map are left out while a distance is set.</>}
               {fitOf && <> Reach, Good fit and Safety are estimates. Academic: your SAT (an ACT is converted) against the
-              college’s average SAT and admission rate from the College Scorecard; a college admitting under a quarter of
-              applicants is always a reach. Athletic: the divisions you chose are the levels you are aiming for; a program above
+              college’s average SAT and admission rate from the College Scorecard; a college whose average SAT is 120 or more
+              above yours, or that admits under a quarter of applicants, is a reach. Athletic: the divisions you chose are the levels you are aiming for; a program above
               them is a reach and one below them a safety; within them, its place in its division by RPI or record over the last
-              two seasons decides, and under half an estimated freshman opening counts toward reach. A balanced list has some of
+              two seasons decides (one level: top fifth Reach, bottom 30% Safety), and under half an estimated freshman opening keeps a
+              program from being a Safety. A balanced list has some of
               each.</>}
               {valueData && <> Median earnings are for former students who received federal aid, 10 years after starting;
               median debt is the federal loan debt of students who completed, with the monthly payment over 10 years

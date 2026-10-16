@@ -634,7 +634,7 @@ function buildToolSet(db, log, ctx) {
             first_reach: first('reach'), first_good_fit: first('good'), first_safety: first('safety'),
             basis: 'Labels are estimates. Academic: the player\'s SAT against the college\'s average SAT and admission rate (College Scorecard). ' +
               'Athletic: the level the player is aiming for (divisions) and the program\'s place in its division by RPI or record over the latest two seasons, ' +
-              'with very few estimated freshman openings counting toward reach. ' + (strength ? '' : 'Results were not available, so athletic labels use the level alone.'),
+              'with under half an estimated freshman opening keeping a program from being a safety. ' + (strength ? '' : 'Results were not available, so athletic labels use the level alone.'),
           }
         }
 
