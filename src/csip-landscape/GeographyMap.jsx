@@ -59,7 +59,8 @@ export default function GeographyMap({ geo, segmentLabel, client = null, segment
   const countries = geo?.countries || {}
   const total = geo?.total || 0
   const unknown = geo?.unknown || 0
-  const pctOf = c => (total ? Math.round(100 * c / total) : 0)
+  // Share of players, rounded; a small non-zero share reads "<1" rather than 0 (2026-10-16).
+  const pctOf = c => { if (!total || !c) return 0; const p = Math.round(100 * c / total); return p === 0 ? '<1' : p }
 
   const rankedStates = Object.entries(states).sort((a, b) => b[1] - a[1])
   const rankedIntl = Object.entries(countries).sort((a, b) => b[1] - a[1])
