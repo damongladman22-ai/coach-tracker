@@ -7,6 +7,11 @@
  * out_sql/34_program_benchmark_city.sql): one per division x gender x season x
  * hometown place, with the place's position on the 960 x 600 U.S. map (the same
  * map and projection as the College Profile Cities view) and its players.
+ *
+ * World cities (G5, Damon 2026-10-16: Landscape world cities, same as U.S.
+ * Cities) come from program_benchmark_world_city (pipeline
+ * out_sql/37_program_benchmark_world_city.sql): one row per division x gender x
+ * season x GeoNames place, positioned on the shared world map.
  */
 import { cityLabel } from '../../college-profiles/data/cityMap.js'
 
@@ -32,6 +37,27 @@ export function cityDots(rows) {
 }
 
 /**
+ * World rows: [{ geonameid, country, city, map_x, map_y, n }] -> { dots, placed, max, places },
+ * labelled "City, Country", largest first.
+ */
+export function worldCityDots(rows) {
+  const dots = []
+  let placed = 0, max = 0
+  for (const r of rows || []) {
+    const n = Number(r.n) || 0
+    if (r.map_x == null || r.map_y == null || r.map_x === '' || r.map_y === '') continue
+    const x = Number(r.map_x), y = Number(r.map_y)
+    if (!n || !Number.isFinite(x) || !Number.isFinite(y)) continue
+    const city = String(r.city || '').trim(), country = String(r.country || '').trim()
+    dots.push({ key: `w|${r.geonameid ?? `${country}|${city}`}`, country, city, label: `${city}, ${country}`, n, x, y })
+    placed += n
+    if (n > max) max = n
+  }
+  dots.sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+  return { dots, placed, max, places: dots.length }
+}
+
+/**
  * Dot radius in map units. A division has thousands of places, so dots start
  * smaller than on a single program's map (1.3 there 2.2) and grow with the
  * square root of players, so area tracks players.
@@ -41,7 +67,10 @@ export function dotRadius(n, max) {
   return 1.3 + 7.7 * Math.sqrt(n / max)
 }
 
-/** U.S. players with no dot: the state total minus those placed (never below zero). */
+/**
+ * Players with no dot: the map's total (state counts for the U.S. map, country
+ * counts for the World map) minus those placed (never below zero).
+ */
 export function unplacedCount(states, placed) {
   const us = Object.values(states || {}).reduce((a, b) => a + (Number(b) || 0), 0)
   return Math.max(0, us - (placed || 0))
