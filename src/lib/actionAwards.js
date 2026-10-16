@@ -15,8 +15,12 @@
  * the Campus and cost card. Tested by test/actionAwards.test.mjs.
  */
 
-/** Which colleges have been checked so far, in words. Widen as states are added. */
-export const AWARDS_SCOPE = 'Ohio colleges with NCAA Division II, Division III or NAIA soccer'
+/**
+ * Which colleges have been checked so far, in words. Widen as states are added:
+ * Ohio (pilot, out_sql/31) and its neighbors plus New York (F18, out_sql/32),
+ * all checked 2026-10-15.
+ */
+export const AWARDS_SCOPE = 'colleges with NCAA Division II, Division III or NAIA soccer in Ohio, Pennsylvania, Michigan, Indiana, Kentucky, West Virginia and New York'
 export const AWARDS_NOTE = 'From each college\'s own website. Amounts and deadlines change every year, so confirm with the admissions office before relying on one.'
 
 export const TYPE_LABEL = {
