@@ -9,7 +9,7 @@ import { useCollegeProfileLogos } from '../college-profiles/access/useCollegePro
 import ProfileLocked from '../college-profiles/access/ProfileLocked'
 import { brandingFor } from '../college-profiles/data/schoolBranding'
 import {
-  POSITIONS, DIVISIONS, STATES, REGIONS, statesInRegion, stateAbbr, rankPrograms,
+  POSITIONS, DIVISIONS, activeDivisions, STATES, REGIONS, statesInRegion, stateAbbr, rankPrograms,
   rankValue, aboutText, reasons, isBehind,
 } from '../lib/findPrograms'
 import {
@@ -460,7 +460,7 @@ export default function FindPrograms() {
       : null
     const keeps = [majorKeep, styleKeep, watchKeep, distKeep, awardKeep].filter(Boolean)
     const keep = keeps.length ? r => keeps.every(k => k(r)) : null
-    return rankPrograms(rows, { divisions, states, minSeason: latest != null ? latest - 1 : null, keep })
+    return rankPrograms(rows, { divisions: activeDivisions(divisions), states, minSeason: latest != null ? latest - 1 : null, keep })
   }, [rows, divisions, states, latest, choiceKey, offerings, styles, styleData, filterWatched, watchedMap, place, radius, points, awardPick, valueData])
   // Labels on the list, then the label filter (counts are before the filter).
   const counts = useMemo(() => (fitOf ? tierCounts(ranked.map(fitOf)) : null), [ranked, fitOf])
@@ -543,7 +543,7 @@ export default function FindPrograms() {
           </div>
 
           <div className="mb-3">
-            <div className="text-xs text-gray-500 mb-1.5">Divisions {divisions.size === 0 && '(all)'}</div>
+            <div className="text-xs text-gray-500 mb-1.5">Divisions {divisions.size === 0 && '(all but junior colleges; choose JC to include them)'}</div>
             <div className="flex flex-wrap gap-2">
               {DIVISIONS.map(d => (
                 <Chip key={d} on={divisions.has(d)} onClick={() => toggle(divisions, setDivisions, d)}>{d}</Chip>
@@ -871,6 +871,8 @@ export default function FindPrograms() {
               similar programs and adjusted for its roster mix and win record; the share of newcomers who arrive as
               freshmen is that program’s own average. Both are estimates, not promises.
               Commits already made for your class are not known and are not subtracted.
+              {divisions.size === 0 && <> Junior colleges are left out unless JC is chosen: a two-year roster turns
+              over every two years, so they would always show the most openings.</>}
               {choice && <> Majors come from the federal College Scorecard: a college counts if it awarded the
               degree in the last two years (bachelor’s, or at a junior college an associate degree too). Programs
               we cannot link to a federal college, such as joint teams, are left out when a major is chosen.</>}

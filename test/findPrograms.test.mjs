@@ -6,6 +6,7 @@
  */
 import {
   stateAbbr, statesInRegion, rankValue, rankPrograms, aboutText, reasons, isBehind, STATES,
+  activeDivisions, DEFAULT_DIVISIONS,
 } from '../src/lib/findPrograms.js'
 
 let failed = 0
@@ -70,6 +71,17 @@ check('reason: division share named', r5[2] === 'Too few of its newcomers are tr
 const r3 = reasons({ graduating: 0, continuing: 2, early_rate: '0.1', fresh_share: '0.5' }, 'F', 2027)
 check('reason: none graduating', r3[0] === 'No forwards on the current roster finish before fall 2027.', r3[0])
 check('reason: under 1 more', r3[1].endsWith('could free under 1 more forward spot.'), r3[1])
+
+// Default divisions: everything but JC until a chip is chosen
+check('no choice leaves out JC', !activeDivisions(new Set()).has('JC') && activeDivisions(new Set()).has('NAIA') &&
+  activeDivisions(null).size === 4 && DEFAULT_DIVISIONS.length === 4)
+check('JC chosen is kept', activeDivisions(new Set(['JC'])).has('JC') && activeDivisions(new Set(['JC'])).size === 1)
+const mix = [
+  { school_id: 'a', est_fresh_openings: 4, schools: { school: 'Two Year', division: 'JC' } },
+  { school_id: 'b', est_fresh_openings: 2, schools: { school: 'Four Year', division: 'NCAA D3' } },
+]
+check('unfiltered list has no JC', rankPrograms(mix, { divisions: activeDivisions(new Set()) }).map(r => r.school_id).join() === 'b')
+check('JC chip brings them back', rankPrograms(mix, { divisions: activeDivisions(new Set(['JC', 'NCAA D3'])) }).length === 2)
 
 check('roster behind', isBehind({ current_season: 2025 }, 2026) && !isBehind({ current_season: 2026 }, 2026))
 

@@ -20,6 +20,17 @@ export const POSITIONS = [
 
 export const DIVISIONS = ['NCAA D1', 'NCAA D2', 'NCAA D3', 'NAIA', 'JC']
 
+// With no division chosen the list covers every division except junior
+// colleges (Damon, 17 October 2026): a two-year roster turns over every two
+// years, so junior colleges always show the most openings and would fill the
+// top of an unfiltered list. They appear once the JC chip is chosen.
+export const DEFAULT_DIVISIONS = DIVISIONS.filter(d => d !== 'JC')
+
+/** The divisions the list covers: the chosen ones, or every division except JC. */
+export function activeDivisions(chosen) {
+  return chosen && chosen.size ? chosen : new Set(DEFAULT_DIVISIONS)
+}
+
 // U.S. Census Bureau regions. Washington, D.C. is in the South.
 export const STATES = [
   ['AL', 'Alabama', 'South'], ['AK', 'Alaska', 'West'], ['AZ', 'Arizona', 'West'],
