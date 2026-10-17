@@ -41,14 +41,47 @@ import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
  * model test bench.
  */
 
-const SUGGESTIONS = [
-  { label: 'Openings', q: "Which Big Ten women's programs have the most estimated goalkeeper openings for the class of 2027?" },
-  { label: 'Academic fit', q: "Women's D3 programs in Ohio or Pennsylvania with an average SAT around 1300 that offer nursing" },
-  { label: 'Your team', q: 'Which college programs have watched our team play?' },
-  { label: 'Results', q: "What are the top 10 NCAA D1 women's teams by RPI right now?" },
-  { label: 'Near home', q: "Women's D2 and D3 programs within 100 miles of Columbus, Ohio" },
-  { label: 'Compare', q: 'Compare Kenyon and Denison for a student who wants to study biology and play soccer' },
+// The welcome screen (Damon 2026-10-17: the old screen only showed program
+// look-ups, so families missed the outreach, call prep, checklist and fit
+// features). Four groups by the job a family is doing, two examples each.
+// `team: true` marks examples that need the club's own attendance data; the
+// screen leaves them out when showTeam is false (for a partner widget later).
+const GROUPS = [
+  {
+    title: 'Build your list',
+    blurb: 'Openings at your position, Reach / Good fit / Safety, distance from home and majors.',
+    qs: [
+      "Which D3 women's programs within 150 miles of Columbus, Ohio will need a goalkeeper for the class of 2028?",
+      "Women's D2 and D3 programs that offer nursing, labelled Reach, Good fit or Safety for a 1250 SAT",
+    ],
+  },
+  {
+    title: 'Research a program',
+    blurb: 'Results and peer standing, coaching staff, roster style, academics, cost, earnings and visit awards.',
+    qs: [
+      "How has Kenyon women's soccer done over the last three seasons, and who is on the staff?",
+      'What does Denison cost, what do graduates earn, and does it pay for a campus visit?',
+    ],
+  },
+  {
+    title: 'Reach out',
+    blurb: 'Emails to coaching staffs, preparing for a coach call and inviting coaches to your events.',
+    qs: [
+      "Draft an email to the Ohio Wesleyan women's soccer coaches",
+      "Help me prepare for a call with the Wooster women's soccer coaches",
+    ],
+  },
+  {
+    title: 'Plan the year',
+    blurb: 'What to do this year for your class, key dates, and which college coaches have watched your team.',
+    qs: [
+      { q: 'What should a class of 2028 player be doing this fall?' },
+      { q: 'Which college programs have watched our team play?', team: true },
+    ],
+  },
 ]
+const groupQs = (g, showTeam) =>
+  g.qs.map(x => (typeof x === 'string' ? { q: x } : x)).filter(x => showTeam || !x.team)
 
 const newId = () => Math.random().toString(36).slice(2, 10)
 
@@ -506,26 +539,27 @@ function QuizPanel({ onDone, onCancel }) {
   )
 }
 
-function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz }) {
-  const list = program ? programSuggestions(program) : SUGGESTIONS
+function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz, showTeam = true }) {
+  const quizOn = !program && onQuiz
   return (
     <div className="pt-10 sm:pt-16 pb-6 text-center">
       <OPLogo className="h-12 w-12 mx-auto" />
       <h1 className="mt-4 text-2xl sm:text-3xl font-semibold text-gray-900">
-        {program ? <>Ask about {program.school}</> : 'Ask about any college soccer program'}
+        {program ? <>Ask about {program.school}</> : 'Your recruiting assistant'}
       </h1>
       {program
         ? <div className="mt-3"><ProgramChip p={program} onClear={onClearProgram} /></div>
         : (
           <p className="mt-2 text-gray-500 max-w-xl mx-auto">
-            Openings by position and class, results and RPI, transfers, coaching staffs and campus facts, answered from PitchSide&apos;s college data.
+            From first list to first call. Answers come from real rosters, results and coaching staffs for every
+            college soccer program.
           </p>)}
       {pilot && (
         <p className="mt-3 text-xs text-gray-500">
           Pilot preview for {pilot.name}. Please use the thumbs up and down under each answer to tell us how it did.
         </p>
       )}
-      {!program && onQuiz && (
+      {quizOn && (
         <button type="button" onClick={onQuiz}
           className="mt-8 w-full text-left bg-[#0a1628] text-white rounded-xl px-5 py-4 hover:bg-[#13233d] transition">
           <div className="text-[11px] font-semibold uppercase tracking-wider text-white/60">New to the search?</div>
@@ -533,15 +567,41 @@ function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz }) {
           <div className="mt-0.5 text-sm text-white/80">13 quick questions about the player and what matters to you, then a shortlist of programs that fit.</div>
         </button>
       )}
-      <div className={`${!program && onQuiz ? 'mt-4' : 'mt-8'} grid sm:grid-cols-2 gap-3 text-left`}>
-        {list.map(s => (
-          <button key={s.q} type="button" onClick={() => onPick(s.q)}
-            className="text-left bg-white border border-[#E5E8EB] rounded-xl px-4 py-3 hover:border-gray-400 hover:shadow-sm transition">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{s.label}</div>
-            <div className="mt-1 text-sm text-gray-800">{s.q}</div>
-          </button>
-        ))}
-      </div>
+      {program
+        ? (
+          <div className="mt-8 grid sm:grid-cols-2 gap-3 text-left">
+            {programSuggestions(program).filter(s => showTeam || s.label !== 'Your team').map(s => (
+              <button key={s.q} type="button" onClick={() => onPick(s.q)}
+                className="text-left bg-white border border-[#E5E8EB] rounded-xl px-4 py-3 hover:border-gray-400 hover:shadow-sm transition">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">{s.label}</div>
+                <div className="mt-1 text-sm text-gray-800">{s.q}</div>
+              </button>
+            ))}
+          </div>)
+        : (
+          <>
+            <div className={`${quizOn ? 'mt-4' : 'mt-8'} grid sm:grid-cols-2 gap-3 text-left`}>
+              {GROUPS.map(g => (
+                <div key={g.title} className="bg-white border border-[#E5E8EB] rounded-xl px-4 py-3">
+                  <div className="text-sm font-semibold text-gray-900">{g.title}</div>
+                  <div className="mt-0.5 text-xs text-gray-500">{g.blurb}</div>
+                  <div className="mt-2 space-y-1.5">
+                    {groupQs(g, showTeam).map(x => (
+                      <button key={x.q} type="button" onClick={() => onPick(x.q)}
+                        className="block w-full text-left text-sm text-gray-800 bg-[#F6F7F9] rounded-lg px-3 py-2 hover:bg-[#ECEFF2] transition">
+                        {x.q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="mt-5 text-xs text-gray-400 max-w-xl mx-auto">
+              The assistant is an AI. It does not rate players or rule on NCAA recruiting rules; for rules it points
+              you to the NCAA guide and each college&apos;s compliance office. Openings and labels are estimates, so
+              confirm key facts with the college.
+            </p>
+          </>)}
     </div>
   )
 }
@@ -614,7 +674,7 @@ export default function AskPitchSide({ session }) {
   if (!allowed) {
     return (
       <div className="min-h-screen bg-[#F2F3F5]">
-        <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-600">Ask PitchSide is coming soon.</div>
+        <div className="max-w-3xl mx-auto px-4 py-16 text-center text-gray-600">The recruiting assistant is coming soon.</div>
       </div>
     )
   }
@@ -729,7 +789,7 @@ export default function AskPitchSide({ session }) {
         <div className="max-w-3xl mx-auto px-4">
           <div className="flex items-end gap-2 bg-white border border-[#D9DEE3] rounded-2xl shadow-sm px-3 py-2 focus-within:border-gray-500">
             <textarea ref={boxRef} rows={1} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
-              placeholder="Ask about programs, openings, records, transfers or coaches…"
+              placeholder="Ask anything about your college search…"
               className="flex-1 resize-none outline-none text-[15px] leading-6 py-1.5 bg-transparent max-h-[180px]" />
             {busy
               ? (

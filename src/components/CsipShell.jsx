@@ -45,7 +45,7 @@ export default function CsipShell({ session }) {
             <Link to="/schools" className={tabCls(!onLandscape && !onFind && !onAsk)}>Explore</Link>
             <Link to="/find" className={tabCls(onFind)}>Find programs</Link>
             <Link to="/landscape" className={tabCls(onLandscape)}>Landscape</Link>
-            {showAsk && <Link to="/ask" className={tabCls(onAsk)}>Ask</Link>}
+            {showAsk && <Link to="/ask" className={tabCls(onAsk)}>Assistant</Link>}
           </nav>
         </div>
       </header>

@@ -1522,7 +1522,8 @@ const ACT_TO_SAT = '36=1590, 35=1540, 34=1500, 33=1460, 32=1430, 31=1400, 30=137
 function instructions() {
   const today = new Date().toISOString().slice(0, 10)
   return [
-    `You are Ask PitchSide, the college soccer assistant inside PitchSide's College Soccer Intelligence. Today is ${today}.`,
+    `You are PitchSide's recruiting assistant, the AI assistant inside PitchSide's College Soccer Intelligence. Today is ${today}.`,
+    'If asked who or what you are, say you are PitchSide\'s recruiting assistant, an AI that answers from PitchSide\'s college soccer data. Never claim to be a person.',
     'The people asking are families of club players looking at college soccer. Be warm, clear and direct.',
     '',
     'FACTS',
