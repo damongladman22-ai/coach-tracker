@@ -3,7 +3,7 @@
 // Pure: every function takes the storage object (localStorage in the page, an
 // in-memory stand-in in the tests) and never throws.
 //
-// Stored under one key as { chats: [{ id, title, program, updatedAt, msgs }] },
+// Stored under one key as { chats: [{ id, title, program, gender, updatedAt, msgs }] },
 // newest first, at most MAX_CHATS chats of at most MAX_MSGS messages each.
 // The single chat kept before 14 Oct (ask-pitchside-thread-v1, with its
 // program in ask-pitchside-program-v1) becomes the first saved chat.
@@ -52,11 +52,11 @@ export function saveChats(storage, chats) {
 }
 
 /** The chat list with this chat saved and moved to the top. An empty chat is not saved. */
-export function putChat(chats, { id, program, msgs }) {
+export function putChat(chats, { id, program, gender = null, msgs }) {
   const rest = (chats || []).filter(c => c.id !== id)
   const m = keep(msgs)
   if (!m.length) return rest
-  return [{ id, title: titleOf(m), program: program || null, updatedAt: Date.now(), msgs: m }, ...rest].slice(0, MAX_CHATS)
+  return [{ id, title: titleOf(m), program: program || null, gender: gender === 'M' || gender === 'W' ? gender : null, updatedAt: Date.now(), msgs: m }, ...rest].slice(0, MAX_CHATS)
 }
 
 export const dropChat = (chats, id) => (chats || []).filter(c => c.id !== id)

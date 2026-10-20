@@ -14,6 +14,7 @@ import { streamAsk, splitAnswer, historyContent, lookupLabel, sourceLabels, prog
 import { getFavorites } from '../hooks/useFavorite'
 import { loadChats, saveChats, putChat, dropChat, newChatId, whenLabel } from '../ask/chatStore'
 import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
+import { GROUPS, GENDERS, GENDER_LABEL, groupQs, cleanGender } from '../ask/welcomeExamples'
 
 /**
  * Ask PitchSide — the consumer chat experience for the AI assistant (backlog F2).
@@ -41,47 +42,16 @@ import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
  * model test bench.
  */
 
-// The welcome screen (Damon 2026-10-17: the old screen only showed program
-// look-ups, so families missed the outreach, call prep, checklist and fit
-// features). Four groups by the job a family is doing, two examples each.
-// `team: true` marks examples that need the club's own attendance data; the
-// screen leaves them out when showTeam is false (for a partner widget later).
-const GROUPS = [
-  {
-    title: 'Build your list',
-    blurb: 'Openings at your position, Reach / Good fit / Safety, distance from home and majors.',
-    qs: [
-      "Which D3 women's programs within 150 miles of Columbus, Ohio will need a goalkeeper for the class of 2028?",
-      "Women's D2 and D3 programs that offer nursing, labelled Reach, Good fit or Safety for a 1250 SAT",
-    ],
-  },
-  {
-    title: 'Research a program',
-    blurb: 'Results and peer standing, coaching staff, roster style, academics, cost, earnings and visit awards.',
-    qs: [
-      "How has Kenyon women's soccer done over the last three seasons, and who is on the staff?",
-      'What does Denison cost, what do graduates earn, and does it pay for a campus visit?',
-    ],
-  },
-  {
-    title: 'Reach out',
-    blurb: 'Emails to coaching staffs, preparing for a coach call and inviting coaches to your events.',
-    qs: [
-      "Draft an email to the Ohio Wesleyan women's soccer coaches",
-      "Help me prepare for a call with the Wooster women's soccer coaches",
-    ],
-  },
-  {
-    title: 'Plan the year',
-    blurb: 'What to do this year for your class, key dates, and which college coaches have watched your team.',
-    qs: [
-      { q: 'What should a class of 2028 player be doing this fall?' },
-      { q: 'Which college programs have watched our team play?', team: true },
-    ],
-  },
-]
-const groupQs = (g, showTeam) =>
-  g.qs.map(x => (typeof x === 'string' ? { q: x } : x)).filter(x => showTeam || !x.team)
+// Welcome screen examples and the Women's / Men's switch: src/ask/welcomeExamples.js.
+// The pick is remembered in this browser (GENDER_KEY) and saved with each chat,
+// and sent with every question as context.gender so the assistant need not ask.
+const GENDER_KEY = 'ask-gender-v1'
+function readGender() {
+  try { return cleanGender(window.localStorage.getItem(GENDER_KEY)) } catch { return null }
+}
+function writeGender(g) {
+  try { if (g) window.localStorage.setItem(GENDER_KEY, g); else window.localStorage.removeItem(GENDER_KEY) } catch { /* blocked */ }
+}
 
 const newId = () => Math.random().toString(36).slice(2, 10)
 
@@ -539,7 +509,7 @@ function QuizPanel({ onDone, onCancel }) {
   )
 }
 
-function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz, showTeam = true }) {
+function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz, showTeam = true, gender = null, onGender }) {
   const quizOn = !program && onQuiz
   return (
     <div className="pt-10 sm:pt-16 pb-6 text-center">
@@ -558,6 +528,22 @@ function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz, showTeam =
         <p className="mt-3 text-xs text-gray-500">
           Pilot preview for {pilot.name}. Please use the thumbs up and down under each answer to tell us how it did.
         </p>
+      )}
+      {!program && onGender && (
+        <div className="mt-6 flex flex-col items-center gap-1.5">
+          <div className="inline-flex rounded-full border border-[#D9DEE3] bg-white p-1" role="group" aria-label="Women's or men's soccer">
+            {GENDERS.map(g => (
+              <button key={g} type="button" aria-pressed={gender === g}
+                onClick={() => onGender(gender === g ? null : g)}
+                className={`px-4 py-1.5 rounded-full text-sm transition ${gender === g ? 'bg-[#0a1628] text-white' : 'text-gray-700 hover:bg-gray-100'}`}>
+                {GENDER_LABEL[g]}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs text-gray-400">
+            {gender ? 'Examples and answers are for ' + GENDER_LABEL[gender].toLowerCase() + '. Tap again to clear.' : 'Pick one so the examples and answers fit your player.'}
+          </div>
+        </div>
       )}
       {quizOn && (
         <button type="button" onClick={onQuiz}
@@ -586,7 +572,7 @@ function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz, showTeam =
                   <div className="text-sm font-semibold text-gray-900">{g.title}</div>
                   <div className="mt-0.5 text-xs text-gray-500">{g.blurb}</div>
                   <div className="mt-2 space-y-1.5">
-                    {groupQs(g, showTeam).map(x => (
+                    {groupQs(g, gender, showTeam).map(x => (
                       <button key={x.q} type="button" onClick={() => onPick(x.q)}
                         className="block w-full text-left text-sm text-gray-800 bg-[#F6F7F9] rounded-lg px-3 py-2 hover:bg-[#ECEFF2] transition">
                         {x.q}
@@ -617,12 +603,19 @@ export default function AskPitchSide({ session }) {
   const [activeId, setActiveId] = useState(() => chats[0]?.id || null)
   const [msgs, setMsgs] = useState(() => chats[0]?.msgs || [])
   const [program, setProgram] = useState(() => chats[0]?.program || null)
+  // The Women's / Men's pick: `gender` is the switch (remembered in this browser);
+  // `chatGender` is the pick the open chat started with, saved with the chat.
+  const [gender, setGenderState] = useState(readGender)
+  const [chatGender, setChatGender] = useState(() => cleanGender(chats[0]?.gender))
+  const setGender = g => { setGenderState(g); writeGender(g) }
   const [showChats, setShowChats] = useState(false)
   const [quiz, setQuiz] = useState(false)
   // The messages last saved (or just opened), so viewing a chat does not move it to the top.
   const savedRef = useRef(msgs)
   const [params, setParams] = useSearchParams()
   const askedFor = params.get('program')
+  const presetGender = cleanGender(params.get('gender'))
+  useEffect(() => { if (presetGender) setGender(presetGender) }, [presetGender])
   const [input, setInput] = useState('')
   const [busy, setBusy] = useState(false)
   const abortRef = useRef(null)
@@ -633,15 +626,15 @@ export default function AskPitchSide({ session }) {
   useEffect(() => {
     if (busy || !activeId || !msgs.length || savedRef.current === msgs) return
     savedRef.current = msgs
-    setChats(list => saveChats(window.localStorage, putChat(list, { id: activeId, program, msgs })))
-  }, [msgs, busy, activeId, program])
+    setChats(list => saveChats(window.localStorage, putChat(list, { id: activeId, program, gender: chatGender, msgs })))
+  }, [msgs, busy, activeId, program, chatGender])
 
   function startNew(p = null) {
-    setActiveId(null); setMsgs([]); setProgram(p); setShowChats(false); setQuiz(false)
+    setActiveId(null); setMsgs([]); setProgram(p); setChatGender(null); setShowChats(false); setQuiz(false)
   }
   function openChat(c) {
     savedRef.current = c.msgs
-    setActiveId(c.id); setMsgs(c.msgs); setProgram(c.program || null); setShowChats(false)
+    setActiveId(c.id); setMsgs(c.msgs); setProgram(c.program || null); setChatGender(cleanGender(c.gender)); setShowChats(false)
   }
   function deleteChat(c) {
     setChats(list => saveChats(window.localStorage, dropChat(list, c.id)))
@@ -687,6 +680,9 @@ export default function AskPitchSide({ session }) {
     if (!q || busy) return
     const conversationId = activeId || newChatId()
     if (!activeId) setActiveId(conversationId)
+    // A new chat takes the switch's pick; an open chat keeps the pick it started with.
+    const g = msgs.length ? chatGender : gender
+    if (!msgs.length) setChatGender(gender)
     const user = { id: newId(), role: 'user', content: q }
     const bot = { id: newId(), role: 'assistant', content: '', lookups: [], status: 'streaming' }
     const history = [...msgs.filter(m => m.status !== 'error'), user]
@@ -699,7 +695,7 @@ export default function AskPitchSide({ session }) {
     try {
       await streamAsk(history, {
         signal: ctrl.signal,
-        context: { favoriteTeamIds: getFavorites(), programId: program?.id || null, conversationId, source },
+        context: { favoriteTeamIds: getFavorites(), programId: program?.id || null, gender: program ? null : g, conversationId, source },
         onEvent: ev => {
           if (ev.t === 'text') update(bot.id, m => ({ ...m, content: m.content + ev.d }))
           else if (ev.t === 'reset') update(bot.id, m => ({ ...m, content: m.content.slice(0, ev.keep || 0) }))
@@ -767,7 +763,7 @@ export default function AskPitchSide({ session }) {
           ? <QuizPanel onCancel={() => setQuiz(false)} onDone={a => { setQuiz(false); send(quizMessage(a), 'quiz') }} />
           : msgs.length === 0
           ? <EmptyState onPick={q => send(q, 'suggestion')} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot}
-              onQuiz={() => setQuiz(true)} />
+              onQuiz={() => setQuiz(true)} gender={gender} onGender={setGender} />
           : (
             <div className="py-4 space-y-6">
               {msgs.map(m => (m.role === 'user'

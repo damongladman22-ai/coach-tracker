@@ -1812,6 +1812,14 @@ export default async function handler(req, res) {
     const s = (await refData(readClient())).byId.get(programId)
     if (s) programNote = `[Asked from the College Profile of ${s.school} (${s.program_gender === 'M' ? 'men' : 'women'}'s soccer, ${s.division}), school_id ${s.id}. "This program", "they", "them" and "here" mean this program unless the question names another.]`
   }
+  // The Women's / Men's switch on the welcome screen (Damon 2026-10-20). Only
+  // when the chat is not about one program (that note already names the gender).
+  const pickedGender = body.context?.gender === 'M' || body.context?.gender === 'W' ? body.context.gender : null
+  if (!programNote && pickedGender) {
+    const w = pickedGender === 'M' ? "men's" : "women's"
+    const other = pickedGender === 'M' ? "women's" : "men's"
+    programNote = `[The family picked ${w} soccer on the welcome screen. Use ${w} programs (gender ${pickedGender}) without asking, unless the question asks about ${other} soccer.]`
+  }
   if (programNote && messages.length) {
     const i = messages.findIndex(m => m.role === 'user')
     if (i >= 0) messages[i] = { ...messages[i], content: `${programNote}\n\n${messages[i].content}` }
