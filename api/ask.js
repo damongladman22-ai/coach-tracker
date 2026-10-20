@@ -2,7 +2,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { generateText, streamText, tool, stepCountIs, gateway } from 'ai'
 import { z } from 'zod'
-import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr } from '../src/lib/findPrograms.js'
+import { POSITIONS, DIVISIONS, rankPrograms, reasons, stateAbbr, aboutText } from '../src/lib/findPrograms.js'
 import { expandTerms, scoreSchool, setAliasIndex } from '../src/lib/schoolMatch.js'
 import { buildCatalog, searchMajors, offeringsBySchool, offeringFor, majorReason, choiceLabel } from '../src/lib/majorFilter.js'
 import { lineage, defaultTeamId, summarizeAttendance, teamAge, teamProgramGender } from '../src/lib/attendanceSignal.js'
@@ -281,7 +281,11 @@ function confMatcher(q) {
 // The number a program card shows, chosen from what the list was sorted by.
 function cardMetric(sort, row, openings) {
   const pct = x => (x == null ? null : Math.round(x * 100) + '%')
-  if (openings) return { value: row.est_freshman_openings ?? row.est_total_openings, label: 'for freshmen' }
+  // Whole numbers, as on Find programs ("about 3"): a decimal suggests more precision than the estimate has.
+  if (openings) {
+    const v = row.est_freshman_openings ?? row.est_total_openings
+    return { value: v == null ? null : v < 0.5 ? '<1' : String(Math.round(v)), label: 'for freshmen' }
+  }
   if (sort === 'distance') return { value: row.distance_miles == null ? null : row.distance_miles + ' mi', label: 'away' }
   if (sort === 'sat') return { value: row.sat_average, label: 'avg SAT' }
   if (sort === 'net_price') return { value: row.avg_net_price == null ? null : '$' + Math.round(row.avg_net_price / 1000) + 'k', label: 'avg net price' }
@@ -295,7 +299,7 @@ function cardMetric(sort, row, openings) {
 // Live check 2026-10-14: asked for observations, the model called Wilmington
 // one of the cheapest of 19 programs (it was among the dearest). Every
 // "closest / cheapest / most selective" claim now comes from these lines.
-function highlightsFor(rows, { center, openings } = {}) {
+function highlightsFor(rows, { center, openings, shown = null } = {}) {
   if (!rows || rows.length < 2) return undefined
   const best = (val, lower) => {
     let b = null
@@ -306,12 +310,15 @@ function highlightsFor(rows, { center, openings } = {}) {
     }
     return b
   }
-  const name = x => x.s.school
+  // A program outside the cards is marked, so the answer does not bring up
+  // colleges the family cannot see (pilot answer 2026-10-20 named Carnegie
+  // Mellon, Notre Dame and Rose-Hulman from these lines).
+  const name = x => x.s.school + (shown && !shown.has(x.r.school_id) ? ' [not among the cards shown]' : '')
   const pct = v => Math.round(v * 100) + '%'
   const out = []
   let b
   if (center && (b = best(x => x.dist, true))) out.push(`Closest: ${name(b.x)} (${Math.round(b.v)} mi)`)
-  if (openings && (b = best(x => x.r.est_freshman ?? x.r.est_spots, false))) out.push(`Most estimated freshman openings: ${name(b.x)} (about ${round(b.v)})`)
+  if (openings && (b = best(x => x.r.est_freshman ?? x.r.est_spots, false))) out.push(`Most estimated freshman openings: ${name(b.x)} (${aboutText(b.v)})`)
   if ((b = best(x => x.f?.avg_net_price, true))) out.push(`Lowest average net price: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')} a year)`)
   if ((b = best(x => x.f?.avg_net_price, false))) out.push(`Highest average net price: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')} a year)`)
   if ((b = best(x => x.f?.admission_rate, true))) out.push(`Most selective: ${name(b.x)} (${pct(b.v)} admitted)`)
@@ -486,7 +493,8 @@ function buildToolSet(db, log, ctx) {
         'Academic and campus filters come from the U.S. College Scorecard: admission rate, average SAT, graduation rate, average net price per year, ' +
         'undergraduate size, public or private, setting. "major" keeps colleges that awarded that major or field in the last two years. ' +
         'GPA is NOT available; use admission rate and average SAT as the measure of academic selectivity. ' +
-        '"near" + "radius_miles" keeps programs within that many miles (straight line) of a town or ZIP code and adds distance_miles.',
+        '"near" + "radius_miles" keeps programs within that many miles (straight line) of a town or ZIP code and adds distance_miles. ' +
+        'Without divisions, junior colleges (JC) are left out, as on the Find programs page; pass divisions including "JC" when the family asks for junior colleges or two-year colleges.',
       inputSchema: z.object({
         gender: z.enum(['M', 'W']),
         position: z.enum(['GK', 'D', 'M', 'F']).optional().describe('GK goalkeeper, D defender, M midfielder, F forward'),
@@ -588,6 +596,10 @@ function buildToolSet(db, log, ctx) {
         // Shared by the search and by the "schools" check ("why is X not here").
         const failReason = (r, s, f, dist) => {
           if (divs && !divs.has(s.division)) return `division is ${s.division || 'unknown'}`
+          // No division asked for: every division except junior colleges, as on
+          // Find programs (Damon 2026-10-17/20). A two-year roster turns over every
+          // two years, so junior colleges would always top an openings list.
+          if (!divs && s.division === 'JC') return 'junior colleges are left out unless the family asks for them'
           if (sts && !sts.has(stateAbbr(s.state))) return `state is ${stateAbbr(s.state) || 'unknown'}`
           if (notSts && notSts.has(stateAbbr(s.state))) return `in ${stateAbbr(s.state)}, which was left out`
           if (conf && !conf(s.conference)) return `conference is ${s.conference || 'unknown'}`
@@ -672,6 +684,7 @@ function buildToolSet(db, log, ctx) {
           if (openings) {
             Object.assign(row, {
               est_freshman_openings: round(r.est_freshman), est_total_openings: round(r.est_spots),
+              openings_words: aboutText(r.est_freshman ?? r.est_spots),
               graduating_before_entry: r.graduating, roster_season: r.current_season,
               reasons: reasons(r, a.position, a.hs_class),
             })
@@ -724,9 +737,13 @@ function buildToolSet(db, log, ctx) {
         }
 
         const rows = out.slice(0, n).map(toRow)
+        const shown = new Set(out.slice(0, n).map(x => x.r.school_id))
         return {
           matched: out.length,
-          highlights: highlightsFor(out, { center, openings }),
+          // How many have at least about one freshman opening (under half rounds to "under 1").
+          with_freshman_openings: openings ? out.filter(x => (x.r.est_freshman ?? 0) >= 0.5).length : undefined,
+          junior_colleges_left_out: divs ? undefined : 'Junior colleges are not in this search (the default, as on Find programs). Say so in a few words only if the family might expect them; offer to include them.',
+          highlights: highlightsFor(out, { center, openings, shown }),
           fit_summary: fitSummary,
           showing: out.length > n ? `the first ${n} of ${out.length} in this order (the cards show these ${n})` : undefined,
           ranked_by: sort === 'openings'
@@ -1611,9 +1628,12 @@ function instructions() {
     '- Write nothing before or between look-ups ("I will search…"): call the look-ups first, then write only the answer.',
     '- Start with a one- or two-sentence direct answer. No preamble, no restating the question.',
     '- Then structure: short bullet lists for a few facts; **bold** for the key number or name.',
-    '- LISTS of programs (find_programs, rank_by_results, programs_watching_team): the app shows them as program cards under your answer (logo, division, the key number, a link). Do NOT write a table or a numbered or bulleted list of those programs. Instead, after the direct answer, give one or two observations the cards do not show. Comparisons across the list (closest, cheapest, most selective, highest SAT or graduation rate, largest, most openings) must come word for word from the look-up\'s highlights; never work out a comparison yourself, and never call a program "among the cheapest" or similar unless a highlight says it. Exception: for programs_watching_team, the coach names are not on the cards, so list each program shown with its coaches.',
+    '- LISTS of programs (find_programs, rank_by_results, programs_watching_team): the app shows them as program cards under your answer (logo, division, the key number, a link). Do NOT write a table or a numbered or bulleted list of those programs, not even a short list of the top few. Instead, after the direct answer, give one or two observations in plain sentences that the cards do not show. Comparisons across the list (closest, cheapest, most selective, highest SAT or graduation rate, largest, most openings) must come word for word from the look-up\'s highlights; never work out a comparison yourself, and never call a program "among the cheapest" or similar unless a highlight says it. Exception: for programs_watching_team, the coach names are not on the cards, so list each program shown with its coaches.',
     '- TABLES only for a side-by-side comparison of 2 to 4 named programs on several measures, or one program across seasons (rows = seasons). Clear column headers, at most 6 rows.',
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
+    '- For find_programs with openings: "matched" is every program that fits the filters, NOT the number with openings. Say it as "N programs within …; M of them have at least about one estimated freshman opening" using with_freshman_openings for M. Never say all N have openings.',
+    '- Openings in words: use openings_words ("about 3", "under 1"), the same rounding as the Find programs page and the cards. Never write openings as decimals such as 2.8.',
+    '- Never bring up a program that is not on the cards unless the family asked about it. Skip any highlight marked [not among the cards shown].',
     '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count. The cards under the answer show at most 40 programs; never say the cards hold all of a longer list, and do not comment on how many programs the cards or the list show.',
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for); when you name the leaders, keep that order and quote the freshman figure.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
