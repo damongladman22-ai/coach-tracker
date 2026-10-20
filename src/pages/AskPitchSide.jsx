@@ -14,7 +14,7 @@ import { streamAsk, splitAnswer, historyContent, lookupLabel, sourceLabels, prog
 import { getFavorites } from '../hooks/useFavorite'
 import { loadChats, saveChats, putChat, dropChat, newChatId, whenLabel } from '../ask/chatStore'
 import { quizQuestions, quizMessage, cleanScore } from '../ask/quiz'
-import { GROUPS, GENDERS, GENDER_LABEL, groupQs, cleanGender } from '../ask/welcomeExamples'
+import { GROUPS, GENDERS, GENDER_LABEL, groupQs, cleanGender, findPlaceholder, splitPlaceholders } from '../ask/welcomeExamples'
 
 /**
  * Ask PitchSide — the consumer chat experience for the AI assistant (backlog F2).
@@ -509,7 +509,7 @@ function QuizPanel({ onDone, onCancel }) {
   )
 }
 
-function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz, showTeam = true, gender = null, onGender }) {
+function EmptyState({ onPick, onFill, program, onClearProgram, pilot, onQuiz, showTeam = true, gender = null, onGender }) {
   const quizOn = !program && onQuiz
   return (
     <div className="pt-10 sm:pt-16 pb-6 text-center">
@@ -566,16 +566,21 @@ function EmptyState({ onPick, program, onClearProgram, pilot, onQuiz, showTeam =
           </div>)
         : (
           <>
-            <div className={`${quizOn ? 'mt-4' : 'mt-8'} grid sm:grid-cols-2 gap-3 text-left`}>
+            <p className={`${quizOn ? 'mt-5' : 'mt-8'} text-xs text-gray-500`}>
+              Tap an example to put it in the box below, replace the <span className="text-[#1d4ed8] font-medium">[blue]</span> parts with your own, then press Enter.
+            </p>
+            <div className="mt-2 grid sm:grid-cols-2 gap-3 text-left">
               {GROUPS.map(g => (
                 <div key={g.title} className="bg-white border border-[#E5E8EB] rounded-xl px-4 py-3">
                   <div className="text-sm font-semibold text-gray-900">{g.title}</div>
                   <div className="mt-0.5 text-xs text-gray-500">{g.blurb}</div>
                   <div className="mt-2 space-y-1.5">
                     {groupQs(g, gender, showTeam).map(x => (
-                      <button key={x.q} type="button" onClick={() => onPick(x.q)}
+                      <button key={x.q} type="button" onClick={() => onFill(x.q)}
                         className="block w-full text-left text-sm text-gray-800 bg-[#F6F7F9] rounded-lg px-3 py-2 hover:bg-[#ECEFF2] transition">
-                        {x.q}
+                        {splitPlaceholders(x.q).map((part, i) => (part.ph
+                          ? <span key={i} className="text-[#1d4ed8] font-medium">{part.text}</span>
+                          : <span key={i}>{part.text}</span>))}
                       </button>
                     ))}
                   </div>
@@ -621,6 +626,10 @@ export default function AskPitchSide({ session }) {
   const abortRef = useRef(null)
   const endRef = useRef(null)
   const boxRef = useRef(null)
+  // An example tapped on the welcome screen fills the box; it is sent (as a
+  // 'suggestion') only once every [bracketed] part has been replaced.
+  const pickRef = useRef(null)
+  const [hint, setHint] = useState('')
 
   // Save the open chat when a reply finishes (and on rating changes).
   useEffect(() => {
@@ -732,8 +741,43 @@ export default function AskPitchSide({ session }) {
     } catch { /* the rating is a nicety; never interrupt the chat for it */ }
   }
 
+  // Select a [placeholder] in the box: the first at or after `from`.
+  function selectPlaceholder(text, from = 0) {
+    const r = findPlaceholder(text, from)
+    const el = boxRef.current
+    if (!r || !el) return false
+    el.focus()
+    el.setSelectionRange(r.start, r.end)
+    return true
+  }
+  function fillExample(q) {
+    setInput(q)
+    setHint('')
+    pickRef.current = 'suggestion'
+    window.requestAnimationFrame(() => {
+      const el = boxRef.current
+      if (!el) return
+      if (!selectPlaceholder(q)) { el.focus(); el.setSelectionRange(q.length, q.length) }
+    })
+  }
+  function trySend() {
+    if (findPlaceholder(input)) {
+      selectPlaceholder(input)
+      setHint('Replace the highlighted [part] with your own, then press Enter.')
+      return
+    }
+    const source = pickRef.current || 'typed'
+    pickRef.current = null
+    setHint('')
+    send(input, source)
+  }
   const onKey = e => {
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(input) }
+    if (e.key === 'Tab' && !e.shiftKey && findPlaceholder(input)) {
+      e.preventDefault()
+      selectPlaceholder(input, e.currentTarget.selectionEnd)
+      return
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); trySend() }
   }
 
   return (
@@ -762,7 +806,7 @@ export default function AskPitchSide({ session }) {
         {msgs.length === 0 && quiz
           ? <QuizPanel onCancel={() => setQuiz(false)} onDone={a => { setQuiz(false); send(quizMessage(a), 'quiz') }} />
           : msgs.length === 0
-          ? <EmptyState onPick={q => send(q, 'suggestion')} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot}
+          ? <EmptyState onPick={q => send(q, 'suggestion')} onFill={fillExample} program={program} onClearProgram={() => setProgram(null)} pilot={access.pilot}
               onQuiz={() => setQuiz(true)} gender={gender} onGender={setGender} />
           : (
             <div className="py-4 space-y-6">
@@ -784,7 +828,7 @@ export default function AskPitchSide({ session }) {
       <div className="sticky bottom-0 w-full bg-gradient-to-t from-[#F2F3F5] via-[#F2F3F5] to-transparent pt-4 pb-3">
         <div className="max-w-3xl mx-auto px-4">
           <div className="flex items-end gap-2 bg-white border border-[#D9DEE3] rounded-2xl shadow-sm px-3 py-2 focus-within:border-gray-500">
-            <textarea ref={boxRef} rows={1} value={input} onChange={e => setInput(e.target.value)} onKeyDown={onKey}
+            <textarea ref={boxRef} rows={1} value={input} onChange={e => { setInput(e.target.value); if (hint) setHint('') }} onKeyDown={onKey}
               placeholder="Ask anything about your college search…"
               className="flex-1 resize-none outline-none text-[15px] leading-6 py-1.5 bg-transparent max-h-[180px]" />
             {busy
@@ -794,13 +838,14 @@ export default function AskPitchSide({ session }) {
                   <span className="block w-3 h-3 bg-white rounded-sm" />
                 </button>)
               : (
-                <button type="button" onClick={() => send(input)} disabled={!input.trim()} aria-label="Send"
+                <button type="button" onClick={trySend} disabled={!input.trim()} aria-label="Send"
                   className="flex-shrink-0 h-9 w-9 rounded-full bg-[#0a1628] text-white grid place-items-center disabled:bg-gray-300">
                   <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M12 19V5M5 12l7-7 7 7" />
                   </svg>
                 </button>)}
           </div>
+          {hint && <p className="mt-1.5 text-center text-xs text-[#1d4ed8]">{hint}</p>}
           <p className="mt-1.5 text-center text-[11px] text-gray-400">
             Answers come from PitchSide data and can be wrong. Openings are estimates; check each program&apos;s page before you rely on them.
           </p>
