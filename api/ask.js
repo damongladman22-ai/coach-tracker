@@ -317,7 +317,28 @@ function highlightsFor(rows, { center, openings, shown = null } = {}) {
   const pct = v => Math.round(v * 100) + '%'
   const out = []
   let b
-  if (center && (b = best(x => x.dist, true))) out.push(`Closest: ${name(b.x)} (${Math.round(b.v)} mi)`)
+  if (center && (b = best(x => x.dist, true))) out.push(`Closest in the whole search: ${name(b.x)} (${Math.round(b.v)} mi)`)
+  // Closest per division, in the whole search and among the cards, so "the
+  // closest D1 program" is never worked out by the model (live answer
+  // 2026-10-20 called Bowling Green the closest D1 program at 101 miles while
+  // Ohio State, 2 miles away, was in the search but not on the cards).
+  if (center) {
+    const divsSeen = [...new Set(rows.map(x => x.s.division).filter(Boolean))]
+    for (const d of divsSeen) {
+      const inDiv = rows.filter(x => x.s.division === d && x.dist != null)
+      if (!inDiv.length) continue
+      const all = inDiv.reduce((p, x) => (x.dist < p.dist ? x : p))
+      let line = `Closest ${d} program in the whole search: ${name(all)} (${Math.round(all.dist)} mi)`
+      if (shown && !shown.has(all.r.school_id)) {
+        const onCards = inDiv.filter(x => shown.has(x.r.school_id))
+        if (onCards.length) {
+          const c = onCards.reduce((p, x) => (x.dist < p.dist ? x : p))
+          line += `; closest ${d} program on the cards: ${c.s.school} (${Math.round(c.dist)} mi)`
+        }
+      }
+      out.push(line)
+    }
+  }
   if (openings && (b = best(x => x.r.est_freshman ?? x.r.est_spots, false))) out.push(`Most estimated freshman openings: ${name(b.x)} (${aboutText(b.v)})`)
   if ((b = best(x => x.f?.avg_net_price, true))) out.push(`Lowest average net price: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')} a year)`)
   if ((b = best(x => x.f?.avg_net_price, false))) out.push(`Highest average net price: ${name(b.x)} ($${Math.round(b.v).toLocaleString('en-US')} a year)`)
@@ -1633,7 +1654,7 @@ function instructions() {
     '- Link every program you name to its profile: [Ohio State](/school/<school_id>), using the school_id from the look-ups. Never invent a link.',
     '- For find_programs with openings: "matched" is every program that fits the filters, NOT the number with openings. Say it as "N programs within …; M of them have at least about one estimated freshman opening" using with_freshman_openings for M. Never say all N have openings.',
     '- Openings in words: use openings_words ("about 3", "under 1"), the same rounding as the Find programs page and the cards. Never write openings as decimals such as 2.8.',
-    '- Never bring up a program that is not on the cards unless the family asked about it. Skip any highlight marked [not among the cards shown].',
+    '- Never bring up a program that is not on the cards unless the family asked about it. Skip any highlight marked [not among the cards shown]. "On the cards" and "in the search" are different: the search can hold many more programs than the cards. Use the highlight\'s own words ("closest D1 program on the cards", "closest in the whole search"); never write "on the list" for a comparison, and never compare programs (closest, most, best) in any way the highlights do not state.',
     '- "matched" is the total. When a look-up has "showing", only part of the list came back: state the total (matched), never the number of rows shown, as the count. The cards under the answer show at most 40 programs; never say the cards hold all of a longer list, and do not comment on how many programs the cards or the list show.',
     '- find_programs lists are already ranked by estimated freshman openings (what a recruit in that class competes for); when you name the leaders, keep that order and quote the freshman figure.',
     '- Use a short ### heading only when an answer has two or more distinct parts.',
